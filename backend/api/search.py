@@ -8,6 +8,8 @@ from collections import defaultdict
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
+import httpx
 
 from backend.core import runtime
 from backend.core.config import MAX_FRAME_LIMIT, MODEL_CONFIGS, TEMP_UPLOAD_DIR
@@ -34,6 +36,15 @@ async def google_image_search(request: GoogleSearchRequest):
         results = DDGS().images(request.query, max_results=20)
         image_urls = [item.get("image") for item in results if item.get("image")]
         return {"image_urls": image_urls}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/proxy_image")
+async def proxy_image(url: str):
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, timeout=10.0)
+            return Response(content=resp.content, media_type=resp.headers.get("Content-Type", "image/jpeg"))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

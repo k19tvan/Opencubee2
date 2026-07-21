@@ -935,7 +935,12 @@ export default function App() {
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const res = await fetch(shot.url);
+      let fetchUrl = shot.url;
+      if (fetchUrl.startsWith('http://') || fetchUrl.startsWith('https://')) {
+        const backendHost = BASE_URL.replace(/\/$/, '');
+        fetchUrl = `${backendHost}/proxy_image?url=${encodeURIComponent(fetchUrl)}`;
+      }
+      const res = await fetch(fetchUrl);
       if (!res.ok) {
         throw new Error(`Failed to retrieve image from asset server.`);
       }
