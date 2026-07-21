@@ -11,7 +11,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from backend.core import runtime
 from backend.core.config import MAX_FRAME_LIMIT, MODEL_CONFIGS, TEMP_UPLOAD_DIR
-from backend.schemas.search import EnhanceQueryRequest, StageData, TemporalSearchRequest, UnifiedSearchRequest
+from backend.schemas.search import EnhanceQueryRequest, GoogleSearchRequest, StageData, TemporalSearchRequest, UnifiedSearchRequest
 from backend.services.search import (
     _combine_and_rerank_results,
     fuse_results,
@@ -21,6 +21,21 @@ from backend.services.search import (
 )
 
 router = APIRouter()
+
+@router.post("/google_image_search")
+async def google_image_search(request: GoogleSearchRequest):
+    try:
+        # Based on user's example
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS
+            
+        results = DDGS().images(request.query, max_results=20)
+        image_urls = [item.get("image") for item in results if item.get("image")]
+        return {"image_urls": image_urls}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/search")
 async def search_unified(search_data: str = Form(...), query_image: Optional[UploadFile] = File(None)):

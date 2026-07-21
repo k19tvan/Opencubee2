@@ -99,7 +99,7 @@ public/keyframes
 Host them separately when needed:
 
 ```bash
-npx http-server "public\keyframes" -p 8081 --cors -c31536000
+npx http-server "public/keyframes" -p 8081 --cors -c31536000
 ```
 
 If the frame host is somewhere else:

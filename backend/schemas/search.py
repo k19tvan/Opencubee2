@@ -39,3 +39,7 @@ class EnhanceQueryRequest(BaseModel):
     query: str
     ocr_query: Optional[str] = None
     asr_query: Optional[str] = None
+
+
+class GoogleSearchRequest(BaseModel):
+    query: str

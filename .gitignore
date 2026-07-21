@@ -53,3 +53,6 @@ logs/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Temp
+backend/temp_uploads

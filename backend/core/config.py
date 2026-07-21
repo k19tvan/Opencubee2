@@ -9,12 +9,8 @@ try:
 except ImportError:
     pass
 
-NAS_UPLOAD_DIR = Path("/AIClub_NAS/nguyenmv/Opencubee2/database/temp_uploads")
-if NAS_UPLOAD_DIR.parent.exists():
-    TEMP_UPLOAD_DIR = NAS_UPLOAD_DIR
-else:
-    print("Warning: NAS mount path not accessible. Falling back to local './temp_uploads'")
-    TEMP_UPLOAD_DIR = Path("./temp_uploads")
+
+TEMP_UPLOAD_DIR = Path("./backend/temp_uploads")
 TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant_ssd")
@@ -24,7 +20,7 @@ QDRANT_GRPC_PORT = 6334
 MODEL_CONFIGS = {
     "bge": {
         "worker_url": "http://127.0.0.1:2001/embed",
-        "collection": "bge",
+        "collection": "bge_part",
     },
     "jina_v5_omni": {
         "worker_url": "http://127.0.0.1:2004/embed",
@@ -37,7 +33,7 @@ MODEL_CONFIGS = {
 }
 
 MEILISEARCH_HOST = os.getenv("MEILISEARCH_HOST", "http://meilisearch:7700")
-OCR_ASR_INDEX_NAME = "ocr_asr_index"
+OCR_ASR_INDEX_NAME = "ocr_asr_index_part"
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://192.168.20.152:2108/v1").rstrip("/")
 VLLM_MODEL = os.getenv("VLLM_MODEL")
 
