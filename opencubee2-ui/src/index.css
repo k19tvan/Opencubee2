@@ -1,0 +1,748 @@
+/* ==========================================================================
+   OPENCUBEE2 - THEME DARK & LIGHT HARMONIZED
+   ========================================================================== */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Định nghĩa màu sắc và hiệu ứng cho 2 Theme */
+.theme-normal {
+    --bg-primary: #070b16;
+    --bg-secondary: #0c1221;
+    --card-bg: rgba(13, 20, 35, 0.94);
+    --border-color: rgba(113, 132, 185, 0.2);
+    --border-hover: rgba(91, 224, 214, 0.66);
+    --text-primary: #eef2ff;
+    --text-secondary: #7f8cad;
+
+    --accent-primary: #7c72ff;
+    --accent-secondary: #5be0d6;
+    --accent-gradient: linear-gradient(135deg, #6f63ff 0%, #7c72ff 50%, #5be0d6 100%);
+    --glass-bg: rgba(38, 49, 79, 0.42);
+    --shadow-heavy: 0 16px 38px rgba(0, 0, 0, 0.46);
+
+    background-color: var(--bg-primary);
+    background-image: none;
+}
+
+.theme-normal .fixed.top-0.left-0,
+.theme-normal #left-search-panel {
+    background: rgba(8, 13, 25, 0.96) !important;
+    box-shadow: 0 1px 0 rgba(124, 114, 255, 0.12) inset, 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
+.theme-normal #right-results-panel {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(124, 114, 255, 0.13), transparent 32%),
+        linear-gradient(180deg, rgba(8, 12, 23, 0.98), rgba(5, 8, 15, 0.99)),
+        #070b16;
+}
+
+.theme-normal #teamworkPanelContainer,
+.theme-normal #trakePanelContainer {
+    background: rgba(8, 13, 25, 0.9);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+}
+
+.theme-normal input,
+.theme-normal textarea,
+.theme-normal .bg-\[var\(--glass-bg\)\] {
+    background-color: rgba(18, 29, 52, 0.78);
+}
+
+.theme-normal input:focus,
+.theme-normal textarea:focus {
+    box-shadow: 0 0 0 3px rgba(91, 224, 214, 0.18), inset 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.theme-normal .fixed.top-0.left-0 button,
+.theme-normal button[title="Start Agent Search"],
+.theme-normal #left-search-panel [data-primary-search-button="true"] {
+    background: rgba(30, 38, 62, 0.96);
+    border-color: rgba(113, 132, 185, 0.28);
+    color: #ffffff;
+}
+
+.theme-normal .fixed.top-0.left-0 button:hover,
+.theme-normal button[title="Start Agent Search"]:hover,
+.theme-normal #left-search-panel [data-primary-search-button="true"]:hover {
+    background: rgba(124, 114, 255, 0.86);
+    border-color: rgba(91, 224, 214, 0.48);
+    color: #ffffff;
+}
+
+.theme-normal .fixed.top-0.left-0 button:disabled {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: rgba(245, 242, 236, 0.38);
+}
+
+.theme-normal .fixed.top-0.left-0 .absolute button {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-primary);
+}
+
+.theme-normal .fixed.top-0.left-0 button[data-active="true"] {
+    background: rgba(124, 114, 255, 0.95) !important;
+    border-color: rgba(91, 224, 214, 0.74) !important;
+    color: #ffffff !important;
+    box-shadow:
+        inset 0 0 0 1px rgba(91, 224, 214, 0.3),
+        0 0 16px rgba(91, 224, 214, 0.18) !important;
+}
+
+.theme-jujutsu {
+    --bg-primary: #05030a;
+    --bg-secondary: rgba(18, 10, 31, 0.9);
+    --card-bg: rgba(14, 8, 24, 0.86);
+    --border-color: rgba(221, 199, 255, 0.16);
+    --border-hover: rgba(121, 92, 235, 0.68);
+    --text-primary: #f8fafc;
+    --text-secondary: #d3c5e8;
+    
+    --accent-primary: #795ceb;
+    --accent-secondary: #a855f7;
+    --accent-gradient: linear-gradient(135deg, #795ceb 0%, #d946ef 100%);
+    --glass-bg: rgba(255, 255, 255, 0.075);
+    --shadow-heavy: 0 20px 50px rgba(0, 0, 0, 0.7);
+    
+    background-color: var(--bg-primary);
+    background-image: none;
+}
+
+.theme-jujutsu .fixed.top-0.left-0,
+.theme-jujutsu #left-search-panel {
+    background: rgba(14, 8, 24, 0.88) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 10px 30px rgba(5, 3, 10, 0.28);
+}
+
+.theme-jujutsu #right-results-panel {
+    background:
+        linear-gradient(rgba(5, 3, 10, 0.48), rgba(5, 3, 10, 0.7)),
+        transparent;
+}
+
+.theme-jujutsu #teamworkPanelContainer,
+.theme-jujutsu #trakePanelContainer {
+    background: rgba(10, 6, 18, 0.82);
+    box-shadow: 0 10px 26px rgba(5, 3, 10, 0.26);
+}
+
+.theme-jujutsu input,
+.theme-jujutsu textarea,
+.theme-jujutsu .bg-\[var\(--glass-bg\)\] {
+    background-color: rgba(255, 255, 255, 0.075);
+    border-color: rgba(221, 199, 255, 0.16);
+}
+
+.theme-jujutsu input:focus,
+.theme-jujutsu textarea:focus {
+    box-shadow: 0 0 0 3px rgba(121, 92, 235, 0.2), inset 0 1px 2px rgba(5, 3, 10, 0.18);
+}
+
+.theme-jujutsu .fixed.top-0.left-0 button,
+.theme-jujutsu button[title="Start Agent Search"],
+.theme-jujutsu #left-search-panel [data-primary-search-button="true"] {
+    background: var(--accent-gradient);
+    border-color: rgba(221, 199, 255, 0.18);
+    color: #ffffff;
+}
+
+.theme-jujutsu .fixed.top-0.left-0 button:hover,
+.theme-jujutsu button[title="Start Agent Search"]:hover,
+.theme-jujutsu #left-search-panel [data-primary-search-button="true"]:hover {
+    background: #a855f7;
+    border-color: rgba(221, 199, 255, 0.34);
+    color: #ffffff;
+}
+
+.theme-jujutsu .fixed.top-0.left-0 button:disabled {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(221, 199, 255, 0.12);
+    color: rgba(248, 250, 252, 0.38);
+}
+
+.theme-jujutsu .fixed.top-0.left-0 .absolute button {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-primary);
+}
+
+
+.theme-dark {
+    --bg-primary: #080808;
+    --bg-secondary: #111113;
+    --card-bg: rgba(18, 19, 21, 0.92);
+    --border-color: rgba(255, 255, 255, 0.075);
+    --border-hover: rgba(255, 255, 255, 0.22);
+    --text-primary: #f3f1ee;
+    --text-secondary: #a6a29c;
+
+    --accent-primary: #f3f1ee;
+    --accent-secondary: #c8c2b8;
+    --accent-gradient: linear-gradient(180deg, #f8f6f2 0%, #d8d2c8 100%);
+    --glass-bg: rgba(255, 255, 255, 0.06);
+    --shadow-heavy: 0 16px 38px rgba(0, 0, 0, 0.5);
+
+    background-color: var(--bg-primary);
+    background-image: none;
+}
+
+.theme-dark .fixed.top-0.left-0,
+.theme-dark #left-search-panel {
+    background: rgba(21, 22, 24, 0.94) !important;
+}
+
+.theme-dark #right-results-panel {
+    background:
+        linear-gradient(rgba(8, 8, 8, 0.72), rgba(8, 8, 8, 0.84)),
+        url('/Gojo.jpg') center center / cover no-repeat fixed,
+        #080808;
+}
+
+#right-results-panel,
+#teamworkPanelContainer,
+#trakePanelContainer,
+#left-search-panel,
+.fixed.top-0.left-0 {
+    transition:
+        background-color 1100ms cubic-bezier(0.16, 1, 0.3, 1),
+        border-color 1100ms cubic-bezier(0.16, 1, 0.3, 1),
+        color 1100ms cubic-bezier(0.16, 1, 0.3, 1),
+        box-shadow 1100ms cubic-bezier(0.16, 1, 0.3, 1),
+        opacity 1100ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.theme-shift-wash {
+    position: fixed;
+    inset: -12%;
+    z-index: 2200;
+    pointer-events: none;
+    background:
+        linear-gradient(
+            105deg,
+            transparent 0%,
+            color-mix(in srgb, var(--accent-primary) 44%, transparent) 34%,
+            color-mix(in srgb, var(--accent-secondary) 36%, transparent) 52%,
+            transparent 78%
+        );
+    filter: blur(18px) saturate(130%);
+    transform: translateX(-38%) skewX(-10deg) scale(1.08);
+    animation: themeShiftWash 1500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes themeShiftWash {
+    0% {
+        opacity: 0;
+        transform: translateX(-42%) skewX(-10deg) scale(1.08);
+    }
+    18% {
+        opacity: 0.58;
+    }
+    55% {
+        opacity: 0.38;
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(42%) skewX(-10deg) scale(1.08);
+    }
+}
+
+.theme-dark #teamworkPanelContainer,
+.theme-dark #trakePanelContainer {
+    background: #0b0b0c;
+}
+
+.theme-dark input,
+.theme-dark textarea,
+.theme-dark .bg-\[var\(--glass-bg\)\] {
+    background-color: rgba(255, 255, 255, 0.055);
+}
+
+.theme-light {
+    --bg-primary: #13071f;
+    --bg-secondary: #211033;
+    --card-bg: rgba(31, 15, 48, 0.9);
+    --border-color: rgba(221, 199, 255, 0.16);
+    --border-hover: rgba(196, 151, 255, 0.58);
+    --text-primary: #fbf7ff;
+    --text-secondary: #c9b7dc;
+
+    --accent-primary: #9d4edd;
+    --accent-secondary: #c77dff;
+    --accent-gradient: linear-gradient(135deg, #7b2cbf 0%, #c77dff 100%);
+    --glass-bg: rgba(255, 255, 255, 0.075);
+    --shadow-heavy: 0 18px 42px rgba(16, 5, 28, 0.5);
+    
+    background-color: var(--bg-primary);
+    background-image: none;
+}
+
+.theme-blue {
+    --bg-primary: #07101b;
+    --bg-secondary: #0d1a2a;
+    --card-bg: rgba(9, 18, 30, 0.9);
+    --border-color: rgba(188, 219, 255, 0.16);
+    --border-hover: rgba(113, 195, 255, 0.56);
+    --text-primary: #f3f8ff;
+    --text-secondary: #aebdd0;
+
+    --accent-primary: #70d7ff;
+    --accent-secondary: #9fc5ff;
+    --accent-gradient: linear-gradient(135deg, #1e5b9a 0%, #70d7ff 100%);
+    --glass-bg: rgba(214, 236, 255, 0.075);
+    --shadow-heavy: 0 18px 44px rgba(0, 7, 20, 0.58);
+
+    background-color: var(--bg-primary);
+    background-image: none;
+}
+
+.theme-neon {
+    --bg-primary: #12081a;
+    --bg-secondary: #1f122b;
+    --card-bg: rgba(25, 12, 36, 0.9);
+    --border-color: rgba(230, 176, 255, 0.16);
+    --border-hover: rgba(111, 211, 229, 0.44);
+    --text-primary: #fff8ff;
+    --text-secondary: #d6bedf;
+
+    --accent-primary: #c044a5;
+    --accent-secondary: #62c7d6;
+    --accent-gradient: linear-gradient(135deg, #7b2f8e 0%, #c044a5 58%, #62c7d6 100%);
+    --glass-bg: rgba(255, 255, 255, 0.07);
+    --shadow-heavy: 0 18px 42px rgba(30, 6, 42, 0.5);
+
+    background-color: var(--bg-primary);
+    background-image: none;
+}
+
+.theme-light #left-search-panel,
+.theme-light .fixed.top-0.left-0 {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 10px 30px rgba(16, 5, 28, 0.22);
+}
+
+.theme-light #right-results-panel {
+    background:
+        linear-gradient(rgba(19, 7, 31, 0.58), rgba(19, 7, 31, 0.76)),
+        url('/Gojo_purple.jpg') center center / cover no-repeat fixed,
+        #13071f;
+}
+
+.theme-light #teamworkPanelContainer,
+.theme-light #trakePanelContainer {
+    background: rgba(26, 10, 42, 0.86);
+    box-shadow: 0 10px 26px rgba(16, 5, 28, 0.22);
+}
+
+.theme-light .fixed.top-0.left-0 {
+    background: rgba(31, 15, 48, 0.94);
+}
+
+.theme-light button[title="Start Agent Search"] {
+    background: var(--accent-gradient);
+    border-color: rgba(221, 199, 255, 0.24);
+    color: #ffffff;
+}
+
+.theme-light button[title="Start Agent Search"]:hover {
+    background: #c77dff;
+    border-color: rgba(221, 199, 255, 0.36);
+}
+
+.theme-light #left-search-panel [data-primary-search-button="true"] {
+    background: var(--accent-gradient);
+    border-color: rgba(221, 199, 255, 0.24);
+    color: #ffffff;
+}
+
+.theme-light #left-search-panel [data-primary-search-button="true"]:hover {
+    background: #c77dff;
+    border-color: rgba(221, 199, 255, 0.36);
+}
+
+.theme-light .fixed.top-0.left-0 button {
+    background: linear-gradient(135deg, #5a189a 0%, #7b2cbf 100%);
+    border-color: rgba(221, 199, 255, 0.18);
+    color: #ffffff;
+}
+
+.theme-light .fixed.top-0.left-0 button:hover {
+    background: linear-gradient(135deg, #7b2cbf 0%, #9d4edd 100%);
+    border-color: rgba(221, 199, 255, 0.34);
+    color: #ffffff;
+}
+
+.theme-light .fixed.top-0.left-0 button:disabled {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(221, 199, 255, 0.12);
+    color: rgba(251, 247, 255, 0.38);
+}
+
+.theme-light .fixed.top-0.left-0 [role="menu"] button,
+.theme-light .fixed.top-0.left-0 .absolute button {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-primary);
+}
+
+.theme-light input,
+.theme-light textarea {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(221, 199, 255, 0.18);
+    box-shadow: inset 0 1px 2px rgba(16, 5, 28, 0.18);
+}
+
+.theme-light input:focus,
+.theme-light textarea:focus {
+    background-color: rgba(255, 255, 255, 0.11);
+    box-shadow: 0 0 0 3px rgba(199, 125, 255, 0.18), inset 0 1px 2px rgba(16, 5, 28, 0.16);
+}
+
+.theme-light button {
+    box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04);
+}
+
+.theme-light button.bg-transparent {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.theme-light .bg-indigo-50 {
+    background-color: rgba(199, 125, 255, 0.18);
+}
+
+.theme-light .border-indigo-200 {
+    border-color: rgba(199, 125, 255, 0.5);
+}
+
+.theme-light .text-indigo-600 {
+    color: #f0d9ff;
+}
+
+.theme-light .from-indigo-500.to-violet-600,
+.theme-light .from-indigo-500.to-violet-600.text-white {
+    background-image: var(--accent-gradient);
+    box-shadow: 0 8px 18px rgba(123, 44, 191, 0.28);
+}
+
+.theme-light [class*="shadow-\\[var\\(--shadow-heavy\\)\\]"] {
+    box-shadow: var(--shadow-heavy);
+}
+
+.theme-blue #left-search-panel,
+.theme-blue .fixed.top-0.left-0 {
+    background: rgba(8, 17, 28, 0.94) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 10px 30px rgba(0, 7, 20, 0.26);
+}
+
+.theme-blue #right-results-panel {
+    background:
+        linear-gradient(rgba(7, 16, 27, 0.5), rgba(7, 16, 27, 0.76)),
+        url('/Gojo_dark_blue.jpg') center center / cover no-repeat fixed,
+        #07101b;
+}
+
+.theme-blue #teamworkPanelContainer,
+.theme-blue #trakePanelContainer {
+    background: rgba(8, 18, 31, 0.84);
+    box-shadow: 0 10px 26px rgba(0, 7, 20, 0.28);
+}
+
+.theme-blue input,
+.theme-blue textarea,
+.theme-blue .bg-\[var\(--glass-bg\)\] {
+    background-color: rgba(214, 236, 255, 0.075);
+}
+
+.theme-blue input:focus,
+.theme-blue textarea:focus {
+    box-shadow: 0 0 0 3px rgba(112, 215, 255, 0.18), inset 0 1px 2px rgba(0, 7, 20, 0.16);
+}
+
+.theme-blue .fixed.top-0.left-0 button,
+.theme-blue button[title="Start Agent Search"],
+.theme-blue #left-search-panel [data-primary-search-button="true"] {
+    background: var(--accent-gradient);
+    border-color: rgba(188, 219, 255, 0.22);
+    color: #ffffff;
+}
+
+.theme-blue .fixed.top-0.left-0 button:hover,
+.theme-blue button[title="Start Agent Search"]:hover,
+.theme-blue #left-search-panel [data-primary-search-button="true"]:hover {
+    background: #70d7ff;
+    border-color: rgba(188, 219, 255, 0.38);
+    color: #06101c;
+}
+
+.theme-blue .fixed.top-0.left-0 button:disabled {
+    background: rgba(214, 236, 255, 0.05);
+    border-color: rgba(188, 219, 255, 0.12);
+    color: rgba(243, 248, 255, 0.38);
+}
+
+.theme-blue .fixed.top-0.left-0 .absolute button {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-primary);
+}
+
+.theme-neon #left-search-panel,
+.theme-neon .fixed.top-0.left-0 {
+    background: rgba(25, 12, 36, 0.94) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 10px 30px rgba(30, 6, 42, 0.24);
+}
+
+.theme-neon #right-results-panel {
+    background:
+        linear-gradient(rgba(18, 8, 26, 0.56), rgba(18, 8, 26, 0.78)),
+        url('/Gojo_lmao.jpg') center center / cover no-repeat fixed,
+        #12081a;
+}
+
+.theme-neon #teamworkPanelContainer,
+.theme-neon #trakePanelContainer {
+    background: rgba(22, 10, 32, 0.84);
+    box-shadow: 0 10px 26px rgba(30, 6, 42, 0.24);
+}
+
+.theme-neon input,
+.theme-neon textarea,
+.theme-neon .bg-\[var\(--glass-bg\)\] {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.theme-neon input:focus,
+.theme-neon textarea:focus {
+    box-shadow: 0 0 0 3px rgba(192, 68, 165, 0.16), inset 0 1px 2px rgba(30, 6, 42, 0.16);
+}
+
+.theme-neon .fixed.top-0.left-0 button,
+.theme-neon button[title="Start Agent Search"],
+.theme-neon #left-search-panel [data-primary-search-button="true"] {
+    background: rgba(123, 47, 142, 0.92);
+    border-color: rgba(230, 176, 255, 0.2);
+    color: #ffffff;
+}
+
+.theme-neon .fixed.top-0.left-0 button:hover,
+.theme-neon button[title="Start Agent Search"]:hover,
+.theme-neon #left-search-panel [data-primary-search-button="true"]:hover {
+    background: rgba(192, 68, 165, 0.96);
+    border-color: rgba(98, 199, 214, 0.38);
+    color: #ffffff;
+}
+
+.theme-neon .fixed.top-0.left-0 button:disabled {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(230, 176, 255, 0.12);
+    color: rgba(255, 247, 255, 0.38);
+}
+
+.theme-neon .fixed.top-0.left-0 .absolute button {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-primary);
+}
+
+.fixed.top-0.left-0 button[data-active="true"] {
+    background: var(--text-primary) !important;
+    border-color: var(--text-primary) !important;
+    color: var(--bg-primary) !important;
+    box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 24%, transparent),
+        0 8px 20px rgba(0, 0, 0, 0.18) !important;
+}
+
+.fixed.top-0.left-0 button[data-active="true"]:hover {
+    background: var(--text-primary) !important;
+    border-color: var(--text-primary) !important;
+    color: var(--bg-primary) !important;
+    filter: brightness(0.94);
+}
+
+/* Thư viện chuyển động và scrollbar */
+html, body, #root {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    transition: background-color 0.3s ease;
+    /* Crisper text rendering across platforms */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* Smooth, momentum-style scrolling everywhere */
+html {
+    scroll-behavior: smooth;
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+}
+
+/* Selection styling that matches the accent palette */
+::selection {
+    background: rgba(255, 255, 255, 0.18);
+    color: var(--text-primary);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
+    background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ==========================================================================
+   REUSABLE INTERACTION UTILITIES
+   ========================================================================== */
+
+/* Universal smooth easing for color/border/transform transitions */
+.transition-smooth {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Gentle lift on hover — used on cards and tiles */
+.hover-lift {
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.2s ease;
+    will-change: transform;
+}
+.hover-lift:hover {
+    transform: translateY(-3px) scale(1.015);
+}
+
+/* Frosted-glass surface helper */
+.glass-surface {
+    background: var(--card-bg);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+/* Shimmer placeholder used while frames load */
+.skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+}
+.skeleton-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.06) 50%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+}
+.theme-light .skeleton-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 0, 0, 0.06) 50%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+}
+
+@keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+/* Crisp, accessible focus ring (keyboard only) */
+:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Buttons & interactive tiles get a subtle press feedback baseline */
+button {
+    -webkit-tap-highlight-color: transparent;
+}
+
+.video-control-button {
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.video-control-button:hover {
+    background: var(--accent-primary);
+}
+
+.video-control-button:active {
+    transform: scale(0.95);
+}
+
+.video-thumbnail-timeline {
+    position: relative;
+    height: 4rem;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.625rem;
+    background: #070b14;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.video-thumbnail-timeline:active {
+    cursor: grabbing;
+}
+
+.video-timeline-playhead {
+    position: absolute;
+    z-index: 20;
+    top: -0.25rem;
+    bottom: -0.25rem;
+    left: 50%;
+    width: 3px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: #ef4444;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.85);
+    pointer-events: none;
+}
+
+/* Honor users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}

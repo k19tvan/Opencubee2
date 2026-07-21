@@ -1,0 +1,564 @@
+from __future__ import annotations
+
+import asyncio
+import shutil
+import time
+import uuid
+from collections import defaultdict
+from typing import Optional
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+
+from backend.core import runtime
+from backend.core.config import MAX_FRAME_LIMIT, MODEL_CONFIGS, TEMP_UPLOAD_DIR
+from backend.schemas.search import EnhanceQueryRequest, StageData, TemporalSearchRequest, UnifiedSearchRequest
+from backend.services.search import (
+    _combine_and_rerank_results,
+    fuse_results,
+    process_and_cluster_results,
+    search_all_models,
+    search_ocr_on_meilisearch_async,
+)
+
+router = APIRouter()
+
+@router.post("/search")
+async def search_unified(search_data: str = Form(...), query_image: Optional[UploadFile] = File(None)):
+    start_time = time.time()
+    timings = {}
+    
+    try:
+        search_model = UnifiedSearchRequest.parse_raw(search_data)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Cấu trúc dữ liệu không hợp lệ: {e}")
+
+    image_name = None
+    if query_image:
+        image_name = f"direct_{uuid.uuid4()}.jpg"
+        temp_filepath = TEMP_UPLOAD_DIR / image_name
+        with temp_filepath.open("wb") as buffer:
+            shutil.copyfileobj(query_image.file, buffer)
+    else:
+        image_name = search_model.query_image_name
+
+    models_to_use = search_model.models or ["bge"]
+    models_to_use = [m for m in models_to_use if m in MODEL_CONFIGS]
+    if not models_to_use: models_to_use = ["bge"]
+        
+    weights = search_model.model_weights or {"bge": 1.0}
+
+    has_vector_query = bool(search_model.query_text or image_name or search_model.image_search_text)
+    has_filter_query = bool(search_model.ocr_query or search_model.asr_query) 
+
+    async def _vector_stage():
+        if not has_vector_query:
+            return []
+        results_by_model = await search_all_models(
+            models_to_use,
+            text=search_model.query_text,
+            image_name=image_name,
+            image_text=search_model.image_search_text,
+            limit=MAX_FRAME_LIMIT,
+        )
+        return fuse_results(results_by_model, {m: weights.get(m, 1.0) for m in models_to_use})
+
+    async def _ocr_stage():
+        if not has_filter_query:
+            return []
+        query_text = search_model.ocr_query or search_model.asr_query
+        return await search_ocr_on_meilisearch_async(keyword=query_text, limit=5000)
+
+    start_retrieval = time.time()
+    fused_vector_results, filter_search_results = await asyncio.gather(_vector_stage(), _ocr_stage())
+    timings["retrieval_s"] = time.time() - start_retrieval
+
+    final_results = []
+    if has_vector_query and has_filter_query:
+        final_results = _combine_and_rerank_results(fused_vector_results, filter_search_results)
+    elif has_vector_query:
+        final_results = fused_vector_results
+    elif has_filter_query:
+        for res in filter_search_results: 
+            res['score'] = res.get('score', 0.0)
+            res['url'] = f"/keyframes/{res['frame_name']}"
+        final_results = sorted(filter_search_results, key=lambda x: x.get('score', 0), reverse=True)
+
+    start_final = time.time()
+    clustered = process_and_cluster_results(final_results)
+    total_results = len(clustered)
+    
+    start_idx = (search_model.page - 1) * search_model.page_size
+    paginated = clustered[start_idx:start_idx + search_model.page_size]
+    timings["final_processing_s"] = time.time() - start_final
+
+    timings["total_request_s"] = time.time() - start_time
+    
+    return {
+        "results": paginated,
+        "total_results": total_results,
+        "timing_info": timings
+    }
+
+# --- Corrected Enhance Query Endpoint (Direct calls to LangChain base structures and Async helper) ---
+@router.post("/enhance_query")
+async def enhance_query(request_data: EnhanceQueryRequest):
+    query = (request_data.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query is required.")
+
+    context_parts = []
+    if request_data.ocr_query:
+        context_parts.append(f"OCR filter: {request_data.ocr_query.strip()}")
+    if request_data.asr_query:
+        context_parts.append(f"ASR filter: {request_data.asr_query.strip()}")
+    context_text = "\n".join(context_parts) if context_parts else "No OCR/ASR filters."
+
+    messages = [
+        (
+            "system",
+            """
+            Rewrite the user's video/image retrieval query into a concise, vivid visual search query. 
+            Preserve all concrete entities, actions, colors, locations, text, and temporal intent. 
+            Do not add facts that are not implied. Return only the improved query, no quotes or explanation. 
+            If the user's query is in vietnamese, change it to english. If the user's query is in english, keep it in english.
+            """
+
+
+        ),
+        (
+            "human",
+            f"Query:\n{query}\n\nContext:\n{context_text}"
+        )
+    ]
+
+    if runtime.llm_enhance is None:
+        raise HTTPException(status_code=503, detail="Groq LLM for query enhancement is not initialized.")
+
+    enhanced = runtime.llm_enhance.invoke(messages).content.strip()
+    print(f"Enhanced Query: {enhanced}")
+
+    return {"enhanced_query": enhanced}
+
+async def _temporal_search_legacy(request_data: TemporalSearchRequest):
+    start_time = time.time()
+    timings = {}
+    
+    stages = request_data.stages
+    ambiguous = request_data.ambiguous
+    
+    if not stages:
+        raise HTTPException(status_code=400, detail="Stages are required.")
+        
+    models_to_use = request_data.models or ["bge"]
+    models_to_use = [m for m in models_to_use if m in MODEL_CONFIGS]
+    if not models_to_use: models_to_use = ["bge"]
+        
+    weights = request_data.model_weights or {"bge": 1.0}
+    
+    valid_stage_results = []
+    processed_queries_for_ui = []
+    
+    for idx, stage in enumerate(stages):
+        has_vector_query = bool(stage.query or stage.query_image_name or stage.image_search_text)
+        has_filter_query = bool(stage.ocr_query or stage.asr_query)
+        
+        if not has_vector_query and not has_filter_query:
+            processed_queries_for_ui.append("Empty Stage")
+            continue
+
+        async def _stage_vector(stg=stage):
+            if not (stg.query or stg.query_image_name or stg.image_search_text):
+                return []
+            results_by_model = await search_all_models(
+                models_to_use,
+                text=stg.query,
+                image_name=stg.query_image_name,
+                image_text=stg.image_search_text,
+                limit=MAX_FRAME_LIMIT,
+            )
+            return fuse_results(results_by_model, {m: weights.get(m, 1.0) for m in models_to_use})
+
+        async def _stage_ocr(stg=stage):
+            if not (stg.ocr_query or stg.asr_query):
+                return []
+            query_text = stg.ocr_query or stg.asr_query
+            return await search_ocr_on_meilisearch_async(keyword=query_text, limit=MAX_FRAME_LIMIT)
+
+        fused_stage_results, filter_stage_results = await asyncio.gather(_stage_vector(), _stage_ocr())
+
+        final_stage_results = []
+        if has_vector_query and has_filter_query:
+            final_stage_results = _combine_and_rerank_results(fused_stage_results, filter_stage_results)
+        elif has_vector_query:
+            final_stage_results = fused_stage_results
+        elif has_filter_query:
+            for res in filter_stage_results:
+                res['score'] = res.get('score', 0.0)
+                res['url'] = f"/keyframes/{res['frame_name']}"
+            final_stage_results = sorted(filter_stage_results, key=lambda x: x.get('score', 0), reverse=True)
+
+        clustered_stage = process_and_cluster_results(final_stage_results)
+        valid_stage_results.append(clustered_stage)
+        
+        ui_query = stage.query or stage.ocr_query or f"Stage {idx+1} Input"
+        processed_queries_for_ui.append(ui_query)
+
+    for stage_clusters in valid_stage_results:
+        for cluster in stage_clusters:
+            if cluster.get('shots'):
+                shot_ids_int = []
+                for s in cluster['shots']:
+                    try: shot_ids_int.append(int(s['shot_id']))
+                    except: pass
+                if shot_ids_int:
+                    cluster['min_shot_id'] = min(shot_ids_int)
+                    cluster['max_shot_id'] = max(shot_ids_int)
+                    cluster['video_id'] = cluster['best_shot']['video_id']
+    
+    clusters_by_video = defaultdict(lambda: defaultdict(list))
+    for i, stage_clusters in enumerate(valid_stage_results):
+        for cluster in stage_clusters:
+            if 'video_id' in cluster:
+                clusters_by_video[cluster['video_id']][i].append(cluster)
+    
+    all_valid_sequences = []
+    if not ambiguous:
+        for video_id, video_stages in clusters_by_video.items():
+            if len(video_stages) < len(stages): continue
+            def find_sequences_recursive(stage_idx: int, current_sequence: list):
+                if stage_idx == len(stages):
+                    all_valid_sequences.append(list(current_sequence))
+                    return
+                for next_cluster in video_stages.get(stage_idx, []):
+                    if not current_sequence or next_cluster.get('min_shot_id', -1) > current_sequence[-1].get('max_shot_id', -1):
+                        current_sequence.append(next_cluster)
+                        find_sequences_recursive(stage_idx + 1, current_sequence)
+                        current_sequence.pop()
+            find_sequences_recursive(0, [])
+    else:
+        for video_id, video_stages in clusters_by_video.items():
+            if len(video_stages) < len(stages): continue
+            best_clusters_for_video = []
+            for stage_idx in range(len(stages)):
+                stage_clusters = video_stages.get(stage_idx, [])
+                if not stage_clusters:
+                    best_clusters_for_video = []
+                    break
+                best_clusters_for_video.append(max(stage_clusters, key=lambda c: c.get('cluster_score', 0)))
+            if best_clusters_for_video:
+                all_valid_sequences.append(best_clusters_for_video)
+                
+    processed_sequences = []
+    TEMPORAL_PENALTY_WEIGHT = 0.05
+    for cluster_seq in all_valid_sequences:
+        if not cluster_seq: continue
+        avg_score = sum(c.get('cluster_score', 0) for c in cluster_seq) / len(cluster_seq)
+        total_temporal_gap = 0
+        if len(cluster_seq) > 1 and not ambiguous:
+            for i in range(len(cluster_seq) - 1):
+                gap = cluster_seq[i+1].get('min_shot_id', 0) - cluster_seq[i].get('max_shot_id', 0)
+                if gap > 0: total_temporal_gap += gap
+        combined_score = avg_score / (1 + (total_temporal_gap * TEMPORAL_PENALTY_WEIGHT))
+        
+        shots_to_display = []
+        for c in cluster_seq:
+            shot_mapped = c['best_shot'].copy()
+            if 'url' not in shot_mapped:
+                shot_mapped['url'] = f"/keyframes/{shot_mapped['frame_name']}"
+            shots_to_display.append(shot_mapped)
+            
+        processed_sequences.append({
+            "combined_score": combined_score,
+            "average_rrf_score": avg_score,
+            "temporal_gap": total_temporal_gap,
+            "clusters": cluster_seq,
+            "shots": shots_to_display,
+            "video_id": cluster_seq[0].get('video_id', 'N/A')
+        })
+        
+    final_sequences_all = sorted(processed_sequences, key=lambda x: x['combined_score'], reverse=True)
+    total_sequences = len(final_sequences_all)
+    
+    start_idx = (request_data.page - 1) * request_data.page_size
+    paginated_sequences = final_sequences_all[start_idx : start_idx + request_data.page_size]
+    
+    timings["total_request_s"] = time.time() - start_time
+    
+    return {
+        "results": paginated_sequences,
+        "processed_queries": processed_queries_for_ui,
+        "is_temporal_search": not ambiguous,
+        "is_ambiguous_search": ambiguous,
+        "total_results": total_sequences,
+        "timing_info": timings
+    }
+
+@router.post("/temporal_search")
+async def temporal_search_previous_behavior(request_data: TemporalSearchRequest):
+    start_time = time.time()
+    timings = {}
+    stages = request_data.stages
+    ambiguous = request_data.ambiguous
+    specified_videos = set(request_data.specified_videos or [])
+
+    if not stages:
+        raise HTTPException(status_code=400, detail="Stages are required.")
+
+    models_to_use = [
+        model
+        for model in (request_data.models or ["bge"])
+        if model in MODEL_CONFIGS
+    ] or ["bge"]
+    weights = request_data.model_weights or {"bge": 1.0}
+
+    async def get_stage_results(index: int, stage: StageData):
+        has_vector_query = bool(stage.query or stage.query_image_name or stage.image_search_text)
+        has_filter_query = bool(stage.ocr_query or stage.asr_query)
+        if not has_vector_query and not has_filter_query:
+            return index, [], "Empty Stage"
+
+        async def vector_search():
+            if not has_vector_query:
+                return []
+            results_by_model = await search_all_models(
+                models_to_use,
+                text=stage.query,
+                image_name=stage.query_image_name,
+                image_text=stage.image_search_text,
+                limit=MAX_FRAME_LIMIT,
+            )
+            return fuse_results(
+                results_by_model,
+                {model: weights.get(model, 1.0) for model in models_to_use},
+            )
+
+        async def filter_search():
+            if not has_filter_query:
+                return []
+            return await search_ocr_on_meilisearch_async(
+                keyword=stage.ocr_query or stage.asr_query,
+                limit=MAX_FRAME_LIMIT,
+            )
+
+        vector_results, filter_results = await asyncio.gather(
+            vector_search(),
+            filter_search(),
+        )
+
+        if has_vector_query and has_filter_query:
+            stage_results = _combine_and_rerank_results(vector_results, filter_results)
+        elif has_vector_query:
+            stage_results = vector_results
+        else:
+            for result in filter_results:
+                result['score'] = result.get('score', 0.0)
+                result['url'] = f"/keyframes/{result['frame_name']}"
+            stage_results = sorted(
+                filter_results,
+                key=lambda result: result.get('score', 0),
+                reverse=True,
+            )
+
+        display_query = stage.query or stage.ocr_query or stage.asr_query or f"Stage {index + 1} Input"
+        return index, stage_results, display_query
+
+    stage_started = time.time()
+    gathered_stages = await asyncio.gather(
+        *(get_stage_results(index, stage) for index, stage in enumerate(stages)),
+        return_exceptions=True,
+    )
+    timings["stage_candidate_gathering_s"] = time.time() - stage_started
+
+    stage_failure = next(
+        (result for result in gathered_stages if isinstance(result, Exception)),
+        None,
+    )
+    if stage_failure is not None:
+        print(f"Temporal stage failed: {stage_failure}")
+        return {
+            "results": [],
+            "processed_queries": [],
+            "is_temporal_search": not ambiguous,
+            "is_ambiguous_search": ambiguous,
+            "total_results": 0,
+            "timing_info": {**timings, "total_request_s": time.time() - start_time},
+        }
+
+    ordered_stages = sorted(gathered_stages, key=lambda result: result[0])
+    processed_queries = [result[2] for result in ordered_stages]
+    stage_candidates = [result[1] for result in ordered_stages]
+    stage_candidate_counts = [len(candidates) for candidates in stage_candidates]
+
+    if specified_videos:
+        stage_candidates = [
+            [shot for shot in candidates if shot.get('video_id') in specified_videos]
+            for candidates in stage_candidates
+        ]
+
+    clustered_results_by_stage = []
+    for candidates in stage_candidates:
+        unique_candidates = {}
+        for shot in candidates:
+            candidate_key = shot.get('frame_name') or shot.get('filepath')
+            if candidate_key:
+                unique_candidates[candidate_key] = shot
+        clustered_results_by_stage.append(
+            process_and_cluster_results(list(unique_candidates.values()))
+        )
+    stage_cluster_counts = [len(clusters) for clusters in clustered_results_by_stage]
+    temporal_debug = {
+        "stage_candidate_counts": stage_candidate_counts,
+        "stage_candidate_counts_after_video_filter": [len(candidates) for candidates in stage_candidates],
+        "stage_cluster_counts": stage_cluster_counts,
+        "candidate_limit_per_stage": MAX_FRAME_LIMIT,
+        "used_relaxed_fallback": False,
+        "failure_reason": None,
+    }
+
+    if any(not clusters for clusters in clustered_results_by_stage):
+        temporal_debug["failure_reason"] = "at_least_one_stage_has_no_clusters"
+        return {
+            "results": [],
+            "processed_queries": processed_queries,
+            "is_temporal_search": not ambiguous,
+            "is_ambiguous_search": ambiguous,
+            "total_results": 0,
+            "timing_info": {**timings, "total_request_s": time.time() - start_time},
+            "temporal_debug": temporal_debug,
+        }
+
+    assembly_started = time.time()
+    for stage_clusters in clustered_results_by_stage:
+        for cluster in stage_clusters:
+            shot_ids = [
+                shot['shot_id_int']
+                for shot in cluster.get('shots', [])
+                if 'shot_id_int' in shot
+            ]
+            if shot_ids:
+                cluster['min_shot_id'] = min(shot_ids)
+                cluster['max_shot_id'] = max(shot_ids)
+                cluster['video_id'] = cluster['best_shot']['video_id']
+
+    clusters_by_video = defaultdict(lambda: defaultdict(list))
+    for stage_index, stage_clusters in enumerate(clustered_results_by_stage):
+        for cluster in stage_clusters:
+            if cluster.get('video_id'):
+                clusters_by_video[cluster['video_id']][stage_index].append(cluster)
+
+    valid_sequences = []
+    if not ambiguous:
+        for video_stages in clusters_by_video.values():
+            if len(video_stages) < len(stages):
+                continue
+
+            def find_sequences(stage_index: int, current_sequence: list):
+                if stage_index == len(stages):
+                    valid_sequences.append(list(current_sequence))
+                    return
+                for next_cluster in video_stages.get(stage_index, []):
+                    if (
+                        not current_sequence
+                        or next_cluster.get('min_shot_id', -1)
+                        > current_sequence[-1].get('max_shot_id', -1)
+                    ):
+                        current_sequence.append(next_cluster)
+                        find_sequences(stage_index + 1, current_sequence)
+                        current_sequence.pop()
+
+            find_sequences(0, [])
+        if not valid_sequences:
+            temporal_debug["used_relaxed_fallback"] = True
+            for video_stages in clusters_by_video.values():
+                if len(video_stages) < len(stages):
+                    continue
+                relaxed_sequence = []
+                for stage_index in range(len(stages)):
+                    stage_clusters = video_stages.get(stage_index, [])
+                    if not stage_clusters:
+                        relaxed_sequence = []
+                        break
+                    relaxed_sequence.append(
+                        max(stage_clusters, key=lambda cluster: cluster.get('cluster_score', 0))
+                    )
+                if relaxed_sequence:
+                    valid_sequences.append(relaxed_sequence)
+    else:
+        for video_stages in clusters_by_video.values():
+            if len(video_stages) < len(stages):
+                continue
+            best_clusters = []
+            for stage_index in range(len(stages)):
+                stage_clusters = video_stages.get(stage_index, [])
+                if not stage_clusters:
+                    best_clusters = []
+                    break
+                best_clusters.append(
+                    max(stage_clusters, key=lambda cluster: cluster.get('cluster_score', 0))
+                )
+            if best_clusters:
+                valid_sequences.append(best_clusters)
+    timings["sequence_assembly_s"] = time.time() - assembly_started
+    if not valid_sequences:
+        temporal_debug["failure_reason"] = "no_video_contains_all_stages"
+
+    final_started = time.time()
+    temporal_penalty_weight = 0.05
+    processed_sequences = []
+    for cluster_sequence in valid_sequences:
+        average_score = (
+            sum(cluster.get('cluster_score', 0) for cluster in cluster_sequence)
+            / len(cluster_sequence)
+        )
+        total_gap = 0
+        if len(cluster_sequence) > 1 and not ambiguous:
+            for index in range(len(cluster_sequence) - 1):
+                gap = (
+                    cluster_sequence[index + 1].get('min_shot_id', 0)
+                    - cluster_sequence[index].get('max_shot_id', 0)
+                )
+                if gap > 0:
+                    total_gap += gap
+                elif temporal_debug["used_relaxed_fallback"]:
+                    total_gap += abs(gap)
+
+        combined_score = average_score / (1 + total_gap * temporal_penalty_weight)
+        if ambiguous:
+            display_shots = [
+                shot
+                for cluster in cluster_sequence
+                for shot in cluster.get('shots', [])
+            ]
+        else:
+            display_shots = [cluster['best_shot'] for cluster in cluster_sequence]
+
+        processed_sequences.append({
+            "combined_score": combined_score,
+            "average_rrf_score": average_score,
+            "temporal_gap": total_gap,
+            "used_relaxed_fallback": temporal_debug["used_relaxed_fallback"],
+            "clusters": cluster_sequence,
+            "shots": display_shots,
+            "video_id": cluster_sequence[0].get('video_id', 'N/A'),
+        })
+
+    ranked_sequences = sorted(
+        processed_sequences,
+        key=lambda sequence: sequence['combined_score'],
+        reverse=True,
+    )
+    total_results = len(ranked_sequences)
+    start_index = (request_data.page - 1) * request_data.page_size
+    page_results = ranked_sequences[start_index:start_index + request_data.page_size]
+    timings["final_processing_s"] = time.time() - final_started
+    timings["total_request_s"] = time.time() - start_time
+
+    return {
+        "results": page_results,
+        "processed_queries": processed_queries,
+        "is_temporal_search": not ambiguous,
+        "is_ambiguous_search": ambiguous,
+        "total_results": total_results,
+        "timing_info": timings,
+        "temporal_debug": temporal_debug,
+    }
