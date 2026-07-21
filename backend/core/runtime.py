@@ -70,7 +70,6 @@ meili_client = None
 http_client: Optional[httpx.AsyncClient] = None
 manager = ConnectionManager()
 trake_panel_state = []
-agent_prompts = {}
 
 
 def startup_runtime():

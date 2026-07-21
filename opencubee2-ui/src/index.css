@@ -57,7 +57,6 @@
 }
 
 .theme-normal .fixed.top-0.left-0 button,
-.theme-normal button[title="Start Agent Search"],
 .theme-normal #left-search-panel [data-primary-search-button="true"] {
     background: rgba(30, 38, 62, 0.96);
     border-color: rgba(113, 132, 185, 0.28);
@@ -65,7 +64,6 @@
 }
 
 .theme-normal .fixed.top-0.left-0 button:hover,
-.theme-normal button[title="Start Agent Search"]:hover,
 .theme-normal #left-search-panel [data-primary-search-button="true"]:hover {
     background: rgba(124, 114, 255, 0.86);
     border-color: rgba(91, 224, 214, 0.48);
@@ -143,7 +141,6 @@
 }
 
 .theme-jujutsu .fixed.top-0.left-0 button,
-.theme-jujutsu button[title="Start Agent Search"],
 .theme-jujutsu #left-search-panel [data-primary-search-button="true"] {
     background: var(--accent-gradient);
     border-color: rgba(221, 199, 255, 0.18);
@@ -151,7 +148,6 @@
 }
 
 .theme-jujutsu .fixed.top-0.left-0 button:hover,
-.theme-jujutsu button[title="Start Agent Search"]:hover,
 .theme-jujutsu #left-search-panel [data-primary-search-button="true"]:hover {
     background: #a855f7;
     border-color: rgba(221, 199, 255, 0.34);
@@ -340,17 +336,6 @@
     background: rgba(31, 15, 48, 0.94);
 }
 
-.theme-light button[title="Start Agent Search"] {
-    background: var(--accent-gradient);
-    border-color: rgba(221, 199, 255, 0.24);
-    color: #ffffff;
-}
-
-.theme-light button[title="Start Agent Search"]:hover {
-    background: #c77dff;
-    border-color: rgba(221, 199, 255, 0.36);
-}
-
 .theme-light #left-search-panel [data-primary-search-button="true"] {
     background: var(--accent-gradient);
     border-color: rgba(221, 199, 255, 0.24);
@@ -461,7 +446,6 @@
 }
 
 .theme-blue .fixed.top-0.left-0 button,
-.theme-blue button[title="Start Agent Search"],
 .theme-blue #left-search-panel [data-primary-search-button="true"] {
     background: var(--accent-gradient);
     border-color: rgba(188, 219, 255, 0.22);
@@ -469,7 +453,6 @@
 }
 
 .theme-blue .fixed.top-0.left-0 button:hover,
-.theme-blue button[title="Start Agent Search"]:hover,
 .theme-blue #left-search-panel [data-primary-search-button="true"]:hover {
     background: #70d7ff;
     border-color: rgba(188, 219, 255, 0.38);
@@ -519,7 +502,6 @@
 }
 
 .theme-neon .fixed.top-0.left-0 button,
-.theme-neon button[title="Start Agent Search"],
 .theme-neon #left-search-panel [data-primary-search-button="true"] {
     background: rgba(123, 47, 142, 0.92);
     border-color: rgba(230, 176, 255, 0.2);
@@ -527,7 +509,6 @@
 }
 
 .theme-neon .fixed.top-0.left-0 button:hover,
-.theme-neon button[title="Start Agent Search"]:hover,
 .theme-neon #left-search-panel [data-primary-search-button="true"]:hover {
     background: rgba(192, 68, 165, 0.96);
     border-color: rgba(98, 199, 214, 0.38);

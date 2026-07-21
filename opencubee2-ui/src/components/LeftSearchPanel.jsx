@@ -1,18 +1,15 @@
 // src/components/LeftSearchPanel.jsx
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import toast from 'react-hot-toast';
 import StageCard from './StageCard';
 import { googleImageSearch } from '../api';
 
 export default function LeftSearchPanel({
   stages,
-  searchModel = 'bge',
   lastFinalQueries = [],
   setStages,
-  setSearchModel,
   focusRequest = null,
   onSearch,
-  onAgentSearch,
   loading,
 }) {
   const [googleQuery, setGoogleQuery] = useState('');
@@ -53,36 +50,6 @@ export default function LeftSearchPanel({
       setGoogleLoading(false);
     }
   };
-
-  const deriveAgentPrompt = () => {
-    const stage = [...stages].reverse().find((item) => (
-      item.queryText?.trim() ||
-      item.imageText?.trim() ||
-      item.ocrText?.trim() ||
-      item.asrText?.trim()
-    ));
-    if (!stage) return '';
-
-    const primary = stage.queryType === 'image'
-      ? (stage.imageText || '').trim()
-      : (stage.queryText || '').trim();
-    return [
-      primary,
-      stage.ocrText?.trim() ? `OCR: ${stage.ocrText.trim()}` : null,
-      stage.asrText?.trim() ? `ASR: ${stage.asrText.trim()}` : null,
-    ].filter(Boolean).join(' | ');
-  };
-
-  const executeAgentSearch = () => {
-    const prompt = deriveAgentPrompt();
-    if (!prompt) {
-      toast.error('Enter a query before starting Agent Search.');
-      return;
-    }
-    onAgentSearch?.(prompt);
-  };
-
-
 
   return (
     <div
@@ -176,15 +143,6 @@ export default function LeftSearchPanel({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            className="group relative flex items-center justify-center gap-2 border border-[var(--border-color)] bg-[var(--glass-bg)] text-[var(--text-primary)] px-3 py-2 rounded-lg font-semibold text-xs tracking-normal hover:-translate-y-0.5 hover:border-[var(--border-hover)] active:scale-95 active:translate-y-0 transition-all duration-300 ease-smooth cursor-pointer disabled:opacity-50"
-            onClick={executeAgentSearch}
-            disabled={loading}
-            title="Start Agent Search"
-          >
-            <i className="fas fa-brain text-xs group-hover:scale-110 transition-transform duration-300"></i>
-            Agent
-          </button>
           <button
             className="group relative flex items-center gap-2 bg-[var(--text-primary)] text-[var(--bg-primary)] px-5 py-2 rounded-lg font-semibold text-xs tracking-normal hover:bg-[var(--accent-secondary)] hover:-translate-y-0.5 hover:shadow-glow active:scale-95 active:translate-y-0 transition-all duration-300 ease-smooth shadow-sm cursor-pointer disabled:opacity-50 disabled:hover:translate-y-0 overflow-hidden"
             onClick={onSearch}

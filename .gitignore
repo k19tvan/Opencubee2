@@ -31,6 +31,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 opencubee2-ui/dist/
+opencubee2-ui/dist/app
 opencubee2-ui/build/
 opencubee2-ui/.vite/
 opencubee2-ui/.cache/

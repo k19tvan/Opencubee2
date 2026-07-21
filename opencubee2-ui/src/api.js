@@ -1,6 +1,6 @@
 // src/api.js
 
-export const BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || `http://${window.location.hostname}:2108`;
+export const BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || `http://${window.location.hostname}:21081`;
 export const DRES_BASE_URL = import.meta.env.VITE_DRES_BASE_URL || 'http://192.168.28.151:5000';
 
 export function getWsUrl() {
@@ -89,19 +89,6 @@ export async function enhanceQuery(payload) {
     body: JSON.stringify(payload),
   });
   return handleResponse(response);
-}
-
-export async function startAgentSearch(payload) {
-  const response = await fetch(`${BASE_URL}/agent/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse(response);
-}
-
-export function getAgentLatestCanvasUrl() {
-  return `${BASE_URL}/agent/latest_canvas`;
 }
 
 /**

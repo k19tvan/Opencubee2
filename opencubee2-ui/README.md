@@ -1,16 +1,15 @@
 # OpenCubee2 UI
 
-> A high-speed video retrieval cockpit for AIC-style frame hunting, temporal search, agent-assisted reasoning, and team submissions.
+> A high-speed video retrieval cockpit for AIC-style frame hunting, temporal search, and team submissions.
 
 ![OpenCubee2 workbench](public/readme/image.png)
 
-OpenCubee2 is not a polite little search box. It is a React + Vite + Tailwind command center for finding the one frame hiding inside a mountain of video: text queries, image queries, OCR, ASR, temporal stages, clustering, ambiguity mode, frame context, video preview, team handoff, and an agent tab that can run its own search cycle.
+OpenCubee2 is a React + Vite + Tailwind command center for finding the one frame hiding inside a mountain of video: text queries, image queries, OCR, ASR, temporal stages, clustering, ambiguity mode, frame context, video preview, and team handoff.
 
 ## Why It Goes Hard
 
 - Multi-stage temporal search: stack stages to describe a sequence instead of a single moment.
 - Hybrid query inputs: text, image upload, Google image seeding, OCR filters, ASR filters, and query enhancement.
-- Agent Search: launch a ReAct-style search run from the current query and watch logs, observations, candidates, and final matches.
 - Teamwork panel: push frames into a shared submission strip through WebSocket updates.
 - Trake panel: pin comparison frames while searching.
 - Frame actions everywhere: zoom, context, quick image search, video preview, lock video, drag frames.
@@ -78,7 +77,7 @@ http://localhost:21081
 For the shared backend, create the tunnel:
 
 ```bash
-ssh -L 21081:localhost:2108 nguyenmv@192.168.20.152
+ssh -L 21081:localhost:2108 nguyenmv@192.168.20.156
 ```
 
 Override the backend when needed:
@@ -120,10 +119,9 @@ src/
   utils/imageUrl.js               frame URL resolver
   components/
     TopToolbar.jsx                theme, filters, history, global controls
-    LeftSearchPanel.jsx           Google images, stages, agent/search buttons
+    LeftSearchPanel.jsx           Google images, stages, search controls
     StageCard.jsx                 text/image/OCR/ASR/enhance query unit
     RightResultsPanel.jsx         teamwork, trake, results, frame actions
-    AgentRunView.jsx              agent logs, observations, candidates, final match
     modals/                       username, help, object filter, video, context
 ```
 
@@ -153,7 +151,6 @@ src/
 3. Add more stages for temporal search.
 4. Toggle cluster or ambiguous mode when the hunt calls for it.
 5. Hit Search, inspect frames, open context, preview video, or push candidates to Teamwork.
-6. Launch Agent Search when you want an autonomous pass with logs and candidate reasoning.
 
 ## Notes
 
