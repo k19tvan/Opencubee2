@@ -11,6 +11,8 @@ export default function LeftSearchPanel({
   focusRequest = null,
   onSearch,
   loading,
+  onZoom,
+  onQuickSearch,
 }) {
   const [googleQuery, setGoogleQuery] = useState('');
   const [googleResults, setGoogleResults] = useState([]);
@@ -51,6 +53,16 @@ export default function LeftSearchPanel({
     }
   };
 
+  const handleImageClick = (e, url) => {
+    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+    if (isCtrlOrCmd && e.shiftKey && onQuickSearch) {
+      e.preventDefault();
+      onQuickSearch({ url, frame_name: 'google_image.jpg' });
+    } else if (onZoom) {
+      onZoom(url);
+    }
+  };
+
   return (
     <div
       id="left-search-panel"
@@ -87,8 +99,14 @@ export default function LeftSearchPanel({
                   key={idx}
                   className="flex-shrink-0 w-24 h-[52px] rounded-md overflow-hidden border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-105 hover:shadow-glow transition-all duration-300 ease-spring cursor-pointer animate-scaleIn"
                   style={{ animationDelay: `${idx * 40}ms` }}
+                  onClick={(e) => handleImageClick(e, url)}
                 >
-                  <img src={url} alt="Google result" className="w-full h-full object-cover" />
+                  <img 
+                    src={url} 
+                    alt="Google result" 
+                    className="w-full h-full object-cover" 
+                    onError={() => setGoogleResults(prev => prev.filter(u => u !== url))}
+                  />
                 </div>
               ))}
             </div>

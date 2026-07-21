@@ -1148,6 +1148,8 @@ export default function App() {
               onSearch={executeSearch}
               loading={loading}
               theme={effectiveTheme}
+              onZoom={setZoomedImage}
+              onQuickSearch={handleQuickImageSearch}
             />
           </div>
 
