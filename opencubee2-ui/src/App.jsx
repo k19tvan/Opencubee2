@@ -936,7 +936,12 @@ export default function App() {
 
     try {
       let fetchUrl = shot.url;
-      if (fetchUrl.startsWith('http://') || fetchUrl.startsWith('https://')) {
+      const isExternal = (fetchUrl.startsWith('http://') || fetchUrl.startsWith('https://')) &&
+                         !fetchUrl.includes('localhost') && 
+                         !fetchUrl.includes('127.0.0.1') &&
+                         !fetchUrl.includes(window.location.hostname);
+                         
+      if (isExternal) {
         const backendHost = BASE_URL.replace(/\/$/, '');
         fetchUrl = `${backendHost}/proxy_image?url=${encodeURIComponent(fetchUrl)}`;
       }

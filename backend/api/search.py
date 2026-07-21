@@ -42,10 +42,22 @@ async def google_image_search(request: GoogleSearchRequest):
 @router.get("/proxy_image")
 async def proxy_image(url: str):
     try:
+        # If the URL is pointing to localhost, replace it with the docker host IP
+        # so the backend container can reach the host machine.
+        original_url = url
+        if "localhost" in url:
+            url = url.replace("localhost", "172.17.0.1")
+        elif "127.0.0.1" in url:
+            url = url.replace("127.0.0.1", "172.17.0.1")
+
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, timeout=10.0)
+            if resp.status_code != 200:
+                print(f"proxy_image error: {resp.status_code} for url {url}")
+                raise HTTPException(status_code=resp.status_code, detail=f"Failed to fetch image: {resp.status_code}")
             return Response(content=resp.content, media_type=resp.headers.get("Content-Type", "image/jpeg"))
     except Exception as e:
+        print(f"proxy_image exception for {url}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/search")

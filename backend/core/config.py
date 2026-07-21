@@ -13,7 +13,7 @@ except ImportError:
 TEMP_UPLOAD_DIR = Path("./backend/temp_uploads")
 TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant_ssd")
+QDRANT_HOST = os.getenv("QDRANT_HOST", "opencubee2_qdrant")
 QDRANT_PORT = 6333
 QDRANT_GRPC_PORT = 6334
 
@@ -32,7 +32,7 @@ MODEL_CONFIGS = {
     }
 }
 
-MEILISEARCH_HOST = os.getenv("MEILISEARCH_HOST", "http://meilisearch:7700")
+MEILISEARCH_HOST = os.getenv("MEILISEARCH_HOST", "http://opencubee2_meilisearch:7700")
 OCR_ASR_INDEX_NAME = "ocr_asr_index_part"
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://192.168.20.152:2108/v1").rstrip("/")
 VLLM_MODEL = os.getenv("VLLM_MODEL")
