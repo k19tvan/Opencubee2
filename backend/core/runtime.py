@@ -41,6 +41,7 @@ try:
             model="qwen/qwen3.6-27b",
             temperature=0.2,
             max_tokens=1024,
+            reasoning_effort="none",
             api_key=os.getenv("GROQ_API_KEY"),
         )
         print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b ---")
