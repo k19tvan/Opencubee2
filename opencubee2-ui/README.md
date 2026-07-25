@@ -67,47 +67,38 @@ Lint:
 npm run lint
 ```
 
-## Backend Tunnel
+## 🚀 Competition Setup: Hybrid Distributed Architecture (Highly Recommended)
 
-The frontend defaults to:
+During the competition, to avoid choking the local network when multiple team members fetch gigabytes of keyframes simultaneously, we recommend a Hybrid setup: **Centralized AI Backend + Local Keyframe Hosting**.
 
-```txt
-http://localhost:21081
+With this architecture:
+- **Search, Translation & WebSocket (Teamwork):** Routes to the central GuestNAS server.
+- **Keyframes (Thumbnails):** Loaded instantly from your local SSD.
+- **Videos:** Streamed directly from the central server (as they are too large to distribute easily).
+
+### Step 1: Prepare Local Keyframes
+1. Copy all competition keyframe images directly into the UI's public folder: `opencubee2-ui/public/keyframes/`.
+   > **Note:** The UI expects a flat directory structure. Ensure all `.webp` files are placed directly in `public/keyframes/` without subdirectories (or adjust `src/utils/imageUrl.js` if you prefer nested folders).
+2. You do **not** need to run a separate static server! Vite will automatically serve these files for you.
+
+### Step 2: Configure the Local UI
+In your local `opencubee2-ui` folder, create a `.env.local` file to route traffic:
+
+```env
+# 1. Route AI Search & WebSocket to the central Server (Replace with actual Server IP)
+VITE_BACKEND_BASE_URL=http://192.168.20.156:2108
+
+# 2. Tell the browser to load frames from the local Vite server (public/keyframes)
+VITE_ASSET_BASE_URL=/keyframes
 ```
 
-For the shared backend, create the tunnel:
-
+### Step 3: Run the Local Client
+Install dependencies and start the UI:
 ```bash
-ssh -L 21081:localhost:2108 nguyenmv@192.168.20.152
+npm install
+npm run dev -- --port 21080
 ```
-
-Override the backend when needed:
-
-```bash
-VITE_BACKEND_BASE_URL=http://localhost:21081 npm run dev -- --port 21080
-```
-
-The WebSocket URL is derived from the same backend base URL, so REST and live updates stay pointed at the same server.
-
-## Keyframes
-
-Frame images are expected under:
-
-```txt
-public/keyframes
-```
-
-Host them separately when needed:
-
-```bash
-npx http-server "public\keyframes" -p 8081 --cors -c31536000
-```
-
-If the frame host is somewhere else:
-
-```bash
-VITE_ASSET_BASE_URL=http://localhost:8081 npm run dev -- --port 21080
-```
+Your UI will now load frames at lightning speed directly from your local `public/keyframes` folder, while still connecting to the shared Teamwork Panel on the central WebSocket!
 
 ## Project Map
 
