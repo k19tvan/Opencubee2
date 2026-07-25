@@ -24,8 +24,8 @@ const toolBtnBaseClasses = () =>
 const toolBtnStateClasses = (isJJK, active) => isJJK
   ? (active ? 'bg-[var(--accent-primary)] border-[var(--border-hover)] text-white shadow-glow' : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--glass-bg)]')
   : (active
-      ? 'bg-[var(--text-primary)] border-[var(--text-primary)] text-[var(--bg-primary)] shadow-glow'
-      : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--glass-bg)]');
+    ? 'bg-[var(--text-primary)] border-[var(--text-primary)] text-[var(--bg-primary)] shadow-glow'
+    : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--glass-bg)]');
 
 // Hoisted out of TopToolbar so it keeps a stable component identity across
 // renders — otherwise every toolbar render (e.g. dragging a weight slider)
@@ -78,6 +78,8 @@ export default function TopToolbar({
   timingInfo = null,
   searchModel,
   setSearchModel,
+  autoTranslate,
+  setAutoTranslate,
   dresUsername,
   isMuted,
   setIsMuted
@@ -188,7 +190,7 @@ export default function TopToolbar({
             <span className="hidden sm:inline">Models</span>
             <i className={`fas fa-chevron-down absolute right-2.5 ${theme === 'jujutsu' ? 'text-[11px]' : 'text-[9px]'} transition-transform duration-200 ${isModelsOpen ? 'rotate-180' : ''}`}></i>
           </button>
-          
+
           <div
             className={`absolute top-[calc(100%+6px)] right-0 min-w-[140px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-lg'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-right z-50 py-1 ${isModelsOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
           >
@@ -214,6 +216,14 @@ export default function TopToolbar({
         </div>
 
         <ToolBtn onClick={() => onOpenModal('help')} icon="fas fa-keyboard" label="Shortcuts" theme={theme} />
+        <ToolBtn
+          onClick={() => setAutoTranslate(!autoTranslate)}
+          icon="fas fa-language"
+          label="Auto Translate"
+          active={autoTranslate}
+          title={autoTranslate ? "Auto Translate: ON" : "Auto Translate: OFF"}
+          theme={theme}
+        />
         <ToolBtn
           onClick={onGoBack}
           icon="fas fa-undo"
@@ -247,7 +257,7 @@ export default function TopToolbar({
                 <span className="hidden sm:inline">{dresMode}</span>
                 <i className={`fas fa-chevron-down absolute right-2.5 ${theme === 'jujutsu' ? 'text-[11px]' : 'text-[9px]'} transition-transform duration-200 ${isDresModeOpen ? 'rotate-180' : ''}`}></i>
               </button>
-              
+
               <div
                 className={`absolute top-[calc(100%+6px)] right-0 min-w-[120px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-lg'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-right z-50 py-1 ${isDresModeOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
               >
@@ -266,7 +276,7 @@ export default function TopToolbar({
                 ))}
               </div>
             </div>
-            
+
             <button
               onClick={onOpenDresLogin}
               className={`${toolBtnBaseClasses()} bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20`}

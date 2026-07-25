@@ -169,6 +169,15 @@ export default function App() {
     localStorage.setItem('opencubee_muted', isMuted);
   }, [isMuted]);
 
+  const [autoTranslate, setAutoTranslate] = useState(() => {
+    const saved = localStorage.getItem('opencubee_auto_translate');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('opencubee_auto_translate', autoTranslate);
+  }, [autoTranslate]);
+
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -332,7 +341,7 @@ export default function App() {
     const enhancedStages = await Promise.all(inputStages.map(async (stage) => {
       const isEnhance = !!stage.options?.enhance;
 
-      if (!isEnhance && isOnlyMetaClip) {
+      if (!isEnhance && (!autoTranslate || isOnlyMetaClip)) {
         return stage;
       }
 
@@ -559,11 +568,11 @@ export default function App() {
         if (!data?.shot) return;
         const mappedData = {
           ...data,
-          shot: { 
-            ...data.shot, 
-            url: data.shot.url?.startsWith('data:image') 
-              ? data.shot.url 
-              : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url) 
+          shot: {
+            ...data.shot,
+            url: data.shot.url?.startsWith('data:image')
+              ? data.shot.url
+              : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
           }
         };
         setTeamworkFrames((prev) => {
@@ -602,8 +611,8 @@ export default function App() {
       } else if (type === 'trake_add') {
         const mappedShot = {
           ...data.shot,
-          url: data.shot.url?.startsWith('data:image') 
-            ? data.shot.url 
+          url: data.shot.url?.startsWith('data:image')
+            ? data.shot.url
             : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
         };
         setTrakeFrames(prev => {
@@ -615,8 +624,8 @@ export default function App() {
       } else if (type === 'global_correct_submission') {
         const mappedShot = {
           ...data.shot,
-          url: data.shot.url?.startsWith('data:image') 
-            ? data.shot.url 
+          url: data.shot.url?.startsWith('data:image')
+            ? data.shot.url
             : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
         };
         setCorrectSubmission(mappedShot);
@@ -628,7 +637,7 @@ export default function App() {
             audio.volume = 1.0;
             audio.play().catch(e => console.log("Audio play failed:", e));
           }
-        } catch (e) {}
+        } catch (e) { }
       } else if (type === 'agent_log') {
         setWorkspaceTabs((prev) => prev.map((tab) => {
           if (tab.id !== data.tab_id) return tab;
@@ -1053,13 +1062,13 @@ export default function App() {
         imageUrl = shot.url;
       } else {
         imageUrl = getImageUrl(shot.url || shot.frame_name);
-        
+
         // Proxy external URLs (like Google Images) to bypass CORS
         if (imageUrl.startsWith('http') && !imageUrl.includes(BASE_URL.replace(/\/$/, ''))) {
           const backendHost = BASE_URL.replace(/\/$/, '');
           imageUrl = `${backendHost}/proxy_image?url=${encodeURIComponent(imageUrl)}`;
         }
-        
+
         imageUrl += (imageUrl.includes('?') ? '&' : '?') + 'nocache=' + Date.now();
       }
 
@@ -1276,6 +1285,8 @@ export default function App() {
             setIsAmbiguous={setIsAmbiguousWithHistory}
             searchModel={searchModel}
             setSearchModel={setSearchModel}
+            autoTranslate={autoTranslate}
+            setAutoTranslate={setAutoTranslate}
             dresMode={dresMode}
             setDresMode={setDresMode}
             dresSessionId={dresSessionId}
