@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from backend.core import runtime
 from backend.core.config import OCR_ASR_INDEX_NAME, VIDEO_DIR, VIDEO_EXTENSIONS
 
+@lru_cache(maxsize=2000)
 def resolve_video_path(video_id: str) -> Path:
     if not video_id or any(part in video_id for part in ("..", "/", "\\")):
         raise HTTPException(status_code=400, detail="Invalid video id.")
@@ -35,6 +36,7 @@ def resolve_video_path(video_id: str) -> Path:
 
     raise HTTPException(status_code=404, detail=f"Video not found for id: {video_id}")
 
+@lru_cache(maxsize=2000)
 def probe_video_info(video_path: Path) -> Dict[str, Any]:
     try:
         import cv2
@@ -139,17 +141,17 @@ def render_video_thumbnail(video_path_str: str, frame_id: int, width: int) -> by
     except Exception as e:
         raise ValueError(f"Could not process video: {str(e)}")
 
+@lru_cache(maxsize=100000)
 def resolve_keyframe_path_sync(frame_name: str) -> Optional[Path]:
     if not frame_name or any(part in frame_name for part in ("..", "/", "\\")):
          return None
 
     candidate_dirs = [
-        Path("/AIClub_NAS/nguyenmv/Opencubee2/results/frames"),
+        Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"),
         Path("/mlcv1/Datasets/HCMAI25/keyframes"),
         Path("/mlcv1/Datasets/HCMAI25/frames"),
         Path("/mlcv1/Datasets/HCMAI25/full/keyframes"),
         Path("/mlcv1/Datasets/HCMAI25/full/frames"),
-        Path("/AIClub_NAS/nguyenmv/Opencubee2/database/keyframes"),
     ]
 
     for directory in candidate_dirs:

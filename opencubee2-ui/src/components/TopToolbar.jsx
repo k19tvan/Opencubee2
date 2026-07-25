@@ -78,7 +78,9 @@ export default function TopToolbar({
   timingInfo = null,
   searchModel,
   setSearchModel,
-  dresUsername
+  dresUsername,
+  isMuted,
+  setIsMuted
 }) {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const themeRef = useRef(null);
@@ -284,6 +286,14 @@ export default function TopToolbar({
             <span className="hidden sm:inline">Dres</span>
           </button>
         )}
+
+        <button
+          onClick={() => setIsMuted(!isMuted)}
+          className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', false)} ${isMuted ? 'text-red-400 border-red-400/30' : ''}`}
+          title={isMuted ? "Unmute Sound" : "Mute Sound"}
+        >
+          <i className={`fas ${isMuted ? 'fa-volume-mute' : 'fa-volume-up'} text-xs`}></i>
+        </button>
 
         <button
           onClick={onReset}

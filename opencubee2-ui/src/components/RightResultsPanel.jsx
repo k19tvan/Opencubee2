@@ -218,15 +218,24 @@ export default function RightResultsPanel({
 
   useEffect(() => {
     const handleShortcut = (event) => {
-      if (event.ctrlKey && !event.shiftKey && event.code === 'Space') {
+      if (event.ctrlKey && event.code === 'Space') {
         event.preventDefault();
         if (pushedShortcutRef.current) return;
         pushedShortcutRef.current = true;
-        if (hoveredTeamShotRef.current) {
-          removeFromTeam(hoveredTeamShotRef.current);
-          hoveredTeamShotRef.current = null;
-        } else if (hoveredShotRef.current) {
-          pushToTeam(hoveredShotRef.current);
+        
+        if (event.shiftKey) {
+          if (hoveredTeamShotRef.current && onDresSubmit) {
+            onDresSubmit(hoveredTeamShotRef.current);
+          } else if (hoveredShotRef.current && onDresSubmit) {
+            onDresSubmit(hoveredShotRef.current);
+          }
+        } else {
+          if (hoveredTeamShotRef.current) {
+            removeFromTeam(hoveredTeamShotRef.current);
+            hoveredTeamShotRef.current = null;
+          } else if (hoveredShotRef.current) {
+            pushToTeam(hoveredShotRef.current);
+          }
         }
       }
     };
@@ -399,27 +408,7 @@ export default function RightResultsPanel({
       className="flex-grow overflow-y-auto bg-[var(--bg-primary)] pb-12 transition-colors duration-300 relative w-full"
       style={{ willChange: 'transform' }}
     >
-      {correctSubmission && (
-        <div id="correctSubmissionPanel" className="fixed top-[88px] right-6 w-[230px] bg-[var(--card-bg)] border border-[#10b981] rounded-lg p-4 flex flex-col gap-3.5 shadow-[0_12px_40px_rgba(16,185,129,0.12)] z-[150] animate-fadeIn backdrop-blur-md hidden md:flex">
-          <h4 className="text-[#10b981] text-center font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2">
-            <i className="fas fa-check-circle"></i> Correct Submission
-          </h4>
-          <div id="correctSubmissionImageContainer" className="w-full aspect-video rounded-lg overflow-hidden border border-[var(--border-color)]">
-            <img 
-              src={correctSubmission.url}
-              alt="Correct Frame" 
-              className="w-full h-full object-cover" 
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+';
-              }}
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-          <p className="text-[10px] text-[var(--text-secondary)] text-center">Cleared on 'Reset Search'.</p>
-        </div>
-      )}
+
       
       {/* Loại bỏ backdrop-blur-md ở sticky để GPU không phải tính toán mờ liên tục khi cuộn */}
       <div id="teamworkPanelContainer" className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[49] transition-colors duration-300 shadow-sm">

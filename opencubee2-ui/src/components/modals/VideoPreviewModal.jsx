@@ -14,7 +14,7 @@ const formatTime = (seconds) => {
   return `${String(minutes).padStart(2, '0')}:${remaining.toFixed(3).padStart(6, '0')}`;
 };
 
-export default function VideoPreviewModal({ videoId, initialFrame, onClose, socket, username, userColor }) {
+export default function VideoPreviewModal({ videoId, initialFrame, onClose, socket, username, userColor, onDresSubmit }) {
   const videoRef = useRef(null);
   const timelineRef = useRef(null);
   const dragRef = useRef(null);
@@ -29,6 +29,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
   const [fineScrub, setFineScrub] = useState(true);
   const [metadataReady, setMetadataReady] = useState(false);
   const [infoReady, setInfoReady] = useState(false);
+  const [thumbnailsEnabled, setThumbnailsEnabled] = useState(false);
   const [timelineWidth, setTimelineWidth] = useState(0);
 
   const maxFrame = useMemo(() => {
@@ -110,6 +111,13 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
       video.play().catch(e => console.warn('Autoplay failed:', e));
     }
   }, [infoReady, initialFrame, metadataReady, seekToFrame]);
+
+  useEffect(() => {
+    if (metadataReady) {
+      const timer = setTimeout(() => setThumbnailsEnabled(true), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [metadataReady]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -218,11 +226,27 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
           frame_id: frame,
           url,
           filepath: `dynamic-frame-${videoId}-${frame}`,
+          frame_name: `${videoId}_0000_${String(frame).padStart(6, '0')}.webp`,
         },
         user: { name: username, color: userColor },
       },
     }));
     toast.success('Frame sent to Teamwork Panel!');
+  };
+
+  const handleSubmitFrame = () => {
+    const video = videoRef.current;
+    if (!video || !onDresSubmit) return;
+    const frame = Math.round(video.currentTime * fps);
+    
+    // Create a mock shot object for DRES submission
+    const mockShot = {
+      video_id: videoId,
+      frame_id: frame,
+      frame_name: `${videoId}_0000_${String(frame).padStart(6, '0')}.webp`,
+    };
+    
+    onDresSubmit(mockShot, false);
   };
 
   const stripPosition = currentTime / thumbnailInterval * THUMB_STEP;
@@ -332,13 +356,15 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
                   }}
                   title={`Frame ${frame} · ${formatTime(time)}`}
                 >
-                  <img
-                    src={getVideoThumbnailUrl(videoId, frame, THUMB_WIDTH * 2)}
-                    alt=""
-                    loading="lazy"
-                    draggable={false}
-                    className="w-full h-full object-cover pointer-events-none"
-                  />
+                  {thumbnailsEnabled && (
+                    <img
+                      src={getVideoThumbnailUrl(videoId, frame, THUMB_WIDTH * 2)}
+                      alt=""
+                      loading="lazy"
+                      draggable={false}
+                      className="w-full h-full object-cover pointer-events-none animate-fadeIn"
+                    />
+                  )}
                   <span className="absolute bottom-0 inset-x-0 bg-black/65 px-1 py-0.5 text-[9px] font-mono text-slate-100">
                     {formatTime(time)}
                   </span>
@@ -369,14 +395,25 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
               ))}
             </div>
 
-            <button
-              type="button"
-              className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-wider hover:bg-[var(--accent-primary)] hover:border-transparent active:scale-95 disabled:opacity-40"
-              onClick={handlePushFrame}
-              disabled={!socket}
-            >
-              <i className="fas fa-users mr-2"></i>Push to Team
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-[var(--accent-primary)]/20 border border-[var(--accent-primary)]/50 text-[var(--accent-primary)] text-xs font-bold uppercase tracking-wider hover:bg-[var(--accent-primary)] hover:text-white active:scale-95 disabled:opacity-40"
+                onClick={handleSubmitFrame}
+                disabled={!onDresSubmit}
+              >
+                <i className="fas fa-paper-plane mr-2"></i>Submit
+              </button>
+              
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-wider hover:bg-[var(--accent-primary)] hover:border-transparent active:scale-95 disabled:opacity-40"
+                onClick={handlePushFrame}
+                disabled={!socket}
+              >
+                <i className="fas fa-users mr-2"></i>Push to Team
+              </button>
+            </div>
           </div>
 
           <p className="mt-2 text-center text-[10px] text-slate-500">

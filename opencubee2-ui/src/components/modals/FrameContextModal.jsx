@@ -4,9 +4,30 @@ import toast from 'react-hot-toast';
 import { getImageUrl } from '../../utils/imageUrl'; // Import URL builder helper
 import { BASE_URL } from '../../api';
 
-export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, socket, username, userColor }) {
+export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, socket, username, userColor, onSubmitDres, onContext }) {
   const [neighbors, setNeighbors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hoveredShot, setHoveredShot] = useState(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.code === 'Space') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (hoveredShot && onSubmitDres) {
+            onSubmitDres(hoveredShot);
+          }
+        } else {
+          if (hoveredShot) {
+            pushToTeam(hoveredShot);
+            toast.success('Sent to Team!');
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hoveredShot, onSubmitDres]);
 
   useEffect(() => {
     const fetchNeighbors = async () => {
@@ -104,11 +125,19 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                         ? 'border-[var(--accent-purple)] shadow-[0_0_15px_rgba(102,126,234,0.6)]' 
                         : 'border-[var(--border-color)] hover:border-[var(--accent-primary)]'
                     }`}
-                    onClick={() => onZoom(shot.url)}
+                    onClick={(e) => {
+                      if (e.ctrlKey && onContext) {
+                        onContext(shot);
+                      } else {
+                        onZoom(shot.url);
+                      }
+                    }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       onPreview(shot.video_id, shot.frame_id);
                     }}
+                    onMouseEnter={() => setHoveredShot(shot)}
+                    onMouseLeave={() => setHoveredShot(null)}
                   >
                     <img src={shot.url} className="w-full h-full object-cover" alt="Context result" onError={(e) => { e.target.onerror = null; e.target.src = '/fallback-image.png'; }} />
                     
@@ -117,6 +146,15 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                     </div>
 
                     <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150 backdrop-blur-[1px]">
+                      {onSubmitDres && (
+                        <button
+                          className="w-9 h-9 rounded-xl bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-[var(--accent-primary)] hover:border-transparent hover:scale-110 duration-150 cursor-pointer"
+                          onClick={(e) => { e.stopPropagation(); onSubmitDres(shot); }}
+                          title="Submit to DRES"
+                        >
+                          <i className="fas fa-paper-plane"></i>
+                        </button>
+                      )}
                       <button 
                         className="w-9 h-9 rounded-xl bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-[var(--accent-primary)] hover:border-transparent hover:scale-110 duration-150 cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); pushToTeam(shot); }} 
@@ -140,7 +178,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         </div>
 
         <div className="px-6 py-4 border-t border-[var(--border-color)] text-center text-xs text-[var(--text-secondary)] bg-[var(--glass-bg)]">
-          Shortcuts: Click to zoom. Right-click to open video preview. Hover over any frame for action options.
+          Shortcuts: Click to zoom. Ctrl+Click to view context of frame. Right-click to open video preview. Hover over any frame for action options (Ctrl+Shift+Space to submit DRES, Ctrl+Space to Send to Team).
         </div>
 
       </div>

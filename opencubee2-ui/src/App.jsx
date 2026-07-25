@@ -4,6 +4,7 @@ import toast, { Toaster } from 'react-hot-toast'; // Installed via npm i react-h
 import TopToolbar from './components/TopToolbar';
 import LeftSearchPanel from './components/LeftSearchPanel';
 import RightResultsPanel from './components/RightResultsPanel';
+import AgentRunView from './components/AgentRunView';
 import UsernameModal from './components/modals/UsernameModal';
 import ObjectFilterModal from './components/modals/ObjectFilterModal';
 import VideoPreviewModal from './components/modals/VideoPreviewModal';
@@ -11,8 +12,11 @@ import FrameContextModal from './components/modals/FrameContextModal';
 import HelpModal from './components/modals/HelpModal';
 import DresLoginModal from './components/modals/DresLoginModal';
 import DresSubmitModal from './components/modals/DresSubmitModal';
-import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, getWsUrl, DRES_BASE_URL } from './api';
+import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, startAgentSearch, getWsUrl, DRES_BASE_URL } from './api';
 import { getImageUrl } from './utils/imageUrl'; // Imported from separate utility to keep Fast Refresh functional
+
+// WS now derives from the same backend origin as the REST API (see api.js),
+// so the agent stream and /agent/start always hit the same server.
 
 const createEmptyStage = () => ({
   id: Date.now(),
@@ -51,20 +55,22 @@ const cloneState = (value) => {
 };
 
 const createHistoryId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const createAgentTabId = () => `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const THEME_OPTIONS = ['normal', 'dark', 'light', 'blue', 'neon', 'jujutsu', 'random'];
 const RANDOM_THEME_OPTIONS = ['normal', 'dark', 'light', 'blue', 'neon', 'jujutsu'];
 export const SEARCH_MODEL_OPTIONS = [
-  { value: 'bge', label: 'BGE', icon: 'fas fa-circle-nodes' },
-  { value: 'jina_v5_omni', label: 'Jina V5', icon: 'fas fa-gem' },
   { value: 'beit3', label: 'BEiT-3', icon: 'fas fa-cubes' },
+  { value: 'bge', label: 'BGE-VL', icon: 'fas fa-language' },
+  { value: 'jina_v5_omni', label: 'Jina v5', icon: 'fas fa-globe' },
+  { value: 'metaclip2', label: 'MetaCLIP 2', icon: 'fas fa-bolt' },
 ];
-export const DEFAULT_SEARCH_MODEL = ['bge'];
+export const DEFAULT_SEARCH_MODEL = ['beit3'];
 
 const normalizeSearchModel = (values, fallback = []) => {
   if (!Array.isArray(values)) {
     const valStr = String(values);
-    if (valStr === 'all') return ['bge', 'jina_v5_omni', 'beit3'];
-    if (valStr === 'both') return ['bge', 'jina_v5_omni'];
+    if (valStr === 'all') return ['bge', 'beit3', 'jina_v5_omni', 'metaclip2'];
+    if (valStr === 'both') return ['bge', 'beit3'];
     if (SEARCH_MODEL_OPTIONS.some((o) => o.value === valStr)) return [valStr];
     return fallback;
   }
@@ -80,6 +86,21 @@ const buildSearchModelPayload = (values) => {
     models: selectedModels,
     model_weights: selectedModels.reduce((acc, model) => ({ ...acc, [model]: weight }), {}),
   };
+};
+
+const createAgentTitle = (prompt = '') => {
+  const cleaned = prompt.replace(/\s+/g, ' ').trim();
+  return cleaned.length > 28 ? `${cleaned.slice(0, 28)}...` : cleaned || 'Agent Search';
+};
+
+const inferAgentStatusFromLog = (message = '', currentStatus = 'starting') => {
+  if (/ERROR|failed|halted/i.test(message)) return 'failed';
+  if (/MATCH_FOUND|Selected MATCH_FOUND/i.test(message)) return 'found';
+  if (/GIVE_UP|Selected GIVE_UP/i.test(message)) return 'gave_up';
+  if (/Inspecting|Compiling|Canvas/i.test(message)) return 'inspecting';
+  if (/Executing|search|Retrieving|Found/i.test(message)) return 'searching';
+  if (/Thought|Formulating|Selected/i.test(message)) return 'thinking';
+  return currentStatus;
 };
 
 const readWorkspaceHistory = () => {
@@ -114,11 +135,14 @@ export default function App() {
   const [showTrake, setShowTrake] = useState(false);
   const [isClustered, setIsClustered] = useState(false);
   const [isAmbiguous, setIsAmbiguous] = useState(false);
-  
+
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeModal, setActiveModal] = useState(null); 
-  const [previewVideoData, setPreviewVideoData] = useState(null); 
+  const [workspaceTabs, setWorkspaceTabs] = useState([]);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState('manual');
+
+  const [activeModal, setActiveModal] = useState(null);
+  const [previewVideoData, setPreviewVideoData] = useState(null);
   const [zoomedImage, setZoomedImage] = useState(null);
   const [contextShot, setContextShot] = useState(null);
 
@@ -134,6 +158,16 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [timingInfo, setTimingInfo] = useState(null);
   const [correctSubmission, setCorrectSubmission] = useState(null);
+
+  const [isMuted, setIsMuted] = useState(() => {
+    return localStorage.getItem('opencubee_muted') === 'true';
+  });
+  const isMutedRef = useRef(isMuted);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+    localStorage.setItem('opencubee_muted', isMuted);
+  }, [isMuted]);
 
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -156,13 +190,14 @@ export default function App() {
   const latestWorkspaceRef = useRef(null);
   const submittedStagesRef = useRef(null);
   const submittedSearchModelRef = useRef(DEFAULT_SEARCH_MODEL);
+  const activeAgentRun = workspaceTabs.find((tab) => tab.id === activeWorkspaceTab);
 
   latestWorkspaceRef.current = {
-      stages,
-      searchModel,
-      searchResults,
-      lastFinalQueries,
-      resultIsAmbiguous,
+    stages,
+    searchModel,
+    searchResults,
+    lastFinalQueries,
+    resultIsAmbiguous,
     isClustered,
     isAmbiguous,
     timingInfo,
@@ -291,26 +326,41 @@ export default function App() {
     });
   }, [lockedVideos]);
 
-  const enhanceStagesForSearch = async (inputStages) => {
+  const enhanceStagesForSearch = async (inputStages, currentSearchModel = []) => {
+    const isOnlyMetaClip = currentSearchModel.length === 1 && currentSearchModel[0] === 'metaclip2';
+
     const enhancedStages = await Promise.all(inputStages.map(async (stage) => {
-      if (!stage.options?.enhance) return stage;
+      const isEnhance = !!stage.options?.enhance;
+
+      if (!isEnhance && isOnlyMetaClip) {
+        return stage;
+      }
 
       const sourceQuery = stage.queryType === 'image'
         ? (stage.imageText || '').trim()
         : (stage.queryText || '').trim();
       if (!sourceQuery) return stage;
 
-      const response = await enhanceQuery({
-        query: sourceQuery,
-        ocr_query: stage.ocrActive ? stage.ocrText || null : null,
-        asr_query: stage.asrActive ? stage.asrText || null : null,
-      });
-      const enhanced = response.enhanced_query?.trim();
-      if (!enhanced) return stage;
 
-      return stage.queryType === 'image'
-        ? { ...stage, imageText: enhanced }
-        : { ...stage, queryText: enhanced };
+
+      try {
+        const response = await enhanceQuery({
+          query: sourceQuery,
+          ocr_query: stage.ocrActive ? stage.ocrText || null : null,
+          asr_query: stage.asrActive ? stage.asrText || null : null,
+          literal_translate: !isEnhance,
+        });
+
+        const enhanced = response.enhanced_query?.trim();
+        if (!enhanced) return stage;
+
+        return stage.queryType === 'image'
+          ? { ...stage, imageText: enhanced }
+          : { ...stage, queryText: enhanced };
+      } catch (err) {
+        console.error("Translation/Enhance failed:", err);
+        return stage;
+      }
     }));
 
     return enhancedStages;
@@ -492,24 +542,29 @@ export default function App() {
 
   useEffect(() => {
     if (!username) return;
-    
+
     const wsUrl = getWsUrl();
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
     ws.onopen = () => console.info(`[ws] connected: ${wsUrl}`);
-    ws.onerror = () => console.error(`[ws] connection error: ${wsUrl}; teamwork updates will not arrive`);
+    ws.onerror = () => console.error(`[ws] connection error: ${wsUrl} — agent/teamwork updates will not arrive`);
     ws.onclose = (e) => console.warn(`[ws] closed (code ${e.code}): ${wsUrl}`);
 
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data);
       const { type, data } = message;
-      
+
       if (type === 'new_frame') {
         if (!data?.shot) return;
         const mappedData = {
           ...data,
-          shot: { ...data.shot, url: getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url }
+          shot: { 
+            ...data.shot, 
+            url: data.shot.url?.startsWith('data:image') 
+              ? data.shot.url 
+              : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url) 
+          }
         };
         setTeamworkFrames((prev) => {
           const incomingKey = getShotKey(mappedData.shot);
@@ -532,20 +587,24 @@ export default function App() {
           ...frame,
           shot: {
             ...(frame.shot || {}),
-            url: getImageUrl(frame.shot?.frame_name || frame.shot?.url) || frame.shot?.url,
+            url: frame.shot?.url?.startsWith('data:image')
+              ? frame.shot.url
+              : (getImageUrl(frame.shot?.frame_name || frame.shot?.url) || frame.shot?.url),
           },
         })).filter((frame) => frame.shot && getShotKey(frame.shot));
         setTeamworkFrames(mappedData);
       } else if (type === 'trake_sync') {
         const mappedData = (data || []).map(shot => ({
           ...shot,
-          url: getImageUrl(shot.frame_name) 
+          url: getImageUrl(shot.frame_name)
         }));
         setTrakeFrames(mappedData);
       } else if (type === 'trake_add') {
         const mappedShot = {
           ...data.shot,
-          url: getImageUrl(data.shot.frame_name) 
+          url: data.shot.url?.startsWith('data:image') 
+            ? data.shot.url 
+            : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
         };
         setTrakeFrames(prev => {
           if (prev.some(s => s.filepath === mappedShot.filepath)) return prev;
@@ -556,10 +615,69 @@ export default function App() {
       } else if (type === 'global_correct_submission') {
         const mappedShot = {
           ...data.shot,
-          url: getImageUrl(data.shot.frame_name)
+          url: data.shot.url?.startsWith('data:image') 
+            ? data.shot.url 
+            : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
         };
         setCorrectSubmission(mappedShot);
         setTeamworkFrames([{ shot: mappedShot, user: { name: 'SYSTEM', color: '#10b981' } }]);
+
+        try {
+          if (!isMutedRef.current) {
+            const audio = new Audio('/phonk1.MP3');
+            audio.volume = 1.0;
+            audio.play().catch(e => console.log("Audio play failed:", e));
+          }
+        } catch (e) {}
+      } else if (type === 'agent_log') {
+        setWorkspaceTabs((prev) => prev.map((tab) => {
+          if (tab.id !== data.tab_id) return tab;
+          const nextStatus = inferAgentStatusFromLog(data.message, tab.status);
+          return {
+            ...tab,
+            status: nextStatus,
+            logs: [
+              ...(tab.logs || []),
+              { message: data.message, receivedAt: Date.now() },
+            ],
+          };
+        }));
+      } else if (type === 'agent_observation' || type === 'agent_observation_grid') {
+        setWorkspaceTabs((prev) => prev.map((tab) => {
+          if (tab.id !== data.tab_id) return tab;
+          const observation = {
+            step: data.step || (tab.observations?.length || 0) + 1,
+            image: data.image,
+            shots: (data.shots || []).map((shot) => ({
+              ...shot,
+              url: getImageUrl(shot.url || shot.frame_name),
+            })),
+            receivedAt: Date.now(),
+          };
+          const withoutSameStep = (tab.observations || []).filter((item) => (
+            item.step !== observation.step || item.image !== observation.image
+          ));
+          return {
+            ...tab,
+            status: 'inspecting',
+            observations: [...withoutSameStep, observation],
+          };
+        }));
+      } else if (type === 'agent_final') {
+        setWorkspaceTabs((prev) => prev.map((tab) => {
+          if (tab.id !== data.tab_id) return tab;
+          return {
+            ...tab,
+            status: data.status === 'MATCH_FOUND' ? 'found' : data.status === 'GIVE_UP' ? 'gave_up' : tab.status,
+            final: {
+              ...data,
+              shot: data.shot ? {
+                ...data.shot,
+                url: getImageUrl(data.shot.url || data.shot.frame_name),
+              } : null,
+            },
+          };
+        }));
       }
     };
     return () => ws.close();
@@ -578,13 +696,13 @@ export default function App() {
   const handlePushToTrake = (shot) => {
     if (!shot) return;
     const shotWithUrl = { ...shot, url: getImageUrl(shot.frame_name || shot.url) || shot.url };
-    
+
     // Add locally first
     setTrakeFrames(prev => {
       if (prev.some(s => s.filepath === shotWithUrl.filepath)) return prev;
       return [...prev, shotWithUrl];
     });
-    
+
     // Broadcast via WS
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({
@@ -634,7 +752,7 @@ export default function App() {
       toast.error('DRES is not logged in.');
       return;
     }
-    
+
     if (dresMode === 'QA') {
       if (!shot) {
         toast.error('No frame selected for QA.');
@@ -671,21 +789,21 @@ export default function App() {
         });
         const resText = await res.text();
         if (!res.ok) throw new Error(resText || res.statusText);
-        
+
         let resData = {};
-        try { resData = JSON.parse(resText); } catch(e) {}
-        
+        try { resData = JSON.parse(resText); } catch (e) { }
+
         if (resData.submission === 'CORRECT') {
-           setTeamworkFrames([{ shot: trakeFrames[0], user: { name: username || 'ME', color: userColor || '#10b981' } }]);
-           toast.success('Trake Submit CORRECT!', { id: loadingToast });
-           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-             socketRef.current.send(JSON.stringify({
-               type: 'global_correct_submission',
-               data: { shot: trakeFrames[0] }
-             }));
-           }
+          setTeamworkFrames([{ shot: trakeFrames[0], user: { name: username || 'ME', color: userColor || '#10b981' } }]);
+          toast.success('Trake Submit CORRECT!', { id: loadingToast });
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({
+              type: 'global_correct_submission',
+              data: { shot: trakeFrames[0] }
+            }));
+          }
         } else {
-           toast.success(`Trake Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
+          toast.success(`Trake Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
         }
       } catch (err) {
         toast.error(`Trake Submit Error: ${err.message}`, { id: loadingToast });
@@ -695,8 +813,8 @@ export default function App() {
 
     if (dresMode === 'KIS') {
       if (!shot) {
-         toast.error('No frame selected for KIS.');
-         return;
+        toast.error('No frame selected for KIS.');
+        return;
       }
       const loadingToast = toast.loading('Submitting KIS to DRES...');
       try {
@@ -726,19 +844,19 @@ export default function App() {
           throw new Error(resText || res.statusText);
         }
         let resData = {};
-        try { resData = JSON.parse(resText); } catch(e) {}
-        
+        try { resData = JSON.parse(resText); } catch (e) { }
+
         if (resData.submission === 'CORRECT') {
-           setTeamworkFrames([{ shot, user: { name: username || 'ME', color: userColor || '#10b981' } }]);
-           toast.success('KIS Submit CORRECT!', { id: loadingToast });
-           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-             socketRef.current.send(JSON.stringify({
-               type: 'global_correct_submission',
-               data: { shot }
-             }));
-           }
+          setTeamworkFrames([{ shot, user: { name: username || 'ME', color: userColor || '#10b981' } }]);
+          toast.success('KIS Submit CORRECT!', { id: loadingToast });
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({
+              type: 'global_correct_submission',
+              data: { shot }
+            }));
+          }
         } else {
-           toast.success(`KIS Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
+          toast.success(`KIS Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
         }
       } catch (err) {
         toast.error(`KIS Submit Error: ${err.message}`, { id: loadingToast });
@@ -763,6 +881,12 @@ export default function App() {
           // Instant KIS/QA submission
           handleInstantDresSubmit(hoveredFrame);
         }
+      }
+
+      // Ctrl + G for Cluster toggle
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'KeyG') {
+        e.preventDefault();
+        setIsClustered(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -798,13 +922,13 @@ export default function App() {
     }
 
     try {
-      const pageSize = 100; 
+      const pageSize = 100;
       let response;
       const sourceStages = overrideStages || stages;
-      const activeStages = pageNumber === 1
-        ? await enhanceStagesForSearch(sourceStages)
-        : submittedStagesRef.current || sourceStages;
       const activeSearchModel = requestedSearchModel;
+      const activeStages = pageNumber === 1
+        ? await enhanceStagesForSearch(sourceStages, activeSearchModel)
+        : submittedStagesRef.current || sourceStages;
       const modelPayload = buildSearchModelPayload(activeSearchModel);
       if (pageNumber === 1) {
         submittedStagesRef.current = activeStages;
@@ -879,7 +1003,7 @@ export default function App() {
       }
 
       setPage(pageNumber);
-      
+
       const totalFetched = pageNumber * pageSize;
       const totalAvailable = response.total_results || 0;
       const nextHasMore = totalFetched < totalAvailable && localResults.length > 0;
@@ -900,7 +1024,7 @@ export default function App() {
           hasMore: nextHasMore,
         });
       }
-      
+
       if (isMobileMenuOpen) setIsMobileMenuOpen(false); // Close mobile sidebar on search
 
     } catch (error) {
@@ -913,59 +1037,53 @@ export default function App() {
 
   // Change this part inside handleQuickImageSearch:
   const handleQuickImageSearch = async (shot) => {
+    setActiveWorkspaceTab('manual');
     setLoading(true);
     setSearchResults([]);
     setTimingInfo(null);
 
-    // Optimistically show the picked frame in the image cell immediately
-    setStages(prev => prev.map((stg, idx) => idx === 0 ? {
-      ...stg,
-      queryType: 'image',
-      imagePreview: shot.url,
-      imageText: '',
-      queryText: '',
-      ocrActive: false,
-      asrActive: false,
-      ocrText: '',
-      asrText: '',
-    } : stg));
 
     const controller = new AbortController();
     // Set a 15-second timeout to abort the upload if the server hangs
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      let fetchUrl = shot.url;
-      const isExternal = (fetchUrl.startsWith('http://') || fetchUrl.startsWith('https://')) &&
-                         !fetchUrl.includes('localhost') && 
-                         !fetchUrl.includes('127.0.0.1') &&
-                         !fetchUrl.includes(window.location.hostname);
-                         
-      if (isExternal) {
-        const backendHost = BASE_URL.replace(/\/$/, '');
-        fetchUrl = `${backendHost}/proxy_image?url=${encodeURIComponent(fetchUrl)}`;
+      let imageUrl;
+      if (shot.url?.startsWith('data:image')) {
+        imageUrl = shot.url;
+      } else {
+        imageUrl = getImageUrl(shot.url || shot.frame_name);
+        
+        // Proxy external URLs (like Google Images) to bypass CORS
+        if (imageUrl.startsWith('http') && !imageUrl.includes(BASE_URL.replace(/\/$/, ''))) {
+          const backendHost = BASE_URL.replace(/\/$/, '');
+          imageUrl = `${backendHost}/proxy_image?url=${encodeURIComponent(imageUrl)}`;
+        }
+        
+        imageUrl += (imageUrl.includes('?') ? '&' : '?') + 'nocache=' + Date.now();
       }
-      const res = await fetch(fetchUrl);
+
+      const res = await fetch(imageUrl, { mode: 'cors' });
       if (!res.ok) {
         throw new Error(`Failed to retrieve image from asset server.`);
       }
       const blob = await res.blob();
-      
+
       const fd = new FormData();
       fd.append('image', blob, shot.frame_name || 'quick_frame.jpg');
-      
+
       const backendHost = BASE_URL.replace(/\/$/, '');
       const uploadUrl = `${backendHost}/upload_image`;
-        
+
       // Pass the abort signal to the fetch request
-      const uploadRes = await fetch(uploadUrl, { 
-        method: 'POST', 
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'POST',
         body: fd,
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId); // Clear timeout if upload succeeded
-      
+
       if (!uploadRes.ok) {
         let errorMsg = "Upload failed";
         try {
@@ -976,9 +1094,9 @@ export default function App() {
         }
         throw new Error(errorMsg);
       }
-      
+
       const uploadData = await uploadRes.json();
-      
+
       const updatedStages = stages.map((stg, idx) => {
         if (idx === 0) {
           return {
@@ -996,14 +1114,13 @@ export default function App() {
         }
         return stg;
       });
-      
-      setStages(updatedStages);
+
       await performSearch(1, updatedStages, false);
-      
+
     } catch (err) {
       clearTimeout(timeoutId);
       console.error("Quick image search failed:", err);
-      
+
       if (err.name === 'AbortError') {
         toast.error("Upload timed out. The server took too long to respond.");
       } else {
@@ -1016,6 +1133,56 @@ export default function App() {
   const executeSearch = () => { performSearch(1); };
   const handleLoadMore = () => { performSearch(page + 1); };
 
+  const handleStartAgentSearch = async (prompt) => {
+    const trimmedPrompt = (prompt || '').trim();
+    if (!trimmedPrompt) {
+      toast.error('Enter a query before starting Agent Search.');
+      return;
+    }
+
+    const tabId = createAgentTabId();
+    const nextTab = {
+      id: tabId,
+      prompt: trimmedPrompt,
+      title: createAgentTitle(trimmedPrompt),
+      status: 'starting',
+      logs: [],
+      observations: [],
+      final: null,
+      createdAt: Date.now(),
+    };
+
+    setWorkspaceTabs((prev) => [...prev, nextTab]);
+    setActiveWorkspaceTab(tabId);
+    setIsMobileMenuOpen(false);
+
+    try {
+      await startAgentSearch({ tab_id: tabId, prompt: trimmedPrompt });
+      toast.success('Agent Search started.');
+    } catch (error) {
+      setWorkspaceTabs((prev) => prev.map((tab) => (
+        tab.id === tabId
+          ? {
+            ...tab,
+            status: 'failed',
+            logs: [
+              ...tab.logs,
+              { message: `Failed to start agent: ${error.message}`, receivedAt: Date.now() },
+            ],
+          }
+          : tab
+      )));
+      toast.error(`Agent Search failed: ${error.message}`);
+    }
+  };
+
+  const closeAgentTab = (tabId) => {
+    setWorkspaceTabs((prev) => prev.filter((tab) => tab.id !== tabId));
+    if (activeWorkspaceTab === tabId) {
+      setActiveWorkspaceTab('manual');
+    }
+  };
+
   const handleOpenVideoPreview = (videoId, frameId) => {
     if (!videoId) return;
     setPreviewVideoData({ videoId, frameId });
@@ -1023,20 +1190,20 @@ export default function App() {
   };
 
   const executeReset = () => {
-      const nextStages = [createEmptyStage()];
-      submittedStagesRef.current = null;
-      submittedSearchModelRef.current = DEFAULT_SEARCH_MODEL;
-      setStages(nextStages);
-      setSearchModel(DEFAULT_SEARCH_MODEL);
-      setSearchResults([]);
-      setLastFinalQueries([]);
-      setResultIsAmbiguous(false);
-      setTimingInfo(null);
-      setPage(1);
-      setHasMore(false);
-      setLoadingMore(false);
-      setContextShot(null);
-    };
+    const nextStages = [createEmptyStage()];
+    submittedStagesRef.current = null;
+    submittedSearchModelRef.current = DEFAULT_SEARCH_MODEL;
+    setStages(nextStages);
+    setSearchModel(DEFAULT_SEARCH_MODEL);
+    setSearchResults([]);
+    setLastFinalQueries([]);
+    setResultIsAmbiguous(false);
+    setTimingInfo(null);
+    setPage(1);
+    setHasMore(false);
+    setLoadingMore(false);
+    setContextShot(null);
+  };
 
   const handleResetSearch = () => {
     toast(
@@ -1082,10 +1249,10 @@ export default function App() {
         />
       )}
       {effectiveTheme === 'jujutsu' && (
-        <video 
-          autoPlay 
-          loop 
-          muted 
+        <video
+          autoPlay
+          loop
+          muted
           playsInline
           className="absolute inset-0 w-full h-full object-cover z-0 opacity-60 pointer-events-none"
         >
@@ -1094,199 +1261,252 @@ export default function App() {
       )}
       <div className="relative z-10 flex flex-col w-full h-full pointer-events-none">
         <div className="pointer-events-auto flex flex-col w-full h-full">
-      <Toaster position="bottom-right" reverseOrder={false} />
-      
-      <TopToolbar
-        username={username}
-        userColor={userColor}
-        theme={theme}
-        setTheme={setTheme}
-        showTrake={showTrake}
-        setShowTrake={setShowTrake}
-        isClustered={isClustered}
-        setIsClustered={setIsClusteredWithHistory}
-        isAmbiguous={isAmbiguous}
-        setIsAmbiguous={setIsAmbiguousWithHistory}
-        searchModel={searchModel}
-        setSearchModel={setSearchModel}
-        dresMode={dresMode}
-        setDresMode={setDresMode}
-        dresSessionId={dresSessionId}
-        dresUsername={dresUsername}
-        onOpenDresLogin={() => setActiveModal('dresLogin')}
-        onLogoutDres={handleLogoutDres}
-        onOpenModal={setActiveModal}
-        onGoBack={goBackOneStep}
-        onGoForward={goForwardOneStep}
-        canGoBack={goBackDepth > 0}
-        canGoForward={goForwardDepth > 0}
-        goBackDepth={goBackDepth}
-        goForwardDepth={goForwardDepth}
-        onReset={handleResetSearch}
-        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        timingInfo={timingInfo}
-      />
+          <Toaster position="bottom-right" reverseOrder={false} />
 
-      <div className={`flex flex-col flex-grow pt-[72px] h-[calc(100vh-72px)] w-full overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-transparent' : 'bg-[var(--bg-primary)]'} relative transition-colors duration-700 ease-smooth`}>
-        <div className="flex-shrink-0 h-[46px] border-b border-[var(--border-color)] bg-[var(--card-bg)] flex items-center gap-2 px-3 overflow-x-auto backdrop-blur-xl">
-          <button
-            className="h-8 flex items-center gap-2 px-3 rounded-lg border text-xs font-bold transition-all whitespace-nowrap border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-primary)]"
-          >
-            <i className="fas fa-search text-[11px]"></i>
-            Manual Search
-          </button>
-        </div>
+          <TopToolbar
+            username={username}
+            userColor={userColor}
+            theme={theme}
+            setTheme={setTheme}
+            showTrake={showTrake}
+            setShowTrake={setShowTrake}
+            isClustered={isClustered}
+            setIsClustered={setIsClusteredWithHistory}
+            isAmbiguous={isAmbiguous}
+            setIsAmbiguous={setIsAmbiguousWithHistory}
+            searchModel={searchModel}
+            setSearchModel={setSearchModel}
+            dresMode={dresMode}
+            setDresMode={setDresMode}
+            dresSessionId={dresSessionId}
+            dresUsername={dresUsername}
+            onOpenDresLogin={() => setActiveModal('dresLogin')}
+            onLogoutDres={handleLogoutDres}
+            onOpenModal={setActiveModal}
+            onGoBack={goBackOneStep}
+            onGoForward={goForwardOneStep}
+            canGoBack={goBackDepth > 0}
+            canGoForward={goForwardDepth > 0}
+            goBackDepth={goBackDepth}
+            goForwardDepth={goForwardDepth}
+            onReset={handleResetSearch}
+            onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            timingInfo={timingInfo}
+            isMuted={isMuted}
+            setIsMuted={setIsMuted}
+          />
 
-        <div className="flex flex-row flex-grow min-h-0 w-full overflow-hidden relative">
-          {/* Mobile Sidebar Overlay */}
-          {isMobileMenuOpen && (
-            <div
-              className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm"
-              onClick={() => setIsMobileMenuOpen(false)}
+          <div className={`flex flex-col flex-grow pt-[72px] h-[calc(100vh-72px)] w-full overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-transparent' : 'bg-[var(--bg-primary)]'} relative transition-colors duration-700 ease-smooth`}>
+            <div className="flex-shrink-0 h-[46px] border-b border-[var(--border-color)] bg-[var(--card-bg)] flex items-center gap-2 px-3 overflow-x-auto backdrop-blur-xl">
+              <button
+                className={`h-8 flex items-center gap-2 px-3 rounded-lg border text-xs font-bold transition-all whitespace-nowrap ${activeWorkspaceTab === 'manual'
+                  ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-primary)]'
+                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)]'
+                  }`}
+                onClick={() => setActiveWorkspaceTab('manual')}
+              >
+                <i className="fas fa-search text-[11px]"></i>
+                Manual Search
+              </button>
+              {workspaceTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`h-8 flex items-center gap-2 px-3 rounded-lg border text-xs font-bold transition-all whitespace-nowrap ${activeWorkspaceTab === tab.id
+                    ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-primary)]'
+                    : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)]'
+                    }`}
+                  onClick={() => setActiveWorkspaceTab(tab.id)}
+                  title={tab.prompt}
+                >
+                  <i className={`fas ${tab.status === 'starting' || tab.status === 'thinking' || tab.status === 'searching' || tab.status === 'inspecting' ? 'fa-circle-notch fa-spin' : tab.status === 'found' ? 'fa-check-circle text-emerald-400' : tab.status === 'failed' ? 'fa-triangle-exclamation text-red-400' : 'fa-brain'} text-[11px]`}></i>
+                  Agent: {tab.title}
+                  <span
+                    className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-red-500/15 hover:text-red-400"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeAgentTab(tab.id);
+                    }}
+                    title="Close tab"
+                  >
+                    <i className="fas fa-times text-[10px]"></i>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-row flex-grow min-h-0 w-full overflow-hidden relative">
+              {activeWorkspaceTab === 'manual' ? (
+                <>
+                  {/* Mobile Sidebar Overlay */}
+                  {isMobileMenuOpen && (
+                    <div
+                      className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    />
+                  )}
+
+                  <div className={`
+                ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+                md:translate-x-0 transition-transform duration-300 absolute md:relative z-[60] h-full shadow-2xl md:shadow-none w-[340px] max-w-[85vw]
+              `}>
+                    <LeftSearchPanel
+                      stages={stages}
+                      searchModel={searchModel}
+                      lastFinalQueries={lastFinalQueries}
+                      setStages={setStagesWithHistory}
+                      setSearchModel={setSearchModel}
+                      focusRequest={stageFocusRequest}
+                      onSearch={executeSearch}
+                      onAgentSearch={handleStartAgentSearch}
+                      onQuickSearch={handleQuickImageSearch}
+                      loading={loading}
+                      theme={effectiveTheme}
+                    />
+                  </div>
+
+                  <RightResultsPanel
+                    searchResults={searchResults}
+                    teamworkFrames={teamworkFrames}
+                    trakeFrames={trakeFrames}
+                    showTrake={showTrake}
+                    loading={loading}
+                    loadingMore={loadingMore}
+                    hasMore={hasMore}
+                    onLoadMore={handleLoadMore}
+                    onPreview={handleOpenVideoPreview}
+                    socket={socketRef.current}
+                    username={username}
+                    userColor={userColor}
+                    onTeamworkAddLocal={addTeamworkFrameLocal}
+                    onTeamworkRemoveLocal={removeTeamworkFrameLocal}
+                    onPushToTrake={handlePushToTrake}
+                    correctSubmission={correctSubmission}
+                    onZoom={setZoomedImage}
+                    isClustered={isClustered}
+                    isAmbiguous={resultIsAmbiguous}
+                    onContext={setContextShot}
+                    onQuickSearch={handleQuickImageSearch}
+                    onToggleLock={toggleVideoLock}
+                    lockedVideoIds={lockedVideos.map(v => v.videoId)}
+                    dresMode={dresMode}
+                    setHoveredFrame={setHoveredFrame}
+                    setIsHoveringTrakePanel={setIsHoveringTrakePanel}
+                    onDresSubmit={handleInstantDresSubmit}
+                  />
+                </>
+              ) : (
+                <AgentRunView
+                  run={activeAgentRun}
+                  socket={socketRef.current}
+                  username={username}
+                  userColor={userColor}
+                  onTeamworkAddLocal={addTeamworkFrameLocal}
+                  onZoom={setZoomedImage}
+                  onPreview={handleOpenVideoPreview}
+                  onContext={setContextShot}
+                  onQuickSearch={handleQuickImageSearch}
+                  onToggleLock={toggleVideoLock}
+                  lockedVideoIds={lockedVideos.map(v => v.videoId)}
+                />
+              )}
+            </div>
+          </div>
+
+          {showUserModal && <UsernameModal onJoin={handleJoinSession} />}
+          {activeModal === 'filter' && <ObjectFilterModal onClose={() => setActiveModal(null)} />}
+          {activeModal === 'help' && <HelpModal onClose={() => setActiveModal(null)} />}
+          {activeModal === 'dresLogin' && (
+            <DresLoginModal
+              onClose={() => setActiveModal(null)}
+              sessionId={dresSessionId}
+              evaluationId={dresEvaluationId}
+              onLogout={handleLogoutDres}
+              onLoginSuccess={(sessionId, evaluationId, username) => {
+                setDresSessionId(sessionId);
+                setDresEvaluationId(evaluationId);
+                if (username) {
+                  setDresUsername(username);
+                  sessionStorage.setItem('dresUsername', username);
+                }
+                sessionStorage.setItem('dresSessionId', sessionId);
+                if (evaluationId) {
+                  sessionStorage.setItem('dresEvaluationId', evaluationId);
+                } else {
+                  sessionStorage.removeItem('dresEvaluationId');
+                }
+              }}
+            />
+          )}
+          {activeModal === 'video' && previewVideoData && (
+            <VideoPreviewModal
+              videoId={previewVideoData.videoId}
+              initialFrame={previewVideoData.frameId}
+              onClose={() => {
+                setActiveModal(null);
+                setPreviewVideoData(null);
+              }}
+              socket={socketRef.current}
+              username={username}
+              userColor={userColor}
+              onDresSubmit={handleInstantDresSubmit}
             />
           )}
 
-          <div className={`
-            ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-            md:translate-x-0 transition-transform duration-300 absolute md:relative z-[60] h-full shadow-2xl md:shadow-none w-[340px] max-w-[85vw]
-          `}>
-            <LeftSearchPanel
-              stages={stages}
-              lastFinalQueries={lastFinalQueries}
-              setStages={setStagesWithHistory}
-              focusRequest={stageFocusRequest}
-              onSearch={executeSearch}
-              loading={loading}
-              theme={effectiveTheme}
+          {contextShot && (
+            <FrameContextModal
+              shotData={contextShot}
+              onClose={() => setContextShot(null)}
               onZoom={setZoomedImage}
-              onQuickSearch={handleQuickImageSearch}
+              onPreview={handleOpenVideoPreview}
+              socket={socketRef.current}
+              username={username}
+              userColor={userColor}
+              onSubmitDres={handleInstantDresSubmit}
+              onContext={setContextShot}
             />
-          </div>
+          )}
 
-          <RightResultsPanel
-            searchResults={searchResults}
-            teamworkFrames={teamworkFrames}
-            trakeFrames={trakeFrames}
-            showTrake={showTrake}
-            loading={loading}
-            loadingMore={loadingMore}
-            hasMore={hasMore}
-            onLoadMore={handleLoadMore}
-            onPreview={handleOpenVideoPreview}
-            socket={socketRef.current}
-            username={username}
-            userColor={userColor}
-            onTeamworkAddLocal={addTeamworkFrameLocal}
-            onTeamworkRemoveLocal={removeTeamworkFrameLocal}
-            onPushToTrake={handlePushToTrake}
-            correctSubmission={correctSubmission}
-            onZoom={setZoomedImage}
-            isClustered={isClustered}
-            isAmbiguous={resultIsAmbiguous}
-            onContext={setContextShot}
-            onQuickSearch={handleQuickImageSearch}
-            onToggleLock={toggleVideoLock}
-            lockedVideoIds={lockedVideos.map(v => v.videoId)}
-            dresMode={dresMode}
-            setHoveredFrame={setHoveredFrame}
-            setIsHoveringTrakePanel={setIsHoveringTrakePanel}
-            onDresSubmit={handleInstantDresSubmit}
-          />
-        </div>
-      </div>
-
-      {showUserModal && <UsernameModal onJoin={handleJoinSession} />}
-      {activeModal === 'filter' && <ObjectFilterModal onClose={() => setActiveModal(null)} />}
-      {activeModal === 'help' && <HelpModal onClose={() => setActiveModal(null)} />}
-      {activeModal === 'dresLogin' && (
-        <DresLoginModal
-          onClose={() => setActiveModal(null)}
-          sessionId={dresSessionId}
-          evaluationId={dresEvaluationId}
-          onLogout={handleLogoutDres}
-          onLoginSuccess={(sessionId, evaluationId, username) => {
-            setDresSessionId(sessionId);
-            setDresEvaluationId(evaluationId);
-            if (username) {
-              setDresUsername(username);
-              sessionStorage.setItem('dresUsername', username);
-            }
-            sessionStorage.setItem('dresSessionId', sessionId);
-            if (evaluationId) {
-                sessionStorage.setItem('dresEvaluationId', evaluationId);
-            } else {
-                sessionStorage.removeItem('dresEvaluationId');
-            }
-          }}
-        />
-      )}
-      {activeModal === 'video' && previewVideoData && (
-        <VideoPreviewModal
-          videoId={previewVideoData.videoId}
-          initialFrame={previewVideoData.frameId}
-          onClose={() => {
-            setActiveModal(null);
-            setPreviewVideoData(null);
-          }}
-          socket={socketRef.current}
-          username={username}
-          userColor={userColor}
-        />
-      )}
-
-      {contextShot && (
-        <FrameContextModal
-          shotData={contextShot}
-          onClose={() => setContextShot(null)}
-          onZoom={setZoomedImage}
-          onPreview={handleOpenVideoPreview}
-          socket={socketRef.current}
-          username={username}
-          userColor={userColor}
-        />
-      )}
-
-      {zoomedImage && (
-        <div 
-          className="fixed inset-0 bg-black/90 z-[2500] flex items-center justify-center cursor-default animate-fadeIn p-4 backdrop-blur-sm"
-          onClick={() => setZoomedImage(null)}
-        >
-          <span 
-            className="absolute top-4 right-8 text-white text-3xl font-bold hover:text-red-500 hover:rotate-90 duration-300 cursor-pointer bg-black/40 rounded-full w-12 h-12 flex items-center justify-center"
-            onClick={() => setZoomedImage(null)}
-          >
-            &times;
-          </span>
-          <img
-            src={zoomedImage}
-            alt="Zoomed Result"
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-[var(--shadow-heavy)] border border-[var(--border-color)] animate-scaleIn"
-          />
-        </div>
-      )}
-
-      {lockedVideos.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[var(--card-bg)] border-t border-[var(--border-color)] backdrop-blur-md">
-          <div className="flex items-center gap-3 px-4 py-2 overflow-x-auto">
-            <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider flex-shrink-0">
-              <i className="fas fa-lock text-[var(--accent-primary)] mr-1"></i>Locked ({lockedVideos.length})
-            </span>
-            {lockedVideos.map(v => (
-              <div
-                key={v.videoId}
-                className="flex-shrink-0 flex items-center gap-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg px-2 py-1 cursor-pointer hover:border-red-400 group transition-all"
-                onClick={() => toggleVideoLock({ video_id: v.videoId, frame_name: v.frameName, url: v.thumbnailUrl })}
-                title={`Click to unlock ${v.videoId}`}
+          {zoomedImage && (
+            <div
+              className="fixed inset-0 bg-black/90 z-[2500] flex items-center justify-center cursor-default animate-fadeIn p-4 backdrop-blur-sm"
+              onClick={() => setZoomedImage(null)}
+            >
+              <span
+                className="absolute top-4 right-8 text-white text-3xl font-bold hover:text-red-500 hover:rotate-90 duration-300 cursor-pointer bg-black/40 rounded-full w-12 h-12 flex items-center justify-center"
+                onClick={() => setZoomedImage(null)}
               >
-                <img src={v.thumbnailUrl} alt={v.videoId} className="w-8 h-8 rounded object-cover" />
-                <span className="text-[11px] font-mono text-[var(--text-primary)]">{v.videoId}</span>
-                <i className="fas fa-times text-[8px] text-[var(--text-secondary)] group-hover:text-red-500 ml-1"></i>
+                &times;
+              </span>
+              <img
+                src={zoomedImage}
+                alt="Zoomed Result"
+                className="max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-[var(--shadow-heavy)] border border-[var(--border-color)] animate-scaleIn"
+              />
+            </div>
+          )}
+
+          {lockedVideos.length > 0 && (
+            <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[var(--card-bg)] border-t border-[var(--border-color)] backdrop-blur-md">
+              <div className="flex items-center gap-3 px-4 py-2 overflow-x-auto">
+                <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider flex-shrink-0">
+                  <i className="fas fa-lock text-[var(--accent-primary)] mr-1"></i>Locked ({lockedVideos.length})
+                </span>
+                {lockedVideos.map(v => (
+                  <div
+                    key={v.videoId}
+                    className="flex-shrink-0 flex items-center gap-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg px-2 py-1 cursor-pointer hover:border-red-400 group transition-all"
+                    onClick={() => toggleVideoLock({ video_id: v.videoId, frame_name: v.frameName, url: v.thumbnailUrl })}
+                    title={`Click to unlock ${v.videoId}`}
+                  >
+                    <img src={v.thumbnailUrl} alt={v.videoId} className="w-8 h-8 rounded object-cover" />
+                    <span className="text-[11px] font-mono text-[var(--text-primary)]">{v.videoId}</span>
+                    <i className="fas fa-times text-[8px] text-[var(--text-secondary)] group-hover:text-red-500 ml-1"></i>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
-      </div>
       </div>
     </div>
   );

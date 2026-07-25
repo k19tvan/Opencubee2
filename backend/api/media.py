@@ -14,17 +14,16 @@ from pydantic import BaseModel
 import json
 import glob
 import os
+import requests
 
 class TemporalFrameRequest(BaseModel):
     base_frame_name: str
 
-FRAME_CONTEXT_CACHE = None
-CACHE_PATH = "/AIClub_NAS/nguyenmv/Opencubee2/results/frame_context_cache.json"
-IMAGE_BASE_PATH = "/AIClub_NAS/nguyenmv/Opencubee2/results/keyframes_full"
+IMAGE_BASE_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"
 
 from backend.core import runtime
 from backend.core.config import MODEL_CONFIGS, OCR_ASR_INDEX_NAME, TEMP_UPLOAD_DIR
-from backend.services.media import probe_video_info, render_video_thumbnail, resolve_video_path
+from backend.services.media import probe_video_info, render_video_thumbnail, resolve_video_path, resolve_keyframe_path_sync
 
 router = APIRouter()
 
@@ -52,7 +51,12 @@ async def get_models_status():
 async def get_video(video_id: str):
     video_path = resolve_video_path(video_id)
     media_type = mimetypes.guess_type(video_path.name)[0] or "video/mp4"
-    return FileResponse(video_path, media_type=media_type, filename=video_path.name)
+    return FileResponse(
+        video_path,
+        media_type=media_type,
+        filename=video_path.name,
+        headers={"Cache-Control": "public, max-age=31536000"}
+    )
 
 @router.get("/video_info/{video_id}")
 async def get_video_info(video_id: str):
@@ -91,54 +95,24 @@ async def get_video_thumbnail(video_id: str, frame: int = 0, width: int = 160):
 # --- Endpoint Phục vụ Keyframes Phân đoạn và Vạn năng ---
 @router.get("/keyframes/{frame_name}")
 async def get_keyframe(frame_name: str):
-    if any(part in frame_name for part in ("..", "/", "\\")):
-         raise HTTPException(status_code=400, detail="Invalid frame name")
-
-    candidate_dirs = [
-        Path("/AIClub_NAS/nguyenmv/Opencubee2/results/keyframes_full"),
-        Path("/AIClub_NAS/nguyenmv/Opencubee2/results/frames"),
-        Path("/mlcv1/Datasets/HCMAI25/keyframes"),
-        Path("/mlcv1/Datasets/HCMAI25/frames"),
-        Path("/mlcv1/Datasets/HCMAI25/full/keyframes"),
-        Path("/mlcv1/Datasets/HCMAI25/full/frames"),
-        Path("/AIClub_NAS/nguyenmv/Opencubee2/database/keyframes"),
-    ]
-
-    for directory in candidate_dirs:
-        try:
-            resolved_dir = directory.resolve()
-            target = resolved_dir / frame_name
-            if target.is_file():
-                return FileResponse(target, media_type="image/jpeg")
-            
-            prefix = frame_name.split("_")[0]
-            target_sub = resolved_dir / prefix / frame_name
-            if target_sub.is_file():
-                return FileResponse(target_sub, media_type="image/jpeg")
-        except Exception:
-            continue
-
-    if runtime.meili_client:
-        try:
-            index = runtime.meili_client.index(OCR_ASR_INDEX_NAME)
-            response = index.search(frame_name, {"limit": 1})
-            hits = response.get("hits", [])
-            if hits:
-                exact_path = hits[0].get("file_path") or hits[0].get("filepath")
-                if exact_path:
-                    target_path = Path(exact_path).resolve()
-                    if target_path.is_file():
-                        return FileResponse(target_path, media_type="image/jpeg")
-        except Exception as e:
-            print(f"[Keyframe Route Fallback] Resolution lookup failed: {e}")
-
+    target_path = resolve_keyframe_path_sync(frame_name)
+    if target_path:
+        return FileResponse(
+            target_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=31536000"}
+        )
     raise HTTPException(status_code=404, detail=f"Keyframe {frame_name} not found")
 
 @router.post("/check_temporal_frames")
 async def check_temporal_frames(request: TemporalFrameRequest):
     base_name = request.base_frame_name
+    from backend.core.runtime import frame_context_cache
     
-    DB_PATH = "/AIClub_NAS/nguyenmv/Opencubee2/results/frame_context.sqlite"
+    if frame_context_cache and base_name in frame_context_cache:
+        return frame_context_cache[base_name]
+
+    DB_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/frame_context.sqlite"
     
     if os.path.exists(DB_PATH):
         try:
@@ -158,7 +132,6 @@ async def check_temporal_frames(request: TemporalFrameRequest):
                 return neighbors
         except Exception as e:
             print(f"Error querying SQLite frame context cache: {e}")
-            
     # Fallback to globbing logic similar to keyframe_neighbor.py if cache misses or doesn't exist
     parts = base_name.split("_")
     if len(parts) >= 4:
@@ -180,12 +153,28 @@ async def check_temporal_frames(request: TemporalFrameRequest):
             target_path = os.path.join(IMAGE_BASE_PATH, base_name)
         try:
             idx = files.index(target_path)
-            start_index = max(0, idx - 10)
-            end_index = min(len(files), idx + 11)
-            neighbors = files[start_index:end_index]
-            return [os.path.basename(p) for p in neighbors]
         except ValueError:
-            pass
+            # target_path not found, find the closest file by frame index
+            try:
+                target_frame = int(parts[3].split('.')[0])
+                closest_idx = 0
+                min_diff = float('inf')
+                for i, f in enumerate(files):
+                    f_parts = os.path.basename(f).split("_")
+                    if len(f_parts) >= 4:
+                        f_frame = int(f_parts[3].split('.')[0])
+                        diff = abs(f_frame - target_frame)
+                        if diff < min_diff:
+                            min_diff = diff
+                            closest_idx = i
+                idx = closest_idx
+            except:
+                return [base_name]
+
+        start_index = max(0, idx - 10)
+        end_index = min(len(files), idx + 11)
+        neighbors = files[start_index:end_index]
+        return [os.path.basename(p) for p in neighbors]
             
     return [base_name]
 
@@ -209,5 +198,29 @@ async def upload_image(image: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Failed to write uploaded image: {e}")
         
     return {"temp_image_name": temp_filename}
+
+@router.get("/proxy_image")
+async def proxy_image(url: str):
+    if not url.startswith("http"):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+    try:
+        def fetch_image():
+            resp = requests.get(url, stream=True, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            extension = ".jpg"
+            if "png" in resp.headers.get("Content-Type", ""):
+                extension = ".png"
+            temp_filename = f"proxy_{uuid.uuid4()}{extension}"
+            temp_filepath = TEMP_UPLOAD_DIR / temp_filename
+            with temp_filepath.open("wb") as buffer:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    buffer.write(chunk)
+            return temp_filepath
+            
+        temp_filepath = await asyncio.to_thread(fetch_image)
+        return FileResponse(temp_filepath, headers={"Cache-Control": "public, max-age=86400"})
+    except Exception as e:
+        print(f"Proxy image failed for {url}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch proxy image")
 
 # --- WebSockets ---

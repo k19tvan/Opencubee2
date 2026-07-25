@@ -198,7 +198,7 @@ async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Op
     return None
 
 # --- Helper: Tìm kiếm lân cận trên Qdrant ---
-async def search_qdrant(query_vector: list, collection_name: str, limit: int = 1000) -> List[Dict]:
+async def search_qdrant(query_vector: list, collection_name: str, limit: int = 200) -> List[Dict]:
     if not runtime.qdrant_client: return []
     try:
         response = await asyncio.to_thread(

@@ -4,16 +4,17 @@ import asyncio
 import shutil
 import time
 import uuid
+import re
+import requests
+from urllib.parse import quote
 from collections import defaultdict
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
-import httpx
 
 from backend.core import runtime
 from backend.core.config import MAX_FRAME_LIMIT, MODEL_CONFIGS, TEMP_UPLOAD_DIR
-from backend.schemas.search import EnhanceQueryRequest, GoogleSearchRequest, StageData, TemporalSearchRequest, UnifiedSearchRequest
+from backend.schemas.search import EnhanceQueryRequest, StageData, TemporalSearchRequest, UnifiedSearchRequest
 from backend.services.search import (
     _combine_and_rerank_results,
     fuse_results,
@@ -24,41 +25,40 @@ from backend.services.search import (
 
 router = APIRouter()
 
-@router.post("/google_image_search")
-async def google_image_search(request: GoogleSearchRequest):
+google_search_session = requests.Session()
+google_search_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+})
+
+def get_google_images(keyword: str, k: int = 15):
     try:
-        # Based on user's example
-        try:
-            from ddgs import DDGS
-        except ImportError:
-            from duckduckgo_search import DDGS
+        from backend.core.config import TAVILY_API_KEY
+        import requests
+        
+        if not TAVILY_API_KEY:
+            print("TAVILY_API_KEY is not set.")
+            return []
             
-        results = DDGS().images(request.query, max_results=20)
-        image_urls = [item.get("image") for item in results if item.get("image")]
-        return {"image_urls": image_urls}
+        res = requests.post("https://api.tavily.com/search", json={
+            "api_key": TAVILY_API_KEY,
+            "query": keyword,
+            "include_images": True,
+            "search_depth": "basic"
+        })
+        res.raise_for_status()
+        data = res.json()
+        images = data.get("images", [])
+        return images[:k]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error during Image Search (Tavily): {e}")
+        return []
 
-@router.get("/proxy_image")
-async def proxy_image(url: str):
-    try:
-        # If the URL is pointing to localhost, replace it with the docker host IP
-        # so the backend container can reach the host machine.
-        original_url = url
-        if "localhost" in url:
-            url = url.replace("localhost", "172.17.0.1")
-        elif "127.0.0.1" in url:
-            url = url.replace("127.0.0.1", "172.17.0.1")
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, timeout=10.0)
-            if resp.status_code != 200:
-                print(f"proxy_image error: {resp.status_code} for url {url}")
-                raise HTTPException(status_code=resp.status_code, detail=f"Failed to fetch image: {resp.status_code}")
-            return Response(content=resp.content, media_type=resp.headers.get("Content-Type", "image/jpeg"))
-    except Exception as e:
-        print(f"proxy_image exception for {url}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+@router.get("/google_images")
+async def google_images(q: str):
+    if not q:
+        return []
+    results = await asyncio.to_thread(get_google_images, q, 30)
+    return results
 
 @router.post("/search")
 async def search_unified(search_data: str = Form(...), query_image: Optional[UploadFile] = File(None)):
@@ -79,11 +79,11 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
     else:
         image_name = search_model.query_image_name
 
-    models_to_use = search_model.models or ["bge"]
+    models_to_use = search_model.models or ["beit3"]
     models_to_use = [m for m in models_to_use if m in MODEL_CONFIGS]
-    if not models_to_use: models_to_use = ["bge"]
+    if not models_to_use: models_to_use = ["beit3"]
         
-    weights = search_model.model_weights or {"bge": 1.0}
+    weights = search_model.model_weights or {"beit3": 1.0}
 
     has_vector_query = bool(search_model.query_text or image_name or search_model.image_search_text)
     has_filter_query = bool(search_model.ocr_query or search_model.asr_query) 
@@ -151,28 +151,37 @@ async def enhance_query(request_data: EnhanceQueryRequest):
         context_parts.append(f"ASR filter: {request_data.asr_query.strip()}")
     context_text = "\n".join(context_parts) if context_parts else "No OCR/ASR filters."
 
-    messages = [
-        (
-            "system",
-            """
+    if request_data.literal_translate:
+        system_prompt = """
+            You are a professional translator. Translate the user's query to English literally and accurately.
+            Preserve all meanings, entities, and keywords. 
+            Do not add any extra words, explanations, or quotes. Just output the English translation.
+            If the query is already in English, output it exactly as is.
+        """
+        human_prompt = f"{query}"
+    else:
+        system_prompt = """
             Rewrite the user's video/image retrieval query into a concise, vivid visual search query. 
             Preserve all concrete entities, actions, colors, locations, text, and temporal intent. 
             Do not add facts that are not implied. Return only the improved query, no quotes or explanation. 
             If the user's query is in vietnamese, change it to english. If the user's query is in english, keep it in english.
-            """
+        """
+        human_prompt = f"Query:\n{query}\n\nContext:\n{context_text}"
 
-
-        ),
-        (
-            "human",
-            f"Query:\n{query}\n\nContext:\n{context_text}"
-        )
+    messages = [
+        ("system", system_prompt),
+        ("human", human_prompt)
     ]
 
-    if runtime.llm_enhance is None:
-        raise HTTPException(status_code=503, detail="Groq LLM for query enhancement is not initialized.")
-
-    enhanced = runtime.llm_enhance.invoke(messages).content.strip()
+    if request_data.literal_translate:
+        if runtime.llm_translate is None:
+            raise HTTPException(status_code=503, detail="Gemini LLM for translation is not initialized.")
+        enhanced = runtime.llm_translate.invoke(messages).content.strip()
+    else:
+        if runtime.llm_enhance is None:
+            raise HTTPException(status_code=503, detail="Groq LLM for query enhancement is not initialized.")
+        enhanced = runtime.llm_enhance.invoke(messages).content.strip()
+        
     print(f"Enhanced Query: {enhanced}")
 
     return {"enhanced_query": enhanced}
@@ -187,11 +196,11 @@ async def _temporal_search_legacy(request_data: TemporalSearchRequest):
     if not stages:
         raise HTTPException(status_code=400, detail="Stages are required.")
         
-    models_to_use = request_data.models or ["bge"]
+    models_to_use = request_data.models or ["beit3"]
     models_to_use = [m for m in models_to_use if m in MODEL_CONFIGS]
-    if not models_to_use: models_to_use = ["bge"]
+    if not models_to_use: models_to_use = ["beit3"]
         
-    weights = request_data.model_weights or {"bge": 1.0}
+    weights = request_data.model_weights or {"beit3": 1.0}
     
     valid_stage_results = []
     processed_queries_for_ui = []
@@ -344,10 +353,10 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
 
     models_to_use = [
         model
-        for model in (request_data.models or ["bge"])
+        for model in (request_data.models or ["beit3"])
         if model in MODEL_CONFIGS
-    ] or ["bge"]
-    weights = request_data.model_weights or {"bge": 1.0}
+    ] or ["beit3"]
+    weights = request_data.model_weights or {"beit3": 1.0}
 
     async def get_stage_results(index: int, stage: StageData):
         has_vector_query = bool(stage.query or stage.query_image_name or stage.image_search_text)
