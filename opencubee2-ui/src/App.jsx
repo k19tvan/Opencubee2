@@ -460,25 +460,7 @@ export default function App() {
     const handleKeyDown = (event) => {
       if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
         const key = event.key.toLowerCase();
-        if (key === 'arrowleft') {
-          event.preventDefault();
-          const store = readWorkspaceHistory();
-          const currentIndex = store.entries.findIndex((entry) => entry.id === store.currentId);
-          if (currentIndex > 0) {
-            window.history.back();
-          } else {
-            toast('No previous search step to restore.');
-          }
-        } else if (key === 'arrowright') {
-          event.preventDefault();
-          const store = readWorkspaceHistory();
-          const currentIndex = store.entries.findIndex((entry) => entry.id === store.currentId);
-          if (currentIndex >= 0 && currentIndex < store.entries.length - 1) {
-            window.history.forward();
-          } else {
-            toast('No forward search step to restore.');
-          }
-        } else if (key === 'e') {
+        if (key === 'e') {
           event.preventDefault();
           updateLatestStage((stage) => ({
             ...stage,

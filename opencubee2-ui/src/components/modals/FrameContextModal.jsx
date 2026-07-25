@@ -11,6 +11,10 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
       if (e.ctrlKey && e.code === 'Space') {
         e.preventDefault();
         if (e.shiftKey) {
@@ -27,7 +31,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hoveredShot, onSubmitDres]);
+  }, [hoveredShot, onSubmitDres, onClose]);
 
   useEffect(() => {
     const fetchNeighbors = async () => {

@@ -12,7 +12,7 @@ const getBackendUrl = (path) => {
   return `${BASE_URL.replace(/\/$/, '')}${path}`;
 };
 
-export default function StageCard({ stage, index, finalQueryPreview = '', focusRequest = null, onDelete, onChange, onSearch }) {
+export default function StageCard({ stage, index, finalQueryPreview = '', focusRequest = null, onDelete, onChange, onSearch, onDragStart, onDragEnd }) {
   const [type, setType]               = useState(stage.queryType || 'text');
   const [ocrActive, setOcrActive]     = useState(stage.ocrActive ?? !!stage.ocrText);
   const [asrActive, setAsrActive]     = useState(stage.asrActive ?? !!stage.asrText);
@@ -254,9 +254,22 @@ export default function StageCard({ stage, index, finalQueryPreview = '', focusR
      }`;
 
   return (
-    <div className="group relative bg-[var(--card-bg)] rounded-lg p-4 border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-heavy)] transition-all duration-300 ease-smooth">
+    <div
+      className="group relative bg-[var(--card-bg)] rounded-lg p-4 border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-heavy)] transition-all duration-300 ease-smooth"
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(); }}
+      onDragEnd={() => onDragEnd?.()}
+    >
       <div className="absolute -top-2.5 left-4 bg-[var(--text-primary)] w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] text-[var(--bg-primary)] shadow-sm z-10 transition-transform duration-300 ease-spring group-hover:scale-110">
         {index + 1}
+      </div>
+      {/* Drag handle */}
+      <div
+        className="absolute -top-2.5 right-8 w-5 h-5 rounded-full flex items-center justify-center text-[var(--text-secondary)] cursor-grab active:cursor-grabbing hover:text-[var(--text-primary)] transition-colors z-10 opacity-0 group-hover:opacity-100"
+        title="Drag to reorder"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <i className="fas fa-grip-vertical text-[9px]"></i>
       </div>
       {index > 0 && (
         <button

@@ -19,6 +19,8 @@ export default function LeftSearchPanel({
   const [googleQuery, setGoogleQuery] = useState('');
   const [googleResults, setGoogleResults] = useState([]);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const dragSourceIndex = useRef(null);
 
   const addStage = () => {
     setStages((prev) => [...prev, {
@@ -40,6 +42,37 @@ export default function LeftSearchPanel({
 
   const handleStageDelete = (id) => {
     setStages((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleDragStart = (idx) => {
+    dragSourceIndex.current = idx;
+  };
+
+  const handleDragEnter = (idx) => {
+    if (dragSourceIndex.current === null || dragSourceIndex.current === idx) return;
+    setDragOverIndex(idx);
+  };
+
+  const handleDragEnd = () => {
+    dragSourceIndex.current = null;
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (idx) => {
+    const from = dragSourceIndex.current;
+    if (from === null || from === idx) {
+      dragSourceIndex.current = null;
+      setDragOverIndex(null);
+      return;
+    }
+    setStages((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(idx, 0, moved);
+      return next;
+    });
+    dragSourceIndex.current = null;
+    setDragOverIndex(null);
   };
 
   const executeGoogleSearch = async () => {
@@ -140,8 +173,10 @@ export default function LeftSearchPanel({
           {stages.map((stage, idx) => (
             <div
               key={stage.id}
-              className="animate-fadeInUp"
+              className={`animate-fadeInUp transition-all duration-200 ${dragOverIndex === idx ? 'opacity-50 scale-[0.98]' : ''}`}
               style={{ animationDelay: `${idx * 60}ms` }}
+              onDragOver={(e) => { e.preventDefault(); handleDragEnter(idx); }}
+              onDrop={() => handleDrop(idx)}
             >
               <StageCard
                 stage={stage}
@@ -151,6 +186,8 @@ export default function LeftSearchPanel({
                 onDelete={() => handleStageDelete(stage.id)}
                 onChange={handleStageChange}
                 onSearch={onSearch}
+                onDragStart={() => handleDragStart(idx)}
+                onDragEnd={handleDragEnd}
               />
             </div>
           ))}
