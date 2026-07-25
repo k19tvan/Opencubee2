@@ -8,3 +8,5 @@ services:
     image: opencubee2-ui-nginx
     ports:
       - "21080:21080"
+    volumes:
+      - ./public/keyframes:/usr/share/nginx/html/keyframes:ro
