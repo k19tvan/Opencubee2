@@ -42,6 +42,7 @@ try:
             temperature=0.2,
             max_tokens=1024,
             api_key=os.getenv("GROQ_API_KEY"),
+            reasoning_effort="none"
         )
         print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b ---")
     except Exception as e:
@@ -50,29 +51,30 @@ try:
 
     try:
         llm_enhance = ChatGroq(
-            model="openai/gpt-oss-20b",
+            model="qwen/qwen3.6-27b",
             temperature=0.2,
             max_tokens=1024,
             api_key=os.getenv("GROQ_API_KEY"),
-            reasoning_format="hidden",
+            reasoning_effort="none"
         )
-        print("--- ChatGroq initialized successfully with openai/gpt-oss-20b ---")
+        print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b, used as enhancer ---")
     except Exception as e:
-        print(f"Warning: Failed to initialize ChatGroq for enhance. Error: {e}")
+        print(f"Warning: Failed to initialize ChatGroq for Enhance. Error: {e}")
         llm_enhance = None
 
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        llm_translate = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            temperature=0.1,
+        llm_translate = ChatGroq(
+            model="qwen/qwen3.6-27b",
+            temperature=0.2,
             max_tokens=1024,
-            google_api_key="AQ.Ab8RN6JcIbPL1W5iB4Jx08U45tbBQwH9QxIfokF0dQ0QQCd64Q",
+            api_key=os.getenv("GROQ_API_KEY"),
+            reasoning_effort="none"
         )
-        print("--- ChatGoogleGenerativeAI initialized successfully for translation ---")
+        print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b, Using as Translator---")
     except Exception as e:
-        print(f"Warning: Failed to initialize ChatGoogleGenerativeAI for translation. Error: {e}")
+        print(f"Warning: Failed to initialize ChatGroq for Translation Error: {e}")
         llm_translate = None
+
 except ModuleNotFoundError as e:
     print(f"Warning: ChatGroq dependencies are not available. Error: {e}")
     llm = None
