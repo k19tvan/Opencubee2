@@ -153,10 +153,10 @@ async def enhance_query(request_data: EnhanceQueryRequest):
 
     if request_data.literal_translate:
         system_prompt = """
-            You are a professional translator. Translate the user's query to English literally and accurately.
-            Preserve all meanings, entities, and keywords. 
-            Do not add any extra words, explanations, or quotes. Just output the English translation.
-            If the query is already in English, output it exactly as is.
+            Rewrite the user's video/image retrieval query into a concise, vivid visual search query. 
+            Preserve all concrete entities, actions, colors, locations, text, and temporal intent. 
+            Do not add facts that are not implied. Return only the improved query, no quotes or explanation. 
+            If the user's query is in vietnamese, change it to english. If the user's query is in english, keep it in english.
         """
         human_prompt = f"{query}"
     else:

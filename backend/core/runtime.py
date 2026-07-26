@@ -62,32 +62,32 @@ try:
         print(f"Warning: Failed to initialize ChatGroq for Enhance. Error: {e}")
         llm_enhance = None
 
-    try:
-        llm_translate = ChatGroq(
-            model="qwen/qwen3.6-27b",
-            temperature=0.2,
-            max_tokens=1024,
-            api_key=os.getenv("GROQ_API_KEY"),
-            reasoning_effort="none"
-        )
-        print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b, used as translator ---")
-    except Exception as e:
-        print(f"Warning: Failed to initialize ChatGroq for Translator. Error: {e}")
-        llm_translate = None
+    # try:
+    #     llm_translate = ChatGroq(
+    #         model="qwen/qwen3.6-27b",
+    #         temperature=0.2,
+    #         max_tokens=1024,
+    #         api_key=os.getenv("GROQ_API_KEY"),
+    #         reasoning_effort="none"
+    #     )
+    #     print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b, used as translator ---")
+    # except Exception as e:
+    #     print(f"Warning: Failed to initialize ChatGroq for Translator. Error: {e}")
+    #     llm_translate = None
 
     
-    # try:
-    #     from langchain_openai import ChatOpenAI
-    #     llm_translate = ChatOpenAI(
-    #         model="qwen3-vl-4b",
-    #         base_url="http://192.168.20.150:2108/v1",
-    #         api_key="EMPTY",
-    #     )
+    try:
+        from langchain_openai import ChatOpenAI
+        llm_translate = ChatOpenAI(
+            model="qwen3-vl-4b",
+            base_url="http://192.168.20.150:2108/v1",
+            api_key="EMPTY",
+        )
 
-    #     print("--- ChatOpenAI initialized successfully with qwen3-vl-4b, Using as Translator---")
-    # except Exception as e:
-    #     print(f"Warning: Failed to initialize ChatGroq for Translation Error: {e}")
-    #     llm_translate = None
+        print("--- ChatOpenAI initialized successfully with qwen3-vl-4b, Using as Translator---")
+    except Exception as e:
+        print(f"Warning: Failed to initialize ChatGroq for Translation Error: {e}")
+        llm_translate = None
 
 except ModuleNotFoundError as e:
     print(f"Warning: ChatGroq dependencies are not available. Error: {e}")

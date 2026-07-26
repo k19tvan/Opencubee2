@@ -56,3 +56,6 @@ Thumbs.db
 
 # Temp
 backend/temp_uploads
+
+summary.py
+summary.txt
