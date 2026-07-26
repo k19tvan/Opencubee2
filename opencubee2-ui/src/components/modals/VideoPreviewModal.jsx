@@ -14,7 +14,7 @@ const formatTime = (seconds) => {
   return `${String(minutes).padStart(2, '0')}:${remaining.toFixed(3).padStart(6, '0')}`;
 };
 
-export default function VideoPreviewModal({ videoId, initialFrame, onClose, socket, username, userColor, onDresSubmit }) {
+export default function VideoPreviewModal({ videoId, initialFrame, onClose, socket, username, userColor, onDresSubmit, wrongFrames = [] }) {
   const videoRef = useRef(null);
   const timelineRef = useRef(null);
   const dragRef = useRef(null);
@@ -364,6 +364,11 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
                       draggable={false}
                       className="w-full h-full object-cover pointer-events-none animate-fadeIn"
                     />
+                  )}
+                  {wrongFrames.some(w => w.video_id === videoId && Math.abs(w.frame_id - frame) <= (fps * thumbnailInterval / 2)) && (
+                    <div className="absolute top-0 right-0 px-1 py-0.5 rounded-bl bg-red-600/90 z-10" title="Wrong Submission Near Here">
+                      <span className="text-[8px] font-bold text-white">WRONG</span>
+                    </div>
                   )}
                   <span className="absolute bottom-0 inset-x-0 bg-black/65 px-1 py-0.5 text-[9px] font-mono text-slate-100">
                     {formatTime(time)}

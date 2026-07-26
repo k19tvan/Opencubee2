@@ -99,8 +99,10 @@ qdrant_client = None
 meili_client = None
 http_client: Optional[httpx.AsyncClient] = None
 manager = ConnectionManager()
-trake_panel_state = []
+agent_states = {}
 agent_prompts = {}
+trake_panel_state = []
+wrong_frames_state = []
 frame_context_cache = {}
 
 def load_frame_context_json():

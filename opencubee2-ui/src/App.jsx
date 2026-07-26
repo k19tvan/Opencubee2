@@ -155,6 +155,7 @@ export default function App() {
   const [resultIsAmbiguous, setResultIsAmbiguous] = useState(false);
   const [teamworkFrames, setTeamworkFrames] = useState([]);
   const [trakeFrames, setTrakeFrames] = useState([]);
+  const [wrongFrames, setWrongFrames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [timingInfo, setTimingInfo] = useState(null);
   const [correctSubmission, setCorrectSubmission] = useState(null);
@@ -163,10 +164,14 @@ export default function App() {
     return localStorage.getItem('opencubee_muted') === 'true';
   });
   const isMutedRef = useRef(isMuted);
+  const playingAudioRef = useRef(null);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
     localStorage.setItem('opencubee_muted', isMuted);
+    if (playingAudioRef.current) {
+      playingAudioRef.current.muted = isMuted;
+    }
   }, [isMuted]);
 
   const [autoTranslate, setAutoTranslate] = useState(() => {
@@ -584,6 +589,19 @@ export default function App() {
           },
         })).filter((frame) => frame.shot && getShotKey(frame.shot));
         setTeamworkFrames(mappedData);
+      } else if (type === 'global_wrong_submission') {
+        if (!data?.shot) return;
+        setWrongFrames((prev) => {
+          const incomingKey = getShotKey(data.shot);
+          if (incomingKey && prev.some((frame) => getShotKey(frame) === incomingKey)) return prev;
+          return [data.shot, ...prev];
+        });
+      } else if (type === 'wrong_frames_sync') {
+        const mappedData = (data || []).map(shot => ({
+          ...shot,
+          url: getImageUrl(shot.frame_name)
+        }));
+        setWrongFrames(mappedData);
       } else if (type === 'trake_sync') {
         const mappedData = (data || []).map(shot => ({
           ...shot,
@@ -614,11 +632,11 @@ export default function App() {
         setTeamworkFrames([{ shot: mappedShot, user: { name: 'SYSTEM', color: '#10b981' } }]);
 
         try {
-          if (!isMutedRef.current) {
-            const audio = new Audio('/phonk1.MP3');
-            audio.volume = 1.0;
-            audio.play().catch(e => console.log("Audio play failed:", e));
-          }
+          const audio = new Audio('/phonk1.MP3');
+          audio.volume = 1.0;
+          audio.muted = isMutedRef.current;
+          playingAudioRef.current = audio;
+          audio.play().catch(e => console.log("Audio play failed:", e));
         } catch (e) { }
       } else if (type === 'agent_log') {
         setWorkspaceTabs((prev) => prev.map((tab) => {
@@ -793,6 +811,15 @@ export default function App() {
               data: { shot: trakeFrames[0] }
             }));
           }
+        } else if (resData.submission === 'WRONG') {
+          toast.error(`Trake Submit WRONG`, { id: loadingToast });
+          setWrongFrames(prev => [trakeFrames[0], ...prev]);
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({
+              type: 'global_wrong_submission',
+              data: { shot: trakeFrames[0] }
+            }));
+          }
         } else {
           toast.success(`Trake Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
         }
@@ -838,12 +865,21 @@ export default function App() {
         try { resData = JSON.parse(resText); } catch (e) { }
 
         if (resData.submission === 'CORRECT') {
-          setTeamworkFrames([{ shot, user: { name: username || 'ME', color: userColor || '#10b981' } }]);
+          setCorrectSubmission(shot);
           toast.success('KIS Submit CORRECT!', { id: loadingToast });
           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             socketRef.current.send(JSON.stringify({
               type: 'global_correct_submission',
-              data: { shot }
+              data: { shot: shot }
+            }));
+          }
+        } else if (resData.submission === 'WRONG') {
+          toast.error(`KIS Submit WRONG`, { id: loadingToast });
+          setWrongFrames(prev => [shot, ...prev]);
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({
+              type: 'global_wrong_submission',
+              data: { shot: shot }
             }));
           }
         } else {
@@ -1361,6 +1397,7 @@ export default function App() {
                     searchResults={searchResults}
                     teamworkFrames={teamworkFrames}
                     trakeFrames={trakeFrames}
+                    wrongFrames={wrongFrames}
                     showTrake={showTrake}
                     loading={loading}
                     loadingMore={loadingMore}
@@ -1441,6 +1478,7 @@ export default function App() {
               socket={socketRef.current}
               username={username}
               userColor={userColor}
+              wrongFrames={wrongFrames}
               onDresSubmit={handleInstantDresSubmit}
             />
           )}
@@ -1456,6 +1494,7 @@ export default function App() {
               userColor={userColor}
               onSubmitDres={handleInstantDresSubmit}
               onContext={setContextShot}
+              onQuickSearch={handleQuickImageSearch}
             />
           )}
 

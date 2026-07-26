@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { getImageUrl } from '../../utils/imageUrl'; // Import URL builder helper
 import { BASE_URL } from '../../api';
 
-export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, socket, username, userColor, onSubmitDres, onContext }) {
+export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, socket, username, userColor, onSubmitDres, onContext, onQuickSearch }) {
   const [neighbors, setNeighbors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hoveredShot, setHoveredShot] = useState(null);
@@ -130,7 +130,10 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                         : 'border-[var(--border-color)] hover:border-[var(--accent-primary)]'
                     }`}
                     onClick={(e) => {
-                      if (e.ctrlKey && onContext) {
+                      if (e.ctrlKey && e.shiftKey && onQuickSearch) {
+                        onQuickSearch(shot);
+                        onClose();
+                      } else if (e.ctrlKey && onContext) {
                         onContext(shot);
                       } else {
                         onZoom(shot.url);

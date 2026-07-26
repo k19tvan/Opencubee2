@@ -15,6 +15,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await runtime.manager.connect(websocket)
     try:
         await websocket.send_text(json.dumps({"type": "trake_sync", "data": runtime.trake_panel_state}))
+        await websocket.send_text(json.dumps({"type": "wrong_frames_sync", "data": runtime.wrong_frames_state}))
     except Exception:
         pass
 
@@ -26,6 +27,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if msg_type in ["new_frame", "remove_frame", "clear_panel", "global_correct_submission"]:
                 await runtime.manager.broadcast(raw_data)
+            elif msg_type == "global_wrong_submission":
+                shot_data = message.get("data", {}).get("shot")
+                if shot_data:
+                    runtime.wrong_frames_state.append(shot_data)
+                    await runtime.manager.broadcast(raw_data)
             elif msg_type == "trake_add":
                 shot_data = message.get("data", {}).get("shot")
                 if (

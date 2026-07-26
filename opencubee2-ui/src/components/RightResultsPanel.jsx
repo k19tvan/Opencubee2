@@ -15,6 +15,7 @@ const ResultItem = React.memo(({
   dresMode,
   setHoveredFrame,
   onDresSubmit,
+  isWrong = false,
 }) => {
   const [loaded, setLoaded] = useState(false);
 
@@ -34,7 +35,7 @@ const ResultItem = React.memo(({
     <div
       draggable={true}
       onDragStart={(e) => onDragStart(e, shot)}
-      className="relative bg-[var(--card-bg)] rounded-lg overflow-hidden border border-[var(--border-color)] aspect-video cursor-pointer hover:border-[var(--border-hover)] hover:ring-1 hover:ring-white/20 shadow-[var(--shadow-heavy)] group"
+      className={`relative bg-[var(--card-bg)] rounded-lg overflow-hidden border ${isWrong ? 'border-red-500 ring-2 ring-red-500/50' : 'border-[var(--border-color)]'} aspect-video cursor-pointer hover:border-[var(--border-hover)] hover:ring-1 hover:ring-white/20 shadow-[var(--shadow-heavy)] group`}
       onClick={(e) => onClick(e, shot)}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -96,6 +97,11 @@ const ResultItem = React.memo(({
           <i className="fas fa-lock text-[8px] text-white"></i>
         </div>
       )}
+      {isWrong && (
+        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-red-600/90 flex items-center justify-center z-10 opacity-0 group-hover:opacity-100 transition-opacity" title="Wrong Submission">
+          <span className="text-[10px] font-bold tracking-wider text-white">WRONG</span>
+        </div>
+      )}
     </div>
   );
 });
@@ -155,6 +161,7 @@ export default function RightResultsPanel({
   searchResults = [],
   teamworkFrames = [],
   trakeFrames = [],
+  wrongFrames = [],
   showTrake = false,
   loading = false,
   loadingMore = false,
@@ -348,9 +355,10 @@ export default function RightResultsPanel({
         dresMode={dresMode}
         setHoveredFrame={setHoveredFrame}
         onDresSubmit={onDresSubmit}
+        isWrong={wrongFrames.some(w => w.video_id === shot.video_id && w.frame_id === shot.frame_id)}
       />
     );
-  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, pushToTeam, pushToTrake, lockedVideoIds, dresMode, setHoveredFrame, onDresSubmit]);
+  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, pushToTeam, pushToTrake, lockedVideoIds, dresMode, setHoveredFrame, onDresSubmit, wrongFrames]);
   
   // Auto scroll to top CHỈ khi có một lần tìm kiếm mới (item đầu đổi tham chiếu),
   // không cuộn khi infinite-scroll nối thêm kết quả (item đầu giữ nguyên tham chiếu).
