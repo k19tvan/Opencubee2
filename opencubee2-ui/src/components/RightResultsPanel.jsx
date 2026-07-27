@@ -1,5 +1,6 @@
 // src/components/RightResultsPanel.jsx
 import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
+import { getImageUrl } from '../utils/imageUrl';
 
 // Component cho mỗi item ảnh - Đã tối ưu hóa loại bỏ State và Observer thủ công
 const ResultItem = React.memo(({ 
@@ -53,7 +54,7 @@ const ResultItem = React.memo(({
       {/* Sử dụng cơ chế Native Lazy Load mượt mà của trình duyệt */}
       <img
         ref={setImgRef}
-        src={shot.url}
+        src={getImageUrl(shot.url || shot.frame_name || shot.filepath)}
         alt="Search result"
         className={`w-full h-full object-cover ${loaded ? 'opacity-100' : 'opacity-0'}`}
         onError={handleError}
@@ -135,7 +136,7 @@ const TeamworkPanel = React.memo(({ teamworkFrames, onDragStart, onItemClick, on
           onMouseLeave={() => onMouseLeave(frame.shot)}
         >
           <img
-            src={frame.shot?.url}
+            src={getImageUrl(frame.shot?.url || frame.shot?.frame_name || frame.shot?.filepath)}
             alt="Frame"
             className="w-full h-full object-cover animate-fadeIn"
             onError={(e) => {
@@ -469,7 +470,7 @@ export default function RightResultsPanel({
                   }}
                 >
                   <img
-                    src={shot.url}
+                    src={getImageUrl(shot.url || shot.frame_name || shot.filepath)}
                     alt="Trake frame"
                     className="w-full h-full object-cover"
                     onError={(e) => {

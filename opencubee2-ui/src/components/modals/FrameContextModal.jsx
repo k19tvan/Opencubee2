@@ -146,7 +146,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                     onMouseEnter={() => setHoveredShot(shot)}
                     onMouseLeave={() => setHoveredShot(null)}
                   >
-                    <img src={shot.url} className="w-full h-full object-cover" alt="Context result" onError={(e) => { e.target.onerror = null; e.target.src = '/fallback-image.png'; }} />
+                    <img src={getImageUrl(shot.url || shot.frame_name || shot.filepath)} className="w-full h-full object-cover" alt="Context result" onError={(e) => { e.target.onerror = null; e.target.src = '/fallback-image.png'; }} />
                     
                     <div className="absolute top-2 left-2 bg-black/80 text-white px-2 py-0.5 rounded text-[10px] font-bold z-10">
                       {isCenter ? 'Original' : labelText}

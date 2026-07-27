@@ -239,11 +239,12 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
     if (!video || !onDresSubmit) return;
     const frame = Math.round(video.currentTime * fps);
     
-    // Create a mock shot object for DRES submission
+    // Create a mock shot object for DRES submission and Teamwork
     const mockShot = {
       video_id: videoId,
       frame_id: frame,
       frame_name: `${videoId}_0000_${String(frame).padStart(6, '0')}.webp`,
+      url: getVideoThumbnailUrl(videoId, frame, 480)
     };
     
     onDresSubmit(mockShot, false);
