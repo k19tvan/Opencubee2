@@ -148,6 +148,7 @@ def resolve_keyframe_path_sync(frame_name: str) -> Optional[Path]:
 
     candidate_dirs = [
         Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"),
+        Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/ocr_vlm_keyframes_full"),
         Path("/mlcv1/Datasets/HCMAI25/keyframes"),
         Path("/mlcv1/Datasets/HCMAI25/frames"),
         Path("/mlcv1/Datasets/HCMAI25/full/keyframes"),
@@ -157,14 +158,29 @@ def resolve_keyframe_path_sync(frame_name: str) -> Optional[Path]:
     for directory in candidate_dirs:
         try:
             resolved_dir = directory.resolve()
+            
+            # Check original requested extension
             target = resolved_dir / frame_name
             if target.is_file():
                 return target
+                
+            # Fallbacks for other extensions
+            base_name = os.path.splitext(frame_name)[0]
+            for ext in [".webp", ".jpg", ".jpeg", ".png"]:
+                fallback = resolved_dir / f"{base_name}{ext}"
+                if fallback.is_file():
+                    return fallback
             
+            # Also check subdirectories (e.g., K01)
             prefix = frame_name.split("_")[0]
             target_sub = resolved_dir / prefix / frame_name
             if target_sub.is_file():
                 return target_sub
+                
+            for ext in [".webp", ".jpg", ".jpeg", ".png"]:
+                fallback_sub = resolved_dir / prefix / f"{base_name}{ext}"
+                if fallback_sub.is_file():
+                    return fallback_sub
         except Exception:
             continue
 

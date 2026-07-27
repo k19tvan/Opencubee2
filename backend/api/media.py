@@ -104,6 +104,28 @@ async def get_keyframe(frame_name: str):
         )
     raise HTTPException(status_code=404, detail=f"Keyframe {frame_name} not found")
 
+@router.get("/image/{video_id}/{frame_id}")
+async def get_image(video_id: str, frame_id: str):
+    # DRES format expects something like K01_V001_0001/000000
+    frame_name = f"{video_id}_{frame_id}.webp"
+    target_path = resolve_keyframe_path_sync(frame_name)
+    if target_path:
+        return FileResponse(
+            target_path,
+            media_type="image/webp",
+            headers={"Cache-Control": "public, max-age=31536000"}
+        )
+    
+    # Fallback without extension
+    target_path = resolve_keyframe_path_sync(f"{video_id}_{frame_id}")
+    if target_path:
+        return FileResponse(
+            target_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=31536000"}
+        )
+    raise HTTPException(status_code=404, detail=f"Image {video_id}/{frame_id} not found")
+
 @router.post("/check_temporal_frames")
 async def check_temporal_frames(request: TemporalFrameRequest):
     base_name = request.base_frame_name

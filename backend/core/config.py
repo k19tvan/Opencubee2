@@ -48,7 +48,7 @@ MODEL_CONFIGS = {
 }
 
 MEILISEARCH_HOST = os.getenv("MEILISEARCH_HOST", "http://opencubee2_meilisearch:7700")
-OCR_ASR_INDEX_NAME = "ocr_asr_index"
+OCR_ASR_INDEX_NAME = "ocr_only_beit3_096"
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://192.168.20.152:2108/v1").rstrip("/")
 VLLM_MODEL = os.getenv("VLLM_MODEL")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")

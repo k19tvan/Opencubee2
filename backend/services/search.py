@@ -73,34 +73,37 @@ def _combine_and_rerank_results(
     if not vector_results or not meili_results:
         return []
 
-    vector_map = {res['frame_name']: res for res in vector_results}
-    meili_map = {res['frame_name']: res for res in meili_results}
+    # Strip extensions for matching
+    vector_map = {os.path.splitext(res['frame_name'])[0]: res for res in vector_results}
+    meili_map = {os.path.splitext(res['frame_name'])[0]: res for res in meili_results}
     
-    intersection_framenames = set(vector_map.keys()).intersection(meili_map.keys()) 
+    union_framenames = set(vector_map.keys()).union(meili_map.keys())
     
-    if not intersection_framenames:
+    if not union_framenames:
         return []
         
     final_results = []
     max_meili_score = max((res.get('score', 0.0) for res in meili_results), default=1.0) or 1.0
     
-    for fname in intersection_framenames:
-        vector_res = vector_map[fname]
-        meili_res = meili_map[fname]
+    for fname_base in union_framenames:
+        vector_res = vector_map.get(fname_base, {})
+        meili_res = meili_map.get(fname_base, {})
         
         vector_score = vector_res.get('score', 0.0)
         normalized_meili_score = meili_res.get('score', 0.0) / max_meili_score
         
         combined_score = (vector_score * vector_weight) + (normalized_meili_score * meili_weight)
         
-        final_item = vector_res.copy() 
+        # Base the final item on whichever we have
+        final_item = (vector_res or meili_res).copy()
         final_item['score'] = combined_score 
         if 'source_scores' not in final_item:
             final_item['source_scores'] = {}
         final_item['source_scores']['meilisearch'] = {"score": meili_res.get('score', 0.0), "normalized_score": normalized_meili_score}
         
         if 'url' not in final_item:
-            final_item['url'] = f"/keyframes/{fname}"
+            original_fname = vector_res.get('frame_name') or meili_res.get('frame_name') or f"{fname_base}.webp"
+            final_item['url'] = f"/keyframes/{original_fname}"
             
         final_results.append(final_item)
         
