@@ -543,7 +543,7 @@ export default function App() {
         setStagesWithHistory((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
       } else if (key === 'r') {
         event.preventDefault();
-        executeReset();
+        executeResetRef.current();
       } else if (key === 'a') {
         event.preventDefault();
         setAutoTranslate((prev) => !prev);
@@ -1234,9 +1234,11 @@ export default function App() {
     setActiveModal('video');
   };
 
-  const executeReset = () => {
+  const executeResetRef = useRef(null);
+
+  const executeReset = useCallback(() => {
     const nextStages = [createEmptyStage()];
-    const currentSearchModel = normalizeSearchModel(searchModel, DEFAULT_SEARCH_MODEL);
+    const currentSearchModel = normalizeSearchModel(latestWorkspaceRef.current?.searchModel || searchModel, DEFAULT_SEARCH_MODEL);
     submittedStagesRef.current = null;
     submittedSearchModelRef.current = currentSearchModel;
     setStages(nextStages);
@@ -1248,7 +1250,11 @@ export default function App() {
     setHasMore(false);
     setLoadingMore(false);
     setContextShot(null);
-  };
+  }, [searchModel]);
+
+  useEffect(() => {
+    executeResetRef.current = executeReset;
+  }, [executeReset]);
 
   const handleResetSearch = () => {
     toast(

@@ -21,6 +21,7 @@ from backend.services.search import (
     process_and_cluster_results,
     search_all_models,
     search_ocr_on_meilisearch_async,
+    find_similar_frames,
 )
 from backend.services.translation import google_translate_text, llm_translate_text
 
@@ -619,3 +620,14 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
         "timing_info": timings,
         "temporal_debug": temporal_debug,
     }
+
+@router.get("/similar")
+async def similar_frames(frame_name: str, limit: int = 15, threshold: float = 0.95):
+    """Fetch similar frames for a given frame name using beit3."""
+    try:
+        similar = await find_similar_frames(frame_name, limit=limit, threshold=threshold)
+        return {"results": similar}
+    except Exception as e:
+        print(f"Error finding similar frames for {frame_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

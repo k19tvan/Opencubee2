@@ -122,3 +122,19 @@ export function getVideoThumbnailUrl(videoId, frame, width = 160) {
   return `${BASE_URL}/video_thumbnail/${encodeURIComponent(videoId)}?${params.toString()}`;
 }
 
+/**
+ * Fetch similar frames for a given frame name using the backend's /similar endpoint
+ */
+export async function getSimilarFrames(frameName, limit = 15, threshold = 0.95) {
+  const url = new URL(`${BASE_URL}/similar`);
+  url.searchParams.append('frame_name', frameName);
+  url.searchParams.append('limit', limit);
+  url.searchParams.append('threshold', threshold);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+  });
+  return handleResponse(response);
+}
+

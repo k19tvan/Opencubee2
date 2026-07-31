@@ -104,6 +104,21 @@ agent_prompts = {}
 trake_panel_state = []
 wrong_frames_state = []
 frame_context_cache = {}
+similar_frames_map = {}
+
+def load_similar_frames_json():
+    global similar_frames_map
+    json_path = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/similar_frames.json"
+    if os.path.exists(json_path):
+        import json
+        try:
+            print("--- Loading similar frames JSON into RAM (Background)... ---")
+            with open(json_path, 'r', encoding='utf-8') as f:
+                similar_frames_map = json.load(f)
+            print(f"--- Similar frames JSON loaded! ({len(similar_frames_map)} entries) ---")
+        except Exception as e:
+            print(f"Error loading similar frames JSON: {e}")
+
 
 def load_frame_context_json():
     global frame_context_cache
@@ -130,6 +145,7 @@ def startup_runtime():
 
     import threading
     threading.Thread(target=load_frame_context_json, daemon=True).start()
+    threading.Thread(target=load_similar_frames_json, daemon=True).start()
 
 
     try:

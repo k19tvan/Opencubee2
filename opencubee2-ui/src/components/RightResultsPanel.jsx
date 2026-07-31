@@ -1,6 +1,7 @@
 // src/components/RightResultsPanel.jsx
 import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { getImageUrl } from '../utils/imageUrl';
+import { getSimilarFrames } from '../api';
 
 // Component cho mỗi item ảnh - Đã tối ưu hóa loại bỏ State và Observer thủ công
 const ResultItem = React.memo(({ 
@@ -32,11 +33,36 @@ const ResultItem = React.memo(({
     if (node && node.complete && node.naturalWidth > 0) setLoaded(true);
   }, []);
 
+  const [similarFrames, setSimilarFrames] = useState(null);
+  const [isHovering, setIsHovering] = useState(false);
+  const [showCollapse, setShowCollapse] = useState(false);
+
+  useEffect(() => {
+    let timeout;
+    if (isHovering && similarFrames === null) {
+      timeout = setTimeout(async () => {
+        try {
+          const frameName = shot.frame_name || (shot.filepath ? shot.filepath.split('/').pop() : null);
+          if (frameName) {
+            const res = await getSimilarFrames(frameName);
+            if (res && res.results) {
+              setSimilarFrames(res.results);
+            }
+          }
+        } catch (e) {
+          console.error(e);
+          setSimilarFrames([]);
+        }
+      }, 300);
+    }
+    return () => clearTimeout(timeout);
+  }, [isHovering, similarFrames, shot]);
+
   return (
     <div
       draggable={true}
       onDragStart={(e) => onDragStart(e, shot)}
-      className={`relative bg-[var(--card-bg)] rounded-lg overflow-hidden border ${isWrong ? 'border-red-500 ring-2 ring-red-500/50' : 'border-[var(--border-color)]'} aspect-video cursor-pointer hover:border-[var(--border-hover)] hover:ring-1 hover:ring-white/20 shadow-[var(--shadow-heavy)] group`}
+      className={`relative bg-[var(--card-bg)] rounded-lg border ${isWrong ? 'border-red-500 ring-2 ring-red-500/50' : 'border-[var(--border-color)]'} aspect-video cursor-pointer hover:border-[var(--border-hover)] hover:ring-1 hover:ring-white/20 shadow-[var(--shadow-heavy)] group`}
       onClick={(e) => onClick(e, shot)}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -45,10 +71,12 @@ const ResultItem = React.memo(({
       onMouseEnter={() => {
         onMouseEnter(shot);
         setHoveredFrame?.(shot);
+        setIsHovering(true);
       }}
       onMouseLeave={() => {
         onMouseLeave(shot);
         setHoveredFrame?.(null);
+        setIsHovering(false);
       }}
     >
       {/* Sử dụng cơ chế Native Lazy Load mượt mà của trình duyệt */}
@@ -56,15 +84,15 @@ const ResultItem = React.memo(({
         ref={setImgRef}
         src={getImageUrl(shot.url || shot.frame_name || shot.filepath)}
         alt="Search result"
-        className={`w-full h-full object-cover ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        className={`w-full h-full object-cover rounded-lg ${loaded ? 'opacity-100' : 'opacity-0'}`}
         onError={handleError}
         onLoad={() => setLoaded(true)}
         loading="lazy"
         decoding="async"
       />
       {/* Gradient sheen at the bottom for depth */}
-      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-slate-950/50 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none" />
-      <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 backdrop-blur-[2px] pointer-events-none group-hover:pointer-events-auto">
+      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-slate-950/50 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none rounded-b-lg" />
+      <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 backdrop-blur-[2px] pointer-events-none group-hover:pointer-events-auto rounded-lg">
         <button
           className="w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-white hover:text-slate-950 hover:border-transparent active:scale-95 cursor-pointer"
           onClick={(e) => { e.stopPropagation(); onPushToTeam(shot); }}
@@ -103,6 +131,56 @@ const ResultItem = React.memo(({
           <span className="text-[10px] font-bold tracking-wider text-white">WRONG</span>
         </div>
       )}
+      
+      {/* Duplicates Badge & Popover */}
+      {similarFrames && similarFrames.length > 0 && (() => {
+        const intros = similarFrames.filter(s => s.video_id === shot.video_id);
+        const duplicates = similarFrames.filter(s => s.video_id !== shot.video_id);
+        
+        return (
+          <div 
+            className="absolute top-1.5 right-1.5 z-20"
+            onMouseEnter={() => setShowCollapse(true)}
+            onMouseLeave={() => setShowCollapse(false)}
+          >
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+              {intros.length > 0 && (
+                <div className="px-1.5 py-0.5 rounded bg-blue-600/90 flex items-center justify-center cursor-pointer">
+                  <span className="text-[10px] font-bold tracking-wider text-white">
+                    {intros.length} INTRO
+                  </span>
+                </div>
+              )}
+              {duplicates.length > 0 && (
+                <div className="px-1.5 py-0.5 rounded bg-orange-600/90 flex items-center justify-center cursor-pointer">
+                  <span className="text-[10px] font-bold tracking-wider text-white">
+                    <i className="fas fa-copy mr-1"></i>{duplicates.length} DUP
+                  </span>
+                </div>
+              )}
+            </div>
+            {showCollapse && (
+              <div className="absolute top-full right-0 mt-1 w-48 bg-[var(--card-bg)] border border-[var(--border-color)] rounded shadow-xl p-2 flex flex-col gap-2 max-h-60 overflow-y-auto z-50">
+                {similarFrames.map((sim, idx) => {
+                  const isIntro = sim.video_id === shot.video_id;
+                  return (
+                    <div key={idx} className={`relative aspect-video rounded overflow-hidden cursor-pointer hover:ring-2 ${isIntro ? 'hover:ring-blue-500' : 'hover:ring-orange-500'}`} onClick={(e) => { e.stopPropagation(); onClick(e, sim); }}>
+                      <img src={getImageUrl(sim.url || sim.frame_name || sim.filepath)} alt="Duplicate" className="w-full h-full object-cover" loading="lazy" />
+                      <div className="absolute top-0 left-0 px-1.5 py-0.5 bg-black/70 text-[8px] font-bold text-white rounded-br">
+                        {isIntro ? 'INTRO' : 'DUP'}
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-[9px] text-white p-0.5 px-1 truncate flex justify-between">
+                        <span>{sim.video_id}</span>
+                        <span>{sim.frame_id}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 });

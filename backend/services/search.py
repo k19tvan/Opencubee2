@@ -394,4 +394,15 @@ async def call_groq_chat(messages: List[Any]) -> str:
     except Exception as e:
         print(f"Error calling Groq API: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to enhance query: {e}")
+
+async def find_similar_frames(frame_name: str, limit: int = 20, threshold: float = 0.985) -> List[Dict]:
+    """Finds near-duplicate frames using the pre-computed JSON loaded into memory."""
+    similar_frames = runtime.similar_frames_map.get(frame_name, [])
     
+    # We can filter again by threshold if needed, but the JSON already has a threshold
+    filtered_frames = [
+        frame for frame in similar_frames
+        if frame.get('score', 0) >= threshold
+    ]
+    
+    return filtered_frames[:limit]
