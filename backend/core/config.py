@@ -30,25 +30,25 @@ QDRANT_GRPC_PORT = 6334
 
 MODEL_CONFIGS = {
     "bge": {
-        "worker_url": "http://127.0.0.1:2001/embed",
+        "worker_url": os.getenv("BGE_WORKER_URL", 'http://127.0.0.1:2001/embed'),
         "collection": "bge",
     },
     "beit3": {
-        "worker_url": "http://127.0.0.1:2002/embed",
+        "worker_url": os.getenv("BEIT3_WORKER_URL", 'http://127.0.0.1:2002/embed'),
         "collection": "beit3",
     },
     "metaclip2": {
-        "worker_url": "http://127.0.0.1:2003/embed",
+        "worker_url": os.getenv("METACLIP2_WORKER_URL", 'http://127.0.0.1:2208/embed'),
         "collection": "metaclip2",
     },
     "jina_v5_omni": {
-        "worker_url": "http://127.0.0.1:2004/embed",
+        "worker_url": os.getenv("JINA_V5_OMNI_WORKER_URL", 'http://127.0.0.1:2004/embed'),
         "collection": "jina_v5_omni",
     }
 }
 
 MEILISEARCH_HOST = os.getenv("MEILISEARCH_HOST", "http://opencubee2_meilisearch:7700")
-OCR_ASR_INDEX_NAME = "ocr_only_beit3_096"
+OCR_ASR_INDEX_NAME = os.getenv("OCR_ASR_INDEX_NAME", "ocr_only_beit3_096")
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://192.168.20.152:2108/v1").rstrip("/")
 VLLM_MODEL = os.getenv("VLLM_MODEL")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
