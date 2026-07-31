@@ -83,6 +83,7 @@ export async function enhanceQuery(payload) {
   const response = await fetch(`${BASE_URL}/enhance_query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
     body: JSON.stringify(payload),
   });
   return handleResponse(response);
@@ -120,5 +121,4 @@ export function getVideoThumbnailUrl(videoId, frame, width = 160) {
   });
   return `${BASE_URL}/video_thumbnail/${encodeURIComponent(videoId)}?${params.toString()}`;
 }
-
 

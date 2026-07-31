@@ -52,6 +52,7 @@ OCR_ASR_INDEX_NAME = os.getenv("OCR_ASR_INDEX_NAME", "ocr_only_beit3_096")
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://192.168.20.152:2108/v1").rstrip("/")
 VLLM_MODEL = os.getenv("VLLM_MODEL")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+TRANSLATE_PROVIDER = os.getenv("TRANSLATE_PROVIDER", "llm_translate").strip().lower()
 
 try:
     MAX_FRAME_LIMIT = int(os.getenv("MAX_FRAME_LIMIT", "200"))

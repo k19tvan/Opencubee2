@@ -1,5 +1,5 @@
 // src/components/StageCard.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { BASE_URL } from '../api';
 
@@ -12,7 +12,18 @@ const getBackendUrl = (path) => {
   return `${BASE_URL.replace(/\/$/, '')}${path}`;
 };
 
-export default function StageCard({ stage, index, finalQueryPreview = '', focusRequest = null, onDelete, onChange, onSearch, onDragStart, onDragEnd }) {
+export default function StageCard({
+  stage,
+  index,
+  finalQueryPreview = '',
+  focusRequest = null,
+  onDelete,
+  onChange,
+  onSearch,
+  canDelete = false,
+  isReordering = false,
+  onReorderPointerDown,
+}) {
   const [type, setType]               = useState(stage.queryType || 'text');
   const [ocrActive, setOcrActive]     = useState(stage.ocrActive ?? !!stage.ocrText);
   const [asrActive, setAsrActive]     = useState(stage.asrActive ?? !!stage.asrText);
@@ -203,7 +214,7 @@ export default function StageCard({ stage, index, finalQueryPreview = '', focusR
         try {
           const shotData = JSON.parse(rawJson);
           if (shotData && shotData.url) targetUrl = shotData.url;
-        } catch (_) {}
+        } catch {}
       }
       const htmlContent = e.dataTransfer.getData('text/html');
       if (htmlContent && !targetUrl) {
@@ -221,7 +232,7 @@ export default function StageCard({ stage, index, finalQueryPreview = '', focusR
             const urlObj = new URL(targetUrl);
             const pathParts = urlObj.pathname.split('/');
             filename = pathParts[pathParts.length - 1] || "dragged_frame.jpg";
-          } catch (_) {}
+          } catch {}
           const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
           uploadImageFile(file);
         } catch (err) {
@@ -255,23 +266,21 @@ export default function StageCard({ stage, index, finalQueryPreview = '', focusR
 
   return (
     <div
-      className="group relative bg-[var(--card-bg)] rounded-lg p-4 border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-heavy)] transition-all duration-300 ease-smooth"
-      draggable
-      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(); }}
-      onDragEnd={() => onDragEnd?.()}
+      className={`group relative bg-[var(--card-bg)] rounded-lg p-4 border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-heavy)] transition-[border-color,box-shadow,transform,opacity] duration-150 ease-out ${isReordering ? 'scale-[0.985] opacity-80 shadow-[var(--shadow-heavy)] cursor-grabbing' : 'cursor-grab active:cursor-grabbing'}`}
+      onPointerDown={(e) => onReorderPointerDown?.(e)}
     >
       <div className="absolute -top-2.5 left-4 bg-[var(--text-primary)] w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] text-[var(--bg-primary)] shadow-sm z-10 transition-transform duration-300 ease-spring group-hover:scale-110">
         {index + 1}
       </div>
       {/* Drag handle */}
       <div
-        className="absolute -top-2.5 right-8 w-5 h-5 rounded-full flex items-center justify-center text-[var(--text-secondary)] cursor-grab active:cursor-grabbing hover:text-[var(--text-primary)] transition-colors z-10 opacity-0 group-hover:opacity-100"
+        className="absolute -top-3 right-8 w-7 h-7 rounded-full border border-[var(--border-color)] bg-[var(--card-bg)] flex items-center justify-center text-[var(--text-secondary)] cursor-grab active:cursor-grabbing hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:scale-110 transition-all z-20 opacity-70 group-hover:opacity-100 touch-none"
         title="Drag to reorder"
-        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => onReorderPointerDown?.(e)}
       >
-        <i className="fas fa-grip-vertical text-[9px]"></i>
+        <i className="fas fa-grip-vertical text-[11px] pointer-events-none"></i>
       </div>
-      {index > 0 && (
+      {canDelete && (
         <button
           className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all duration-150 cursor-pointer"
           onClick={onDelete}

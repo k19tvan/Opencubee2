@@ -13,7 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from backend.core import runtime
-from backend.core.config import MAX_FRAME_LIMIT, MODEL_CONFIGS, TEMP_UPLOAD_DIR
+from backend.core.config import MAX_FRAME_LIMIT, MODEL_CONFIGS, TEMP_UPLOAD_DIR, TRANSLATE_PROVIDER
 from backend.schemas.search import EnhanceQueryRequest, StageData, TemporalSearchRequest, UnifiedSearchRequest
 from backend.services.search import (
     _combine_and_rerank_results,
@@ -22,6 +22,7 @@ from backend.services.search import (
     search_all_models,
     search_ocr_on_meilisearch_async,
 )
+from backend.services.translation import google_translate_text, llm_translate_text
 
 router = APIRouter()
 
@@ -144,6 +145,29 @@ async def enhance_query(request_data: EnhanceQueryRequest):
     if not query:
         raise HTTPException(status_code=400, detail="Query is required.")
 
+    if request_data.literal_translate:
+        try:
+            if TRANSLATE_PROVIDER in {"google", "google_translate", "googletrans"}:
+                enhanced = await google_translate_text(query)
+            elif TRANSLATE_PROVIDER in {"llm", "llm_translate", "vllm"}:
+                enhanced = await llm_translate_text(runtime.llm_translate, query)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid TRANSLATE_PROVIDER. Use 'llm_translate' or 'google_translate'.",
+                )
+
+            print(f"Translated Query ({TRANSLATE_PROVIDER}): {enhanced}")
+            return {"enhanced_query": enhanced}
+        except HTTPException as exc:
+            if exc.status_code == 500:
+                raise
+            print(f"Translation failed with provider '{TRANSLATE_PROVIDER}': {exc.detail}. Using original query.")
+            return {"enhanced_query": query, "translation_error": str(exc.detail)}
+        except Exception as exc:
+            print(f"Translation failed with provider '{TRANSLATE_PROVIDER}': {exc}. Using original query.")
+            return {"enhanced_query": query, "translation_error": str(exc)}
+
     context_parts = []
     if request_data.ocr_query:
         context_parts.append(f"OCR filter: {request_data.ocr_query.strip()}")
@@ -151,37 +175,23 @@ async def enhance_query(request_data: EnhanceQueryRequest):
         context_parts.append(f"ASR filter: {request_data.asr_query.strip()}")
     context_text = "\n".join(context_parts) if context_parts else "No OCR/ASR filters."
 
-    if request_data.literal_translate:
-        system_prompt = """
-            Rewrite the user's video/image retrieval query into a concise, vivid visual search query. 
-            Preserve all concrete entities, actions, colors, locations, text, and temporal intent. 
-            Do not add facts that are not implied. Return only the improved query, no quotes or explanation. 
-            If the user's query is in vietnamese, change it to english. If the user's query is in english, keep it in english.
-        """
-        human_prompt = f"{query}"
-    else:
-        system_prompt = """
-            Rewrite the user's video/image retrieval query into a concise, vivid visual search query. 
-            Preserve all concrete entities, actions, colors, locations, text, and temporal intent. 
-            Do not add facts that are not implied. Return only the improved query, no quotes or explanation. 
-            If the user's query is in vietnamese, change it to english. If the user's query is in english, keep it in english.
-        """
-        human_prompt = f"Query:\n{query}\n\nContext:\n{context_text}"
+    system_prompt = """
+        Rewrite the user's video/image retrieval query into a concise, vivid visual search query.
+        Preserve all concrete entities, actions, colors, locations, text, and temporal intent.
+        Do not add facts that are not implied. Return only the improved query, no quotes or explanation.
+        If the user's query is in vietnamese, change it to english. If the user's query is in english, keep it in english.
+    """
+    human_prompt = f"Query:\n{query}\n\nContext:\n{context_text}"
 
     messages = [
         ("system", system_prompt),
         ("human", human_prompt)
     ]
 
-    if request_data.literal_translate:
-        if runtime.llm_translate is None:
-            raise HTTPException(status_code=503, detail="Gemini LLM for translation is not initialized.")
-        enhanced = runtime.llm_translate.invoke(messages).content.strip()
-    else:
-        if runtime.llm_enhance is None:
-            raise HTTPException(status_code=503, detail="Groq LLM for query enhancement is not initialized.")
-        enhanced = runtime.llm_enhance.invoke(messages).content.strip()
-        
+    if runtime.llm_enhance is None:
+        raise HTTPException(status_code=503, detail="Groq LLM for query enhancement is not initialized.")
+    enhanced = runtime.llm_enhance.invoke(messages).content.strip()
+
     print(f"Enhanced Query: {enhanced}")
 
     return {"enhanced_query": enhanced}

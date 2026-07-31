@@ -1,15 +1,13 @@
 // src/components/LeftSearchPanel.jsx
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import StageCard from './StageCard';
 import { googleImageSearch } from '../api';
 
 export default function LeftSearchPanel({
   stages,
-  searchModel = 'bge',
   lastFinalQueries = [],
   setStages,
-  setSearchModel,
   focusRequest = null,
   onSearch,
   onAgentSearch,
@@ -19,8 +17,36 @@ export default function LeftSearchPanel({
   const [googleQuery, setGoogleQuery] = useState('');
   const [googleResults, setGoogleResults] = useState([]);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
-  const dragSourceIndex = useRef(null);
+  const [reorderingStageId, setReorderingStageId] = useState(null);
+  const reorderIndexRef = useRef(null);
+  const panelRef = useRef(null);
+  const reorderFrameRef = useRef(null);
+
+  const isInteractiveStageTarget = useCallback((target) => {
+    return !!target?.closest?.([
+      'button',
+      'input',
+      'textarea',
+      'select',
+      'option',
+      'label',
+      'a',
+      '[contenteditable="true"]',
+      '[data-no-stage-drag]',
+    ].join(','));
+  }, []);
+
+  const moveStage = useCallback((from, to) => {
+    if (from === to || from === null || to === null) return;
+    setStages((prev) => {
+      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    reorderIndexRef.current = to;
+  }, [setStages]);
 
   const addStage = () => {
     setStages((prev) => [...prev, {
@@ -41,39 +67,93 @@ export default function LeftSearchPanel({
   };
 
   const handleStageDelete = (id) => {
-    setStages((prev) => prev.filter((s) => s.id !== id));
+    setStages((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
   };
 
-  const handleDragStart = (idx) => {
-    dragSourceIndex.current = idx;
-  };
+  const getTargetStageIndex = useCallback((clientY) => {
+    const panel = panelRef.current;
+    if (!panel) return null;
 
-  const handleDragEnter = (idx) => {
-    if (dragSourceIndex.current === null || dragSourceIndex.current === idx) return;
-    setDragOverIndex(idx);
-  };
+    const stageNodes = [...panel.querySelectorAll('[data-stage-index]')];
+    if (stageNodes.length === 0) return null;
 
-  const handleDragEnd = () => {
-    dragSourceIndex.current = null;
-    setDragOverIndex(null);
-  };
-
-  const handleDrop = (idx) => {
-    const from = dragSourceIndex.current;
-    if (from === null || from === idx) {
-      dragSourceIndex.current = null;
-      setDragOverIndex(null);
-      return;
+    let targetIndex = stageNodes.length - 1;
+    for (const node of stageNodes) {
+      const rect = node.getBoundingClientRect();
+      const nodeIndex = Number(node.dataset.stageIndex);
+      if (Number.isNaN(nodeIndex)) continue;
+      if (clientY < rect.top + rect.height / 2) {
+        targetIndex = nodeIndex;
+        break;
+      }
     }
-    setStages((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(idx, 0, moved);
-      return next;
-    });
-    dragSourceIndex.current = null;
-    setDragOverIndex(null);
-  };
+
+    return targetIndex;
+  }, []);
+
+  const handleReorderPointerDown = useCallback((idx, event) => {
+    if (stages.length <= 1) return;
+    if (isInteractiveStageTarget(event.target)) return;
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const draggedStageId = stages[idx]?.id || null;
+    let hasStarted = false;
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+
+    const handlePointerMove = (moveEvent) => {
+      const deltaX = Math.abs(moveEvent.clientX - startX);
+      const deltaY = Math.abs(moveEvent.clientY - startY);
+      if (!hasStarted) {
+        if (deltaX < 4 && deltaY < 4) return;
+        hasStarted = true;
+        reorderIndexRef.current = idx;
+        setReorderingStageId(draggedStageId);
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'grabbing';
+      }
+
+      moveEvent.preventDefault();
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      const rect = panel.getBoundingClientRect();
+      const edgeSize = 56;
+      if (moveEvent.clientY < rect.top + edgeSize) {
+        panel.scrollTop -= 14;
+      } else if (moveEvent.clientY > rect.bottom - edgeSize) {
+        panel.scrollTop += 14;
+      }
+
+      if (reorderFrameRef.current) return;
+      reorderFrameRef.current = window.requestAnimationFrame(() => {
+        reorderFrameRef.current = null;
+        const to = getTargetStageIndex(moveEvent.clientY);
+        if (to === null || to === reorderIndexRef.current) return;
+        moveStage(reorderIndexRef.current, to);
+      });
+    };
+
+    const handlePointerUp = () => {
+      if (reorderFrameRef.current) {
+        window.cancelAnimationFrame(reorderFrameRef.current);
+        reorderFrameRef.current = null;
+      }
+      reorderIndexRef.current = null;
+      setReorderingStageId(null);
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+      document.removeEventListener('pointercancel', handlePointerUp);
+    };
+
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+    document.addEventListener('pointercancel', handlePointerUp);
+  }, [getTargetStageIndex, isInteractiveStageTarget, moveStage, stages]);
 
   const executeGoogleSearch = async () => {
     if (!googleQuery.trim()) return;
@@ -124,7 +204,7 @@ export default function LeftSearchPanel({
       className="w-full h-full border-r border-[var(--border-color)] flex flex-col overflow-hidden transition-all duration-300"
       style={{ background: 'var(--card-bg)' }}
     >
-      <div className="flex-grow overflow-y-auto p-4 space-y-4">
+      <div ref={panelRef} className="flex-grow overflow-y-auto p-4 space-y-4">
         <div className="pb-4 border-b border-[var(--border-color)]">
           <div className="flex items-center gap-2 text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2.5">
             <i className="fab fa-google text-red-500"></i> Google Image Search
@@ -173,10 +253,9 @@ export default function LeftSearchPanel({
           {stages.map((stage, idx) => (
             <div
               key={stage.id}
-              className={`animate-fadeInUp transition-all duration-200 ${dragOverIndex === idx ? 'opacity-50 scale-[0.98]' : ''}`}
+              data-stage-index={idx}
+              className="animate-fadeInUp rounded-lg transition-transform duration-150 ease-out"
               style={{ animationDelay: `${idx * 60}ms` }}
-              onDragOver={(e) => { e.preventDefault(); handleDragEnter(idx); }}
-              onDrop={() => handleDrop(idx)}
             >
               <StageCard
                 stage={stage}
@@ -186,8 +265,9 @@ export default function LeftSearchPanel({
                 onDelete={() => handleStageDelete(stage.id)}
                 onChange={handleStageChange}
                 onSearch={onSearch}
-                onDragStart={() => handleDragStart(idx)}
-                onDragEnd={handleDragEnd}
+                canDelete={stages.length > 1}
+                isReordering={reorderingStageId === stage.id}
+                onReorderPointerDown={(event) => handleReorderPointerDown(idx, event)}
               />
             </div>
           ))}

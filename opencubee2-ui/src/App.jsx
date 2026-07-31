@@ -204,11 +204,13 @@ export default function App() {
   const latestWorkspaceRef = useRef(null);
   const submittedStagesRef = useRef(null);
   const submittedSearchModelRef = useRef(DEFAULT_SEARCH_MODEL);
+  const previousAutoTranslateRef = useRef(autoTranslate);
   const activeAgentRun = workspaceTabs.find((tab) => tab.id === activeWorkspaceTab);
 
   latestWorkspaceRef.current = {
     stages,
     searchModel,
+    autoTranslate,
     searchResults,
     lastFinalQueries,
     resultIsAmbiguous,
@@ -230,6 +232,10 @@ export default function App() {
     setStages(snapshot.stages || [createEmptyStage()]);
     submittedStagesRef.current = snapshot.submittedStages || snapshot.stages || null;
     setSearchModel(normalizeSearchModel(snapshot.searchModel, DEFAULT_SEARCH_MODEL));
+    if (typeof snapshot.autoTranslate === 'boolean') {
+      setAutoTranslate(snapshot.autoTranslate);
+      previousAutoTranslateRef.current = snapshot.autoTranslate;
+    }
     submittedSearchModelRef.current = normalizeSearchModel(snapshot.submittedSearchModel || snapshot.searchModel, DEFAULT_SEARCH_MODEL);
     setSearchResults(snapshot.searchResults || []);
     setLastFinalQueries(snapshot.lastFinalQueries || []);
@@ -243,6 +249,15 @@ export default function App() {
     setLoading(false);
     setLoadingMore(false);
   };
+
+  useEffect(() => {
+    if (previousAutoTranslateRef.current === autoTranslate) return;
+    previousAutoTranslateRef.current = autoTranslate;
+    submittedStagesRef.current = null;
+    setLastFinalQueries([]);
+    setPage(1);
+    setHasMore(false);
+  }, [autoTranslate]);
 
   const saveWorkspaceHistoryEntry = (overrides = {}, { replace = false } = {}) => {
     if (!latestWorkspaceRef.current) return;
@@ -529,6 +544,9 @@ export default function App() {
       } else if (key === 'r') {
         event.preventDefault();
         executeReset();
+      } else if (key === 'a') {
+        event.preventDefault();
+        setAutoTranslate((prev) => !prev);
       }
     };
 
@@ -1218,10 +1236,10 @@ export default function App() {
 
   const executeReset = () => {
     const nextStages = [createEmptyStage()];
+    const currentSearchModel = normalizeSearchModel(searchModel, DEFAULT_SEARCH_MODEL);
     submittedStagesRef.current = null;
-    submittedSearchModelRef.current = DEFAULT_SEARCH_MODEL;
+    submittedSearchModelRef.current = currentSearchModel;
     setStages(nextStages);
-    setSearchModel(DEFAULT_SEARCH_MODEL);
     setSearchResults([]);
     setLastFinalQueries([]);
     setResultIsAmbiguous(false);

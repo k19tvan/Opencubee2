@@ -86,43 +86,24 @@ def probe_video_info(video_path: Path) -> Dict[str, Any]:
 def render_video_thumbnail(video_path_str: str, frame_id: int, width: int) -> bytes:
     import cv2
     import numpy as np
-
-    # Try cv2 first
-    try:
-        capture = cv2.VideoCapture(video_path_str)
-        if capture.isOpened():
-            capture.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
-            ok, frame = capture.read()
-            capture.release()
-            
-            if ok and frame is not None:
-                source_height, source_width = frame.shape[:2]
-                if source_width > width:
-                    height = max(1, round(source_height * (width / source_width)))
-                    frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
-
-                encoded, buffer = cv2.imencode(
-                    ".jpg",
-                    frame,
-                    [int(cv2.IMWRITE_JPEG_QUALITY), 72],
-                )
-                if encoded:
-                    return buffer.tobytes()
-    except Exception:
-        pass
-
-    # Fallback to PyAV (import av)
     import av
+    
+    # Use PyAV for frame-accurate seeking
     try:
         container = av.open(video_path_str)
         stream = container.streams.video[0]
         fps = stream.average_rate
+        
+        target_pts = None
         if fps and fps > 0:
             target_time = float(frame_id) / float(fps)
             target_pts = int(target_time / stream.time_base)
             container.seek(target_pts, stream=stream, backward=True, any_frame=False)
             
         for av_frame in container.decode(stream):
+            if target_pts is not None and av_frame.pts is not None and av_frame.pts < target_pts:
+                continue
+                
             img = av_frame.to_ndarray(format='bgr24')
             source_height, source_width = img.shape[:2]
             if source_width > width:
@@ -139,6 +120,30 @@ def render_video_thumbnail(video_path_str: str, frame_id: int, width: int) -> by
                 
         raise ValueError(f"Could not decode frame {frame_id}.")
     except Exception as e:
+        # Fallback to OpenCV if PyAV fails
+        try:
+            capture = cv2.VideoCapture(video_path_str)
+            if capture.isOpened():
+                capture.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+                ok, frame = capture.read()
+                capture.release()
+                
+                if ok and frame is not None:
+                    source_height, source_width = frame.shape[:2]
+                    if source_width > width:
+                        height = max(1, round(source_height * (width / source_width)))
+                        frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+                    encoded, buffer = cv2.imencode(
+                        ".jpg",
+                        frame,
+                        [int(cv2.IMWRITE_JPEG_QUALITY), 72],
+                    )
+                    if encoded:
+                        return buffer.tobytes()
+        except Exception:
+            pass
+            
         raise ValueError(f"Could not process video: {str(e)}")
 
 @lru_cache(maxsize=100000)

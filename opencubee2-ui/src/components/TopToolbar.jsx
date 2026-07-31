@@ -221,7 +221,7 @@ export default function TopToolbar({
           icon="fas fa-language"
           label="Auto Translate"
           active={autoTranslate}
-          title={autoTranslate ? "Auto Translate: ON" : "Auto Translate: OFF"}
+          title={autoTranslate ? "Auto Translate: ON (Alt + A)" : "Auto Translate: OFF (Alt + A)"}
           theme={theme}
         />
         <ToolBtn
