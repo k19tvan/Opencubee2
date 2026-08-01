@@ -397,7 +397,19 @@ async def call_groq_chat(messages: List[Any]) -> str:
 
 async def find_similar_frames(frame_name: str, limit: int = 20, threshold: float = 0.985) -> List[Dict]:
     """Finds near-duplicate frames using the pre-computed JSON loaded into memory."""
-    similar_frames = runtime.similar_frames_map.get(frame_name, [])
+    similar_frames = runtime.similar_frames_map.get(frame_name)
+    
+    if similar_frames is None:
+        import os
+        base_name = os.path.splitext(frame_name)[0]
+        for ext in ['.webp', '.jpg', '.png', '.jpeg']:
+            alt_name = base_name + ext
+            similar_frames = runtime.similar_frames_map.get(alt_name)
+            if similar_frames is not None:
+                break
+                
+    if similar_frames is None:
+        similar_frames = []
     
     # We can filter again by threshold if needed, but the JSON already has a threshold
     filtered_frames = [

@@ -134,8 +134,18 @@ const ResultItem = React.memo(({
       
       {/* Duplicates Badge & Popover */}
       {similarFrames && similarFrames.length > 0 && (() => {
-        const intros = similarFrames.filter(s => s.video_id === shot.video_id);
-        const duplicates = similarFrames.filter(s => s.video_id !== shot.video_id);
+        // Filter out frames that are in the same video but too close (<= 300 frames distance)
+        const validSimilar = similarFrames.filter(s => {
+          if (s.video_id === shot.video_id) {
+            return Math.abs(s.frame_id - shot.frame_id) > 300;
+          }
+          return true; // Different videos are always valid duplicates
+        });
+
+        if (validSimilar.length === 0) return null;
+
+        const intros = validSimilar.filter(s => s.video_id === shot.video_id);
+        const duplicates = validSimilar.filter(s => s.video_id !== shot.video_id);
         
         return (
           <div 
@@ -161,7 +171,7 @@ const ResultItem = React.memo(({
             </div>
             {showCollapse && (
               <div className="absolute top-full right-0 mt-1 w-48 bg-[var(--card-bg)] border border-[var(--border-color)] rounded shadow-xl p-2 flex flex-col gap-2 max-h-60 overflow-y-auto z-50">
-                {similarFrames.map((sim, idx) => {
+                {validSimilar.map((sim, idx) => {
                   const isIntro = sim.video_id === shot.video_id;
                   return (
                     <div key={idx} className={`relative aspect-video rounded overflow-hidden cursor-pointer hover:ring-2 ${isIntro ? 'hover:ring-blue-500' : 'hover:ring-orange-500'}`} onClick={(e) => { e.stopPropagation(); onClick(e, sim); }}>
