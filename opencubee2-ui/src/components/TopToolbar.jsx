@@ -62,6 +62,9 @@ export default function TopToolbar({
   onOpenDresLogin,
   showTrake,
   setShowTrake,
+  similarityScopeEnabled,
+  hasSimilarityScope,
+  onToggleSimilarityScope,
   isClustered,
   setIsClustered,
   isAmbiguous,
@@ -241,6 +244,19 @@ export default function TopToolbar({
           theme={theme}
         />
         <ToolBtn onClick={() => setShowTrake(!showTrake)} icon="fas fa-stream" label="Trake" active={showTrake} theme={theme} />
+        <ToolBtn
+          onClick={onToggleSimilarityScope}
+          icon="fas fa-images"
+          label="Similar only"
+          active={similarityScopeEnabled}
+          disabled={!hasSimilarityScope}
+          title={hasSimilarityScope
+            ? (similarityScopeEnabled
+              ? 'Similarity-only search: ON. Click to search all videos.'
+              : 'Search only within the prepared similarity list.')
+            : 'Run a similarity image search first to prepare a similarity list.'}
+          theme={theme}
+        />
         <ToolBtn onClick={() => onOpenModal('filter')} icon="fas fa-shapes" label="Filters" theme={theme} />
         <ToolBtn onClick={() => setIsClustered(!isClustered)} icon="fas fa-object-group" label="Cluster" active={isClustered} theme={theme} />
         <ToolBtn onClick={() => setIsAmbiguous(!isAmbiguous)} icon="fas fa-random" label="Ambiguous" active={isAmbiguous} theme={theme} />

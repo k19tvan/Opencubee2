@@ -205,16 +205,25 @@ async def upload_image(image: UploadFile = File(...)):
     if not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Invalid file type.")
     
-    extension = Path(image.filename).suffix
-    temp_filename = f"{uuid.uuid4()}{extension}"
+    temp_filename = f"{uuid.uuid4()}.jpg"
     temp_filepath = TEMP_UPLOAD_DIR / temp_filename
     
-    def write_file():
-        with temp_filepath.open("wb") as buffer:
-            shutil.copyfileobj(image.file, buffer)
+    def write_and_convert_file():
+        from PIL import Image
+        import io
+        img_bytes = image.file.read()
+        try:
+            with Image.open(io.BytesIO(img_bytes)) as pil_img:
+                if pil_img.mode in ("RGBA", "P"):
+                    pil_img = pil_img.convert("RGB")
+                pil_img.save(temp_filepath, format="JPEG")
+        except Exception as e:
+            # Fallback to direct write if PIL fails
+            with temp_filepath.open("wb") as buffer:
+                buffer.write(img_bytes)
             
     try:
-        await asyncio.to_thread(write_file)
+        await asyncio.to_thread(write_and_convert_file)
     except Exception as e:
         print(f"File upload disk write failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to write uploaded image: {e}")

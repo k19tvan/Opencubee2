@@ -23,8 +23,6 @@ export default function StageCard({
   canDelete = false,
   isReordering = false,
   onReorderPointerDown,
-  similarityScopeActive = false,
-  onClearSimilarityScope,
 }) {
   const [type, setType]               = useState(stage.queryType || 'text');
   const [ocrActive, setOcrActive]     = useState(stage.ocrActive ?? !!stage.ocrText);
@@ -338,16 +336,6 @@ export default function StageCard({
         >
           <i className="fas fa-wand-magic-sparkles text-[11px]"></i>
         </button>
-        {similarityScopeActive && (
-          <button
-            className={`${pillCls(true)} flex-shrink-0`}
-            onClick={onClearSimilarityScope}
-            title="Return to normal search (search all videos)"
-            aria-label="Return to normal search"
-          >
-            <i className="fas fa-globe text-[11px]"></i>
-          </button>
-        )}
       </div>
 
       <div className="space-y-2">

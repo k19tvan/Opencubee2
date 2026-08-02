@@ -164,8 +164,10 @@ export default function App() {
   const [stageFocusRequest, setStageFocusRequest] = useState(null);
 
   const [searchResults, setSearchResults] = useState([]);
-  // A quick image (similarity) search creates a persistent candidate scope.
+  // A quick image search prepares a candidate list. It is only used after the
+  // user explicitly enables Similar only in the top toolbar.
   const [similarityScope, setSimilarityScope] = useState(null);
+  const [similarityScopeEnabled, setSimilarityScopeEnabled] = useState(false);
   const [lastFinalQueries, setLastFinalQueries] = useState([]);
   const [resultIsAmbiguous, setResultIsAmbiguous] = useState(false);
   const [teamworkFrames, setTeamworkFrames] = useState([]);
@@ -229,6 +231,7 @@ export default function App() {
     autoTranslate,
     searchResults,
     similarityScope,
+    similarityScopeEnabled,
     lastFinalQueries,
     resultIsAmbiguous,
     isClustered,
@@ -254,8 +257,13 @@ export default function App() {
       previousAutoTranslateRef.current = snapshot.autoTranslate;
     }
     submittedSearchModelRef.current = normalizeSearchModel(snapshot.submittedSearchModel || snapshot.searchModel, DEFAULT_SEARCH_MODEL);
-    submittedSimilarityScopeRef.current = snapshot.submittedSimilarityScope || snapshot.similarityScope || null;
+    submittedSimilarityScopeRef.current = snapshot.similarityScopeEnabled === true
+      ? (snapshot.submittedSimilarityScope || snapshot.similarityScope || null)
+      : null;
     setSimilarityScope(snapshot.similarityScope || null);
+    // Old history entries did not have this flag, so they must never silently
+    // turn similarity-only search back on.
+    setSimilarityScopeEnabled(snapshot.similarityScopeEnabled === true);
     setSearchResults(snapshot.searchResults || []);
     setLastFinalQueries(snapshot.lastFinalQueries || []);
     setResultIsAmbiguous(snapshot.resultIsAmbiguous || false);
@@ -997,9 +1005,10 @@ export default function App() {
         : submittedStagesRef.current || sourceStages;
       const modelPayload = buildSearchModelPayload(activeSearchModel);
       const hasScopeOverride = Object.prototype.hasOwnProperty.call(options, 'similarityScope');
-      const activeSimilarityScope = hasScopeOverride
+      const requestedSimilarityScope = hasScopeOverride
         ? options.similarityScope
         : (pageNumber === 1 ? similarityScope : submittedSimilarityScopeRef.current);
+      const activeSimilarityScope = similarityScopeEnabled ? requestedSimilarityScope : null;
       const candidateFrameNames = activeSimilarityScope?.frameNames || null;
       if (pageNumber === 1) {
         submittedStagesRef.current = activeStages;
@@ -1068,15 +1077,20 @@ export default function App() {
       }
 
       let nextSimilarityScope = activeSimilarityScope;
+      // A newly created list must never turn similarity-only mode on by itself.
+      const nextSimilarityScopeEnabled = options.activateSimilarityScope
+        ? false
+        : similarityScopeEnabled;
       if (options.activateSimilarityScope) {
         const frameNames = collectFrameNames(localResults);
         nextSimilarityScope = frameNames.length > 0
           ? { frameNames, sourceFrameName: options.similaritySourceFrameName || null }
           : null;
         setSimilarityScope(nextSimilarityScope);
-        submittedSimilarityScopeRef.current = nextSimilarityScope;
+        setSimilarityScopeEnabled(false);
+        submittedSimilarityScopeRef.current = null;
         if (nextSimilarityScope) {
-          toast.success(`Similarity scope enabled: ${frameNames.length} frames.`);
+          toast.success(`Similarity list ready: ${frameNames.length} frames.`);
         }
       }
 
@@ -1102,7 +1116,8 @@ export default function App() {
           searchModel: activeSearchModel,
           submittedSearchModel: activeSearchModel,
           similarityScope: nextSimilarityScope,
-          submittedSimilarityScope: nextSimilarityScope,
+          submittedSimilarityScope: nextSimilarityScopeEnabled ? nextSimilarityScope : null,
+          similarityScopeEnabled: nextSimilarityScopeEnabled,
           searchResults: pageNumber === 1
             ? localResults
             : [...(latestWorkspaceRef.current?.searchResults || []), ...localResults],
@@ -1125,11 +1140,12 @@ export default function App() {
   };
 
   const handleQuickImageSearch = async (shot) => {
-    // This first retrieval is global; its returned frames become the scope for
-    // subsequent text, image, OCR, ASR, and temporal searches.
+    // This retrieval is always global. Its returned frames are saved as a
+    // similarity list, but are not used to restrict later searches by default.
     setActiveWorkspaceTab('manual');
     setSimilarityScope(null);
     submittedSimilarityScopeRef.current = null;
+    setSimilarityScopeEnabled(false);
     setLoading(true);
     setSearchResults([]);
     setTimingInfo(null);
@@ -1307,20 +1323,27 @@ export default function App() {
     executeResetRef.current = executeReset;
   }, [executeReset]);
 
-  const handleClearSimilarityScope = useCallback(() => {
-    if (!similarityScope) return;
-    setSimilarityScope(null);
-    submittedSimilarityScopeRef.current = null;
+  const handleToggleSimilarityScope = useCallback(() => {
+    if (!similarityScope?.frameNames?.length) {
+      toast.error('Run a similarity image search first to create a similarity list.');
+      return;
+    }
+    const nextEnabled = !similarityScopeEnabled;
+    setSimilarityScopeEnabled(nextEnabled);
+    submittedSimilarityScopeRef.current = nextEnabled ? similarityScope : null;
     setPage(1);
     setHasMore(false);
     saveWorkspaceHistoryEntry({
-      similarityScope: null,
-      submittedSimilarityScope: null,
+      similarityScope,
+      submittedSimilarityScope: nextEnabled ? similarityScope : null,
+      similarityScopeEnabled: nextEnabled,
       page: 1,
       hasMore: false,
     });
-    toast.success('Normal search restored. Future queries search all videos.');
-  }, [similarityScope]);
+    toast.success(nextEnabled
+      ? 'Similarity-only search enabled. Future queries use the similarity list.'
+      : 'Similarity-only search disabled. Future queries search all videos.');
+  }, [similarityScope, similarityScopeEnabled]);
 
   const handleResetSearch = () => {
     toast(
@@ -1387,6 +1410,9 @@ export default function App() {
             setTheme={setTheme}
             showTrake={showTrake}
             setShowTrake={setShowTrake}
+            similarityScopeEnabled={similarityScopeEnabled}
+            hasSimilarityScope={Boolean(similarityScope?.frameNames?.length)}
+            onToggleSimilarityScope={handleToggleSimilarityScope}
             isClustered={isClustered}
             setIsClustered={setIsClusteredWithHistory}
             isAmbiguous={isAmbiguous}
@@ -1478,8 +1504,6 @@ export default function App() {
                       onSearch={executeSearch}
                       onAgentSearch={handleStartAgentSearch}
                       onQuickSearch={handleQuickImageSearch}
-                      similarityScopeActive={Boolean(similarityScope?.frameNames?.length)}
-                      onClearSimilarityScope={handleClearSimilarityScope}
                       loading={loading}
                       theme={effectiveTheme}
                     />

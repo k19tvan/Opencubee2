@@ -12,8 +12,6 @@ export default function LeftSearchPanel({
   onSearch,
   onAgentSearch,
   onQuickSearch,
-  similarityScopeActive = false,
-  onClearSimilarityScope,
   loading,
 }) {
   const [googleQuery, setGoogleQuery] = useState('');
@@ -270,8 +268,6 @@ export default function LeftSearchPanel({
                 canDelete={stages.length > 1}
                 isReordering={reorderingStageId === stage.id}
                 onReorderPointerDown={(event) => handleReorderPointerDown(idx, event)}
-                similarityScopeActive={similarityScopeActive}
-                onClearSimilarityScope={onClearSimilarityScope}
               />
             </div>
           ))}
