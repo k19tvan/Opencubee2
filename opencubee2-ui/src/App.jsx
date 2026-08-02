@@ -1159,7 +1159,13 @@ export default function App() {
       let tempImageName = null;
       let imageUrl = null;
 
-      if (shot.frame_name) {
+      // Frames captured in VideoPreview carry a display frame_name, but that
+      // keyframe does not exist on the backend filesystem. Upload their canvas
+      // image instead; only persisted search-result keyframes can use _frame_.
+      const isDynamicVideoFrame = shot.filepath?.startsWith('dynamic-frame-')
+        || shot.url?.startsWith('data:image');
+
+      if (shot.frame_name && !isDynamicVideoFrame) {
         tempImageName = `_frame_:${shot.frame_name}`;
         imageUrl = shot.url || getImageUrl(shot.frame_name);
       } else {
