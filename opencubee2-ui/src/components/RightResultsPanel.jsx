@@ -57,6 +57,30 @@ const ResultItem = React.memo(({
     }
     return () => clearTimeout(timeout);
   }, [isHovering, similarFrames, shot]);
+  useEffect(() => {
+    if (!isHovering) return;
+    const handleKeyDown = (e) => {
+      if (e.repeat) return;
+      if (e.ctrlKey && !e.shiftKey && e.code === 'Space') {
+        e.preventDefault();
+        e.stopPropagation();
+        onPushToTeam(shot);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isHovering, shot, onPushToTeam]);
+
+  useEffect(() => {
+    if (!showCollapse) return;
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') {
+        setShowCollapse(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showCollapse]);
 
   return (
     <div
@@ -92,16 +116,17 @@ const ResultItem = React.memo(({
       />
       {/* Gradient sheen at the bottom for depth */}
       <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-slate-950/50 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none rounded-b-lg" />
-      <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 backdrop-blur-[2px] pointer-events-none group-hover:pointer-events-auto rounded-lg">
+      {/* Teamwork, Pin, Submit actions in corners */}
+      <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-20">
         <button
-          className="w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-white hover:text-slate-950 hover:border-transparent active:scale-95 cursor-pointer"
+          className="absolute bottom-1.5 left-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent cursor-pointer pointer-events-auto shadow-md"
           onClick={(e) => { e.stopPropagation(); onPushToTeam(shot); }}
           title="Send to Team"
         >
           <i className="fas fa-users"></i>
         </button>
         <button
-          className="w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-white hover:text-slate-950 hover:border-transparent active:scale-95 cursor-pointer"
+          className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent cursor-pointer pointer-events-auto shadow-md"
           onClick={(e) => { e.stopPropagation(); onPushToTrake(shot); }}
           title="Pin to Trake"
         >
@@ -109,7 +134,7 @@ const ResultItem = React.memo(({
         </button>
         {(dresMode === 'KIS' || dresMode === 'QA') && (
           <button
-            className={`w-9 h-9 rounded-lg border flex items-center justify-center text-xs text-white hover:border-transparent active:scale-95 cursor-pointer ${
+            className={`absolute top-1.5 right-1.5 w-9 h-9 rounded-lg border flex items-center justify-center text-xs text-white hover:border-transparent cursor-pointer pointer-events-auto ${
               dresMode === 'KIS' 
                 ? 'bg-emerald-600/90 border-emerald-400/30 hover:bg-emerald-500' 
                 : 'bg-blue-600/90 border-blue-400/30 hover:bg-blue-500'
@@ -126,71 +151,111 @@ const ResultItem = React.memo(({
           <i className="fas fa-lock text-[8px] text-white"></i>
         </div>
       )}
-      {isWrong && (
-        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-red-600/90 flex items-center justify-center z-10 opacity-0 group-hover:opacity-100 transition-opacity" title="Wrong Submission">
-          <span className="text-[10px] font-bold tracking-wider text-white">WRONG</span>
-        </div>
-      )}
-      
-      {/* Duplicates Badge & Popover */}
-      {similarFrames && similarFrames.length > 0 && (() => {
-        // Filter out frames that are in the same video but too close (<= 300 frames distance)
-        const validSimilar = similarFrames.filter(s => {
-          if (s.video_id === shot.video_id) {
-            return Math.abs(s.frame_id - shot.frame_id) > 300;
-          }
-          return true; // Different videos are always valid duplicates
-        });
-
-        if (validSimilar.length === 0) return null;
-
-        const intros = validSimilar.filter(s => s.video_id === shot.video_id);
-        const duplicates = validSimilar.filter(s => s.video_id !== shot.video_id);
-        
-        return (
-          <div 
-            className="absolute top-1.5 right-1.5 z-20"
-            onMouseEnter={() => setShowCollapse(true)}
-            onMouseLeave={() => setShowCollapse(false)}
-          >
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-              {intros.length > 0 && (
-                <div className="px-1.5 py-0.5 rounded bg-blue-600/90 flex items-center justify-center cursor-pointer">
-                  <span className="text-[10px] font-bold tracking-wider text-white">
-                    {intros.length} INTRO
-                  </span>
-                </div>
-              )}
-              {duplicates.length > 0 && (
-                <div className="px-1.5 py-0.5 rounded bg-orange-600/90 flex items-center justify-center cursor-pointer">
-                  <span className="text-[10px] font-bold tracking-wider text-white">
-                    <i className="fas fa-copy mr-1"></i>{duplicates.length} DUP
-                  </span>
-                </div>
-              )}
-            </div>
-            {showCollapse && (
-              <div className="absolute top-full right-0 mt-1 w-48 bg-[var(--card-bg)] border border-[var(--border-color)] rounded shadow-xl p-2 flex flex-col gap-2 max-h-60 overflow-y-auto z-50">
-                {validSimilar.map((sim, idx) => {
-                  const isIntro = sim.video_id === shot.video_id;
-                  return (
-                    <div key={idx} className={`relative aspect-video rounded overflow-hidden cursor-pointer hover:ring-2 ${isIntro ? 'hover:ring-blue-500' : 'hover:ring-orange-500'}`} onClick={(e) => { e.stopPropagation(); onClick(e, sim); }}>
-                      <img src={getImageUrl(sim.url || sim.frame_name || sim.filepath)} alt="Duplicate" className="w-full h-full object-cover" loading="lazy" />
-                      <div className="absolute top-0 left-0 px-1.5 py-0.5 bg-black/70 text-[8px] font-bold text-white rounded-br">
-                        {isIntro ? 'INTRO' : 'DUP'}
-                      </div>
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-[9px] text-white p-0.5 px-1 truncate flex justify-between">
-                        <span>{sim.video_id}</span>
-                        <span>{sim.frame_id}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+      <div className="absolute top-1.5 left-1.5 flex flex-col gap-1 z-30 pointer-events-none">
+        {isWrong && (
+          <div className="px-1.5 py-0.5 rounded bg-red-600/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity w-fit pointer-events-auto shadow" title="Wrong Submission">
+            <span className="text-[10px] font-bold tracking-wider text-white">WRONG</span>
           </div>
-        );
-      })()}
+        )}
+        
+        {/* Duplicates Badge & Popover */}
+        {similarFrames && similarFrames.length > 0 && (() => {
+          // Filter out frames that are in the same video but too close (<= 100 frames distance)
+          const validSimilar = similarFrames.filter(s => {
+            if (s.video_id === shot.video_id) {
+              return Math.abs(s.frame_id - shot.frame_id) > 100;
+            }
+            return true;
+          });
+
+          if (validSimilar.length === 0) return null;
+
+          const intros = validSimilar.filter(s => s.video_id === shot.video_id);
+          const duplicates = validSimilar.filter(s => s.video_id !== shot.video_id);
+          
+          return (
+            <div className="pointer-events-auto relative">
+              <div 
+                className={`flex gap-1 transition-opacity shadow-lg ${showCollapse ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                onClick={(e) => { e.stopPropagation(); setShowCollapse(prev => !prev); }}
+              >
+                {intros.length > 0 && (
+                  <div className="px-1.5 py-0.5 rounded bg-blue-600/90 flex items-center justify-center cursor-pointer shadow hover:bg-blue-500">
+                    <span className="text-[10px] font-bold tracking-wider text-white">
+                      {intros.length} INTRO
+                    </span>
+                  </div>
+                )}
+                {duplicates.length > 0 && (
+                  <div className="px-1.5 py-0.5 rounded bg-orange-600/90 flex items-center justify-center cursor-pointer shadow hover:bg-orange-500">
+                    <span className="text-[10px] font-bold tracking-wider text-white">
+                      <i className="fas fa-copy mr-1"></i>{duplicates.length} DUP
+                    </span>
+                  </div>
+                )}
+              </div>
+              {showCollapse && (
+                <>
+                  {/* Invisible overlay to close popup when clicking outside */}
+                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowCollapse(false); }} />
+                  <div className={`absolute top-full left-0 mt-1 bg-[var(--card-bg)] border border-[var(--border-color)] rounded shadow-2xl p-2 grid gap-2 max-h-[400px] overflow-y-auto z-50 ${validSimilar.length === 1 ? 'w-[160px] grid-cols-1' : 'w-[320px] grid-cols-2'}`}>
+                  {[...intros, ...duplicates].map((sim, idx) => {
+                    const isIntro = sim.video_id === shot.video_id;
+                    return (
+                      <div 
+                        key={idx} 
+                        draggable={true}
+                        onDragStart={(e) => onDragStart(e, sim)}
+                        className={`relative aspect-video rounded overflow-hidden cursor-pointer hover:ring-2 group/mini ${isIntro ? 'hover:ring-blue-500 ring-blue-900' : 'hover:ring-orange-500 ring-orange-900'} ring-1`} 
+                        onClick={(e) => { e.stopPropagation(); onClick(e, sim); }}
+                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(sim); }}
+                      >
+                        <img src={getImageUrl(sim.url || sim.frame_name || sim.filepath)} alt="Duplicate" className="w-full h-full object-cover" loading="lazy" />
+                        <div className="absolute top-0 left-0 px-1 py-0.5 bg-black/80 text-[8px] font-bold text-white rounded-br z-10">
+                          {isIntro ? 'INTRO' : 'DUP'}
+                        </div>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[9px] text-white px-1 py-0.5 flex justify-between z-10">
+                          <span className="font-semibold truncate max-w-[60%]">{sim.video_id}</span>
+                          <span>{sim.frame_id}</span>
+                        </div>
+                        
+                        {/* Mini frame actions */}
+                        <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover/mini:opacity-100 transition-opacity z-20">
+                          {(dresMode === 'KIS' || dresMode === 'QA') && (
+                            <button
+                              className="absolute top-1 right-1 w-7 h-7 rounded bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-[10px] hover:bg-blue-500 hover:border-transparent pointer-events-auto shadow-md"
+                              onClick={(e) => { e.stopPropagation(); onDresSubmit?.(sim); }}
+                              title="Submit to DRES"
+                            >
+                              <i className={`fas ${dresMode === 'KIS' ? 'fa-paper-plane' : 'fa-comment-dots'}`}></i>
+                            </button>
+                          )}
+                          <button 
+                            className="absolute bottom-1 left-1 w-7 h-7 rounded bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-[10px] hover:bg-slate-700 hover:border-transparent pointer-events-auto shadow-md"
+                            onClick={(e) => { e.stopPropagation(); onPushToTeam(sim); }} 
+                            title="Send to Team"
+                          >
+                            <i className="fas fa-users"></i>
+                          </button>
+                          <button 
+                            className="absolute bottom-1 right-1 w-7 h-7 rounded bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-[10px] hover:bg-slate-700 hover:border-transparent pointer-events-auto shadow-md"
+                            onClick={(e) => { e.stopPropagation(); onPushToTrake(sim); }} 
+                            title="Pin to Trake"
+                          >
+                            <i className="fas fa-thumbtack"></i>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            </div>
+          );
+        })()}
+      </div>
+
     </div>
   );
 });
@@ -314,24 +379,16 @@ export default function RightResultsPanel({
 
   useEffect(() => {
     const handleShortcut = (event) => {
-      if (event.ctrlKey && event.code === 'Space') {
+      if (event.ctrlKey && event.code === 'Space' && !event.shiftKey) {
         event.preventDefault();
         if (pushedShortcutRef.current) return;
         pushedShortcutRef.current = true;
         
-        if (event.shiftKey) {
-          if (hoveredTeamShotRef.current && onDresSubmit) {
-            onDresSubmit(hoveredTeamShotRef.current);
-          } else if (hoveredShotRef.current && onDresSubmit) {
-            onDresSubmit(hoveredShotRef.current);
-          }
-        } else {
-          if (hoveredTeamShotRef.current) {
-            removeFromTeam(hoveredTeamShotRef.current);
-            hoveredTeamShotRef.current = null;
-          } else if (hoveredShotRef.current) {
-            pushToTeam(hoveredShotRef.current);
-          }
+        if (hoveredTeamShotRef.current) {
+          removeFromTeam(hoveredTeamShotRef.current);
+          hoveredTeamShotRef.current = null;
+        } else if (hoveredShotRef.current) {
+          pushToTeam(hoveredShotRef.current);
         }
       }
     };
@@ -364,20 +421,24 @@ export default function RightResultsPanel({
   const handleTeamMouseEnter = useCallback((shot) => {
     hoveredTeamShotRef.current = shot || null;
     hoveredShotRef.current = null;
-  }, []);
+    setHoveredFrame?.(shot);
+  }, [setHoveredFrame]);
 
   const handleTeamMouseLeave = useCallback((shot) => {
     if (hoveredTeamShotRef.current === shot) hoveredTeamShotRef.current = null;
-  }, []);
+    setHoveredFrame?.(null);
+  }, [setHoveredFrame]);
   const pushToTrake = useCallback((shot) => {
     onPushToTrake(shot);
   }, [onPushToTrake]);
   
   const handleDragStart = useCallback((e, shot) => {
     if (!shot) return;
-    e.dataTransfer.setData('application/json', JSON.stringify(shot));
-    e.dataTransfer.setData('text/uri-list', shot.url);
-    e.dataTransfer.setData('text/plain', shot.frame_name);
+    const fullUrl = getImageUrl(shot.url || shot.frame_name || shot.filepath);
+    const enrichedShot = { ...shot, url: fullUrl };
+    e.dataTransfer.setData('application/json', JSON.stringify(enrichedShot));
+    e.dataTransfer.setData('text/uri-list', fullUrl);
+    e.dataTransfer.setData('text/plain', shot.frame_name || fullUrl);
     e.dataTransfer.effectAllowed = 'copy';
   }, []);
   
@@ -395,7 +456,7 @@ export default function RightResultsPanel({
       e.preventDefault();
       onContext(shot);
     } else {
-      onZoom(shot.url);
+      onZoom(getImageUrl(shot.url || shot.frame_name || shot.filepath));
     }
   }, [onQuickSearch, onContext, onZoom, onToggleLock]);
 

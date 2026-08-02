@@ -23,6 +23,8 @@ export default function StageCard({
   canDelete = false,
   isReordering = false,
   onReorderPointerDown,
+  similarityScopeActive = false,
+  onClearSimilarityScope,
 }) {
   const [type, setType]               = useState(stage.queryType || 'text');
   const [ocrActive, setOcrActive]     = useState(stage.ocrActive ?? !!stage.ocrText);
@@ -209,13 +211,24 @@ export default function StageCard({
       uploadImageFile(files[0]);
     } else {
       let targetUrl = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+      let internalFrameName = null;
       const rawJson = e.dataTransfer.getData('application/json');
       if (rawJson) {
         try {
           const shotData = JSON.parse(rawJson);
           if (shotData && shotData.url) targetUrl = shotData.url;
+          if (shotData && shotData.frame_name) internalFrameName = shotData.frame_name;
         } catch {}
       }
+      
+      if (internalFrameName) {
+        // Skip fetching the URL and uploading! Just tell the backend to use the internal frame.
+        setTempImageName(`_frame_:${internalFrameName}`);
+        // Optionally set the image preview to the targetUrl so the UI looks good
+        if (targetUrl) setImagePreview(targetUrl);
+        return;
+      }
+
       const htmlContent = e.dataTransfer.getData('text/html');
       if (htmlContent && !targetUrl) {
         const parser = new DOMParser();
@@ -325,6 +338,16 @@ export default function StageCard({
         >
           <i className="fas fa-wand-magic-sparkles text-[11px]"></i>
         </button>
+        {similarityScopeActive && (
+          <button
+            className={`${pillCls(true)} flex-shrink-0`}
+            onClick={onClearSimilarityScope}
+            title="Return to normal search (search all videos)"
+            aria-label="Return to normal search"
+          >
+            <i className="fas fa-globe text-[11px]"></i>
+          </button>
+        )}
       </div>
 
       <div className="space-y-2">
