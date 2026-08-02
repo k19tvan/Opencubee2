@@ -14,6 +14,7 @@ import DresLoginModal from './components/modals/DresLoginModal';
 import DresSubmitModal from './components/modals/DresSubmitModal';
 import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, startAgentSearch, getWsUrl, DRES_BASE_URL } from './api';
 import { getImageUrl } from './utils/imageUrl'; // Imported from separate utility to keep Fast Refresh functional
+import { getDresFrameNumber } from './utils/frameNumber';
 
 // WS now derives from the same backend origin as the REST API (see api.js),
 // so the agent stream and /agent/start always hit the same server.
@@ -604,7 +605,7 @@ export default function App() {
             ...data.shot,
             url: data.shot.url?.startsWith('data:image')
               ? data.shot.url
-              : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
+              : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
           }
         };
         setTeamworkFrames((prev) => {
@@ -630,7 +631,7 @@ export default function App() {
             ...(frame.shot || {}),
             url: frame.shot?.url?.startsWith('data:image')
               ? frame.shot.url
-              : (getImageUrl(frame.shot?.frame_name || frame.shot?.url) || frame.shot?.url),
+              : (getImageUrl(frame.shot?.url || frame.shot?.frame_name) || frame.shot?.url),
           },
         })).filter((frame) => frame.shot && getShotKey(frame.shot));
         setTeamworkFrames(mappedData);
@@ -644,13 +645,13 @@ export default function App() {
       } else if (type === 'wrong_frames_sync') {
         const mappedData = (data || []).map(shot => ({
           ...shot,
-          url: getImageUrl(shot.frame_name)
+          url: getImageUrl(shot.url || shot.frame_name)
         }));
         setWrongFrames(mappedData);
       } else if (type === 'trake_sync') {
         const mappedData = (data || []).map(shot => ({
           ...shot,
-          url: getImageUrl(shot.frame_name)
+          url: getImageUrl(shot.url || shot.frame_name)
         }));
         setTrakeFrames(mappedData);
       } else if (type === 'trake_add') {
@@ -658,7 +659,7 @@ export default function App() {
           ...data.shot,
           url: data.shot.url?.startsWith('data:image')
             ? data.shot.url
-            : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
+            : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
         };
         setTrakeFrames(prev => {
           if (prev.some(s => s.filepath === mappedShot.filepath)) return prev;
@@ -671,7 +672,7 @@ export default function App() {
           ...data.shot,
           url: data.shot.url?.startsWith('data:image')
             ? data.shot.url
-            : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
+            : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
         };
         setCorrectSubmission(mappedShot);
         setTeamworkFrames([{ shot: mappedShot, user: data.user || { name: 'SYSTEM', color: '#10b981' } }]);
@@ -739,7 +740,7 @@ export default function App() {
 
   const addTeamworkFrameLocal = (shot) => {
     if (!shot) return;
-    const shotWithUrl = { ...shot, url: getImageUrl(shot.frame_name || shot.url) || shot.url };
+    const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
     const incomingKey = getShotKey(shotWithUrl);
     setTeamworkFrames((prev) => {
       if (incomingKey && prev.some((frame) => getShotKey(frame.shot) === incomingKey)) return prev;
@@ -749,7 +750,7 @@ export default function App() {
 
   const handlePushToTrake = (shot) => {
     if (!shot) return;
-    const shotWithUrl = { ...shot, url: getImageUrl(shot.frame_name || shot.url) || shot.url };
+    const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
 
     // Add locally first
     setTrakeFrames(prev => {
@@ -823,7 +824,7 @@ export default function App() {
         const { getVideoInfo } = await import('./api');
         const info = await getVideoInfo(trakeFrames[0].video_id);
         const fps = info?.fps || 25;
-        const time = trakeFrames[0].frame_id / fps;
+        const time = getDresFrameNumber(trakeFrames[0]) / fps;
         const ms = Math.floor(time * 1000);
 
         const payload = {
@@ -884,7 +885,7 @@ export default function App() {
         const { getVideoInfo } = await import('./api');
         const info = await getVideoInfo(shot.video_id);
         const fps = info?.fps || 25;
-        const time = shot.frame_id / fps;
+        const time = getDresFrameNumber(shot) / fps;
         const ms = Math.floor(time * 1000);
 
         const payload = {
@@ -1089,9 +1090,6 @@ export default function App() {
         setSimilarityScope(nextSimilarityScope);
         setSimilarityScopeEnabled(false);
         submittedSimilarityScopeRef.current = null;
-        if (nextSimilarityScope) {
-          toast.success(`Similarity list ready: ${frameNames.length} frames.`);
-        }
       }
 
       if (pageNumber === 1) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { getVideoInfo, DRES_BASE_URL } from '../../api';
+import { getDresFrameNumber } from '../../utils/frameNumber';
 
 export default function DresSubmitModal({ 
   onClose, 
@@ -43,7 +44,7 @@ export default function DresSubmitModal({
     }
 
     const videoId = shot?.video_id || '';
-    const frameId = shot?.frame_id || 0;
+    const frameId = getDresFrameNumber(shot);
     const timeMs = calculateTime(frameId);
 
     const payload = {
@@ -117,7 +118,7 @@ export default function DresSubmitModal({
                 onChange={(e) => setQaAnswer(e.target.value)}
                 required
               />
-              <p>Format: QA-&lt;ANSWER&gt;-{shot?.video_id || 'VID'}-{calculateTime(shot?.frame_id || 0)}</p>
+              <p>Format: QA-&lt;ANSWER&gt;-{shot?.video_id || 'VID'}-{calculateTime(getDresFrameNumber(shot))}</p>
             </div>
           </div>
 
