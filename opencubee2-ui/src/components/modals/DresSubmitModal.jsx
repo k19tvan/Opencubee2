@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { getVideoInfo, DRES_BASE_URL } from '../../api';
-import { getDresFrameNumber } from '../../utils/frameNumber';
+import { DRES_BASE_URL } from '../../api';
 
 export default function DresSubmitModal({ 
   onClose, 
@@ -11,16 +10,7 @@ export default function DresSubmitModal({
 }) {
   const [qaAnswer, setQaAnswer] = useState('');
   const [loading, setLoading] = useState(false);
-  const [fps, setFps] = useState(25);
   const inputRef = useRef(null);
-
-  useEffect(() => {
-    if (shot?.video_id) {
-      getVideoInfo(shot.video_id).then(info => {
-        if (info?.fps) setFps(info.fps);
-      }).catch(err => console.error("Failed to fetch FPS", err));
-    }
-  }, [shot]);
 
   // Focus input automatically
   useEffect(() => {
@@ -28,8 +18,6 @@ export default function DresSubmitModal({
       inputRef.current.focus();
     }
   }, []);
-
-  const calculateTime = (frameId) => Math.floor((frameId / fps) * 1000);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,14 +31,12 @@ export default function DresSubmitModal({
       return;
     }
 
-    const videoId = shot?.video_id || '';
-    const frameId = getDresFrameNumber(shot);
-    const timeMs = calculateTime(frameId);
-
     const payload = {
       answerSets: [{
         answers: [{
-          text: `QA-${qaAnswer.trim()}-${videoId}-${timeMs}`
+          // QA accepts the answer verbatim; it must not be decorated with
+          // frame, timestamp, or mode metadata.
+          text: qaAnswer.trim()
         }]
       }]
     };
@@ -118,7 +104,7 @@ export default function DresSubmitModal({
                 onChange={(e) => setQaAnswer(e.target.value)}
                 required
               />
-              <p>Format: QA-&lt;ANSWER&gt;-{shot?.video_id || 'VID'}-{calculateTime(getDresFrameNumber(shot))}</p>
+              <p>Submitted exactly as typed.</p>
             </div>
           </div>
 
