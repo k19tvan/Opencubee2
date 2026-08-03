@@ -1000,10 +1000,16 @@ export default function App() {
       const pageSize = 100;
       let response;
       const sourceStages = overrideStages || stages;
-      const activeSearchModel = requestedSearchModel;
       const activeStages = pageNumber === 1
-        ? await enhanceStagesForSearch(sourceStages, activeSearchModel)
+        ? await enhanceStagesForSearch(sourceStages, requestedSearchModel)
         : submittedStagesRef.current || sourceStages;
+      // Image mode is native BGE-VL composed retrieval.  Keep this client-side
+      // override for an accurate request payload; the backend enforces it too.
+      const activeSearchModel = activeStages.some(
+        (stage) => stage.queryType === 'image' && stage.tempImageName
+      )
+        ? ['bge']
+        : requestedSearchModel;
       const modelPayload = buildSearchModelPayload(activeSearchModel);
       const hasScopeOverride = Object.prototype.hasOwnProperty.call(options, 'similarityScope');
       const requestedSimilarityScope = hasScopeOverride

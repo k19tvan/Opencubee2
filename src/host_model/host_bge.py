@@ -44,7 +44,11 @@ async def embed_endpoint(
             }
             
             # Sinh vector dung hợp
-            embedding = model.encode(query, convert_to_numpy=True).tolist()
+            # BGE-VL's composed-retrieval API expects a *batch* of dictionaries.
+            # Passing the dictionary directly makes SentenceTransformer iterate its
+            # keys ("image" and "text"), so image + textual feedback either fails
+            # or produces an invalid embedding.
+            embedding = model.encode([query], convert_to_numpy=True)[0].tolist()
             return {"embedding": [embedding]}
             
         # TRƯỜNG HỢP 2: Chỉ có tệp ảnh tải lên (Tìm kiếm bằng ảnh thô)
@@ -52,12 +56,12 @@ async def embed_endpoint(
             content = await image_file.read()
             image = Image.open(io.BytesIO(content)).convert("RGB")
             
-            embedding = model.encode(image, convert_to_numpy=True).tolist()
+            embedding = model.encode([image], convert_to_numpy=True)[0].tolist()
             return {"embedding": [embedding]}
         
         # TRƯỜNG HỢP 3: Chỉ có truy vấn văn bản thô
         elif text_query:
-            embedding = model.encode(text_query, convert_to_numpy=True).tolist()
+            embedding = model.encode([text_query], convert_to_numpy=True)[0].tolist()
             return {"embedding": [embedding]}
         
         else:

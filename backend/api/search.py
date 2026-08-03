@@ -27,6 +27,25 @@ from backend.services.translation import google_translate_text, llm_translate_te
 
 router = APIRouter()
 
+# Image and composed image+text retrieval are deliberately not configurable.
+# The BGE-VL collection was built with BGE embeddings, and BGE-VL is the model
+# that supports native image + textual-feedback (CIR) embeddings.
+IMAGE_SEARCH_MODEL = "bge"
+
+
+def image_search_models(image_name: Optional[str], requested_models: list[str]) -> list[str]:
+    """Return the only valid model set for an image-mode query.
+
+    Enforcing this in the API is intentional: the UI model picker is only a
+    convenience and must not be able to make an image vector incompatible with
+    the BGE Qdrant collection.
+    """
+    # `image_search_text` is feedback for an already supplied image.  On its
+    # own it is a plain text query and must retain the selected text models.
+    if image_name:
+        return [IMAGE_SEARCH_MODEL]
+    return [model for model in requested_models if model in MODEL_CONFIGS]
+
 google_search_session = requests.Session()
 google_search_session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -81,11 +100,14 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
     else:
         image_name = search_model.query_image_name
 
-    models_to_use = search_model.models or ["beit3"]
-    models_to_use = [m for m in models_to_use if m in MODEL_CONFIGS]
+    models_to_use = image_search_models(
+        image_name,
+        search_model.models or ["beit3"],
+    )
     if not models_to_use: models_to_use = ["beit3"]
         
-    weights = search_model.model_weights or {"beit3": 1.0}
+    weights = ({IMAGE_SEARCH_MODEL: 1.0} if models_to_use == [IMAGE_SEARCH_MODEL]
+               else search_model.model_weights or {"beit3": 1.0})
 
     has_vector_query = bool(search_model.query_text or image_name or search_model.image_search_text)
     has_filter_query = bool(search_model.ocr_query or search_model.asr_query) 
@@ -232,14 +254,21 @@ async def _temporal_search_legacy(request_data: TemporalSearchRequest):
         async def _stage_vector(stg=stage):
             if not (stg.query or stg.query_image_name or stg.image_search_text):
                 return []
-            results_by_model = await search_all_models(
+            stage_models = image_search_models(
+                stg.query_image_name,
                 models_to_use,
+            ) or ["beit3"]
+            stage_weights = ({IMAGE_SEARCH_MODEL: 1.0}
+                             if stage_models == [IMAGE_SEARCH_MODEL]
+                             else {model: weights.get(model, 1.0) for model in stage_models})
+            results_by_model = await search_all_models(
+                stage_models,
                 text=stg.query,
                 image_name=stg.query_image_name,
                 image_text=stg.image_search_text,
                 limit=MAX_FRAME_LIMIT,
             )
-            return fuse_results(results_by_model, {m: weights.get(m, 1.0) for m in models_to_use})
+            return fuse_results(results_by_model, stage_weights)
 
         async def _stage_ocr(stg=stage):
             if not (stg.ocr_query or stg.asr_query):
@@ -384,8 +413,15 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
         async def vector_search():
             if not has_vector_query:
                 return []
-            results_by_model = await search_all_models(
+            stage_models = image_search_models(
+                stage.query_image_name,
                 models_to_use,
+            ) or ["beit3"]
+            stage_weights = ({IMAGE_SEARCH_MODEL: 1.0}
+                             if stage_models == [IMAGE_SEARCH_MODEL]
+                             else {model: weights.get(model, 1.0) for model in stage_models})
+            results_by_model = await search_all_models(
+                stage_models,
                 text=stage.query,
                 image_name=stage.query_image_name,
                 image_text=stage.image_search_text,
@@ -394,7 +430,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
             )
             return fuse_results(
                 results_by_model,
-                {model: weights.get(model, 1.0) for model in models_to_use},
+                stage_weights,
             )
 
         async def filter_search():
@@ -638,4 +674,3 @@ async def similar_frames(frame_name: str, limit: int = 15, threshold: float = 0.
     except Exception as e:
         print(f"Error finding similar frames for {frame_name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

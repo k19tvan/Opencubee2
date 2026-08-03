@@ -8,7 +8,8 @@ qdrant_client
 meilisearch
 
 # Host Model
-sentence-transformers[image]
+# BGE-VL composed image + text retrieval requires Sentence Transformers 5.4+.
+sentence-transformers[image]>=5.4.0
 huggingface
  
 # Download database

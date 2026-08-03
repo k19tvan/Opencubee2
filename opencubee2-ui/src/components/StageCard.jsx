@@ -389,6 +389,9 @@ export default function StageCard({
               onChange={(e) => setImageText(e.target.value)}
               onKeyDown={handleKeyDown}
             />
+            <p className="px-1 text-[10px] text-[var(--text-secondary)]">
+              Image retrieval and image + text feedback use BGE-VL only.
+            </p>
           </div>
         )}
         {ocrActive && (
