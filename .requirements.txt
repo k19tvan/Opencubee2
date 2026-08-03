@@ -1,0 +1,12 @@
+# Backend
+fastapi 
+uvicorn
+python-multipart
+
+# Database
+qdrant_client
+meilisearch
+
+# Host Model
+sentence-transformers[image]
+
