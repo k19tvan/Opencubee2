@@ -11,3 +11,8 @@ meilisearch
 sentence-transformers[image]
 huggingface
  
+# Download database
+kaggle
+
+# Enhance
+langchain_groq
