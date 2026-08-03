@@ -16,3 +16,6 @@ kaggle
 
 # Enhance
 langchain_groq
+langchain_openai
+googletrans
+langdetect

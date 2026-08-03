@@ -4,7 +4,7 @@ set -e
 npm install -g layerbase
 
 INSTANCE_NAME="opencubee2_qdrant"
-QDRANT_STORAGE="$(pwd)/database/qdrant/storage/storage"
+QDRANT_STORAGE="$(pwd)/database/qdrant/storage/"
 INSTANCE_DIR="$HOME/.spindb/containers/qdrant/$INSTANCE_NAME"
 
 lbase create "$INSTANCE_NAME" -e qdrant --port 6333 || true
