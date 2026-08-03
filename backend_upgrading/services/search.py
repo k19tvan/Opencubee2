@@ -149,22 +149,10 @@ async def get_embedding(
 
     try:
         if image_name:
-            if image_name.startswith("_frame_:"):
-                frame_filename = image_name.replace("_frame_:", "")
-                from backend.api.media import IMAGE_BASE_PATH
-                from pathlib import Path
-                image_base_dir = Path(IMAGE_BASE_PATH)
-                # Try .webp first, then .jpg
-                temp_filepath = image_base_dir / f"{frame_filename}.webp"
-                if not temp_filepath.is_file():
-                    temp_filepath = image_base_dir / f"{frame_filename}.jpg"
-                if not temp_filepath.is_file():
-                    temp_filepath = image_base_dir / frame_filename
-            else:
-                temp_filepath = TEMP_UPLOAD_DIR / image_name
+            temp_filepath = TEMP_UPLOAD_DIR / image_name
             if not temp_filepath.is_file(): return None
             content = await asyncio.to_thread(temp_filepath.read_bytes)
-            files = {"image_file": (image_name.replace("_frame_:", ""), content, "image/jpeg")}
+            files = {"image_file": (image_name, content, "image/jpeg")}
             data = {"text_query": image_text or ""}
             resp = await client.post(worker_url, files=files, data=data, timeout=embed_timeout)
             if resp.status_code == 200: return resp.json()["embedding"][0]
@@ -250,11 +238,12 @@ async def search_qdrant(
             # Restrict before nearest-neighbor ranking so an unscoped top-K
             # cannot hide valid frames from the active similarity scope.
             query_filter = q_models.Filter(
-                must=[
+                should=[
                     q_models.FieldCondition(
                         key="frame_name",
-                        match=q_models.MatchAny(any=allowed_frame_names),
+                        match=q_models.MatchValue(value=frame_name),
                     )
+                    for frame_name in allowed_frame_names
                 ]
             )
         response = await asyncio.to_thread(

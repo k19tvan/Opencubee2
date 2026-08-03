@@ -152,10 +152,10 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                       {isCenter ? 'Original' : labelText}
                     </div>
 
-                    <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150 backdrop-blur-[1px]">
+                    <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20">
                       {onSubmitDres && (
                         <button
-                          className="w-9 h-9 rounded-xl bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-[var(--accent-primary)] hover:border-transparent hover:scale-110 duration-150 cursor-pointer"
+                          className="absolute top-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-blue-500 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
                           onClick={(e) => { e.stopPropagation(); onSubmitDres(shot); }}
                           title="Submit to DRES"
                         >
@@ -163,14 +163,14 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                         </button>
                       )}
                       <button 
-                        className="w-9 h-9 rounded-xl bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-[var(--accent-primary)] hover:border-transparent hover:scale-110 duration-150 cursor-pointer"
+                        className="absolute bottom-1.5 left-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
                         onClick={(e) => { e.stopPropagation(); pushToTeam(shot); }} 
                         title="Send to Team"
                       >
                         <i className="fas fa-users"></i>
                       </button>
                       <button 
-                        className="w-9 h-9 rounded-xl bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-[var(--accent-primary)] hover:border-transparent hover:scale-110 duration-150 cursor-pointer"
+                        className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
                         onClick={(e) => { e.stopPropagation(); pushToTrake(shot); }} 
                         title="Pin to Trake"
                       >

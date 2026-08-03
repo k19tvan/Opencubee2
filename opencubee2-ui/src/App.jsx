@@ -14,6 +14,7 @@ import DresLoginModal from './components/modals/DresLoginModal';
 import DresSubmitModal from './components/modals/DresSubmitModal';
 import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, startAgentSearch, getWsUrl, DRES_BASE_URL } from './api';
 import { getImageUrl } from './utils/imageUrl'; // Imported from separate utility to keep Fast Refresh functional
+import { getDresFrameNumber } from './utils/frameNumber';
 
 // WS now derives from the same backend origin as the REST API (see api.js),
 // so the agent stream and /agent/start always hit the same server.
@@ -46,6 +47,19 @@ const WORKSPACE_HISTORY_STORAGE_KEY = 'opencubee2.workspaceHistory';
 const WORKSPACE_HISTORY_STATE_KEY = 'opencubee2WorkspaceId';
 
 const getShotKey = (shot = {}) => shot.filepath || shot.frame_name || shot.url || '';
+
+const collectFrameNames = (results = []) => {
+  const frameNames = new Set();
+  const visit = (item) => {
+    if (!item || typeof item !== 'object') return;
+    if (item.frame_name) frameNames.add(item.frame_name);
+    if (item.best_shot) visit(item.best_shot);
+    (item.shots || []).forEach(visit);
+    (item.clusters || []).forEach(visit);
+  };
+  results.forEach(visit);
+  return [...frameNames];
+};
 
 const cloneState = (value) => {
   if (typeof structuredClone === 'function') {
@@ -151,6 +165,10 @@ export default function App() {
   const [stageFocusRequest, setStageFocusRequest] = useState(null);
 
   const [searchResults, setSearchResults] = useState([]);
+  // A quick image search prepares a candidate list. It is only used after the
+  // user explicitly enables Similar only in the top toolbar.
+  const [similarityScope, setSimilarityScope] = useState(null);
+  const [similarityScopeEnabled, setSimilarityScopeEnabled] = useState(false);
   const [lastFinalQueries, setLastFinalQueries] = useState([]);
   const [resultIsAmbiguous, setResultIsAmbiguous] = useState(false);
   const [teamworkFrames, setTeamworkFrames] = useState([]);
@@ -204,6 +222,7 @@ export default function App() {
   const latestWorkspaceRef = useRef(null);
   const submittedStagesRef = useRef(null);
   const submittedSearchModelRef = useRef(DEFAULT_SEARCH_MODEL);
+  const submittedSimilarityScopeRef = useRef(null);
   const previousAutoTranslateRef = useRef(autoTranslate);
   const activeAgentRun = workspaceTabs.find((tab) => tab.id === activeWorkspaceTab);
 
@@ -212,6 +231,8 @@ export default function App() {
     searchModel,
     autoTranslate,
     searchResults,
+    similarityScope,
+    similarityScopeEnabled,
     lastFinalQueries,
     resultIsAmbiguous,
     isClustered,
@@ -237,6 +258,13 @@ export default function App() {
       previousAutoTranslateRef.current = snapshot.autoTranslate;
     }
     submittedSearchModelRef.current = normalizeSearchModel(snapshot.submittedSearchModel || snapshot.searchModel, DEFAULT_SEARCH_MODEL);
+    submittedSimilarityScopeRef.current = snapshot.similarityScopeEnabled === true
+      ? (snapshot.submittedSimilarityScope || snapshot.similarityScope || null)
+      : null;
+    setSimilarityScope(snapshot.similarityScope || null);
+    // Old history entries did not have this flag, so they must never silently
+    // turn similarity-only search back on.
+    setSimilarityScopeEnabled(snapshot.similarityScopeEnabled === true);
     setSearchResults(snapshot.searchResults || []);
     setLastFinalQueries(snapshot.lastFinalQueries || []);
     setResultIsAmbiguous(snapshot.resultIsAmbiguous || false);
@@ -577,7 +605,7 @@ export default function App() {
             ...data.shot,
             url: data.shot.url?.startsWith('data:image')
               ? data.shot.url
-              : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
+              : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
           }
         };
         setTeamworkFrames((prev) => {
@@ -603,7 +631,7 @@ export default function App() {
             ...(frame.shot || {}),
             url: frame.shot?.url?.startsWith('data:image')
               ? frame.shot.url
-              : (getImageUrl(frame.shot?.frame_name || frame.shot?.url) || frame.shot?.url),
+              : (getImageUrl(frame.shot?.url || frame.shot?.frame_name) || frame.shot?.url),
           },
         })).filter((frame) => frame.shot && getShotKey(frame.shot));
         setTeamworkFrames(mappedData);
@@ -617,13 +645,13 @@ export default function App() {
       } else if (type === 'wrong_frames_sync') {
         const mappedData = (data || []).map(shot => ({
           ...shot,
-          url: getImageUrl(shot.frame_name)
+          url: getImageUrl(shot.url || shot.frame_name)
         }));
         setWrongFrames(mappedData);
       } else if (type === 'trake_sync') {
         const mappedData = (data || []).map(shot => ({
           ...shot,
-          url: getImageUrl(shot.frame_name)
+          url: getImageUrl(shot.url || shot.frame_name)
         }));
         setTrakeFrames(mappedData);
       } else if (type === 'trake_add') {
@@ -631,7 +659,7 @@ export default function App() {
           ...data.shot,
           url: data.shot.url?.startsWith('data:image')
             ? data.shot.url
-            : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
+            : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
         };
         setTrakeFrames(prev => {
           if (prev.some(s => s.filepath === mappedShot.filepath)) return prev;
@@ -644,10 +672,10 @@ export default function App() {
           ...data.shot,
           url: data.shot.url?.startsWith('data:image')
             ? data.shot.url
-            : (getImageUrl(data.shot.frame_name || data.shot.url) || data.shot.url)
+            : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
         };
         setCorrectSubmission(mappedShot);
-        setTeamworkFrames([{ shot: mappedShot, user: { name: 'SYSTEM', color: '#10b981' } }]);
+        setTeamworkFrames([{ shot: mappedShot, user: data.user || { name: 'SYSTEM', color: '#10b981' } }]);
 
         try {
           const audio = new Audio('/phonk1.MP3');
@@ -712,7 +740,7 @@ export default function App() {
 
   const addTeamworkFrameLocal = (shot) => {
     if (!shot) return;
-    const shotWithUrl = { ...shot, url: getImageUrl(shot.frame_name || shot.url) || shot.url };
+    const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
     const incomingKey = getShotKey(shotWithUrl);
     setTeamworkFrames((prev) => {
       if (incomingKey && prev.some((frame) => getShotKey(frame.shot) === incomingKey)) return prev;
@@ -722,7 +750,7 @@ export default function App() {
 
   const handlePushToTrake = (shot) => {
     if (!shot) return;
-    const shotWithUrl = { ...shot, url: getImageUrl(shot.frame_name || shot.url) || shot.url };
+    const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
 
     // Add locally first
     setTrakeFrames(prev => {
@@ -796,7 +824,7 @@ export default function App() {
         const { getVideoInfo } = await import('./api');
         const info = await getVideoInfo(trakeFrames[0].video_id);
         const fps = info?.fps || 25;
-        const time = trakeFrames[0].frame_id / fps;
+        const time = getDresFrameNumber(trakeFrames[0]) / fps;
         const ms = Math.floor(time * 1000);
 
         const payload = {
@@ -857,7 +885,7 @@ export default function App() {
         const { getVideoInfo } = await import('./api');
         const info = await getVideoInfo(shot.video_id);
         const fps = info?.fps || 25;
-        const time = shot.frame_id / fps;
+        const time = getDresFrameNumber(shot) / fps;
         const ms = Math.floor(time * 1000);
 
         const payload = {
@@ -888,7 +916,7 @@ export default function App() {
           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             socketRef.current.send(JSON.stringify({
               type: 'global_correct_submission',
-              data: { shot: shot }
+              data: { shot: shot, user: { name: username, color: userColor } }
             }));
           }
         } else if (resData.submission === 'WRONG') {
@@ -918,6 +946,8 @@ export default function App() {
 
       // Ctrl + Shift + Space
       if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
+        if (e.repeat) return;
+        if (activeModal) return; // Prevent background submit when a modal is open
         e.preventDefault();
         if (isHoveringTrakePanel) {
           // Instant Trake submission
@@ -947,7 +977,7 @@ export default function App() {
     return () => window.removeEventListener('dres-qa-correct', handleQaCorrect);
   }, [username, userColor]);
 
-  const performSearch = async (pageNumber = 1, overrideStages = null, captureHistory = true) => {
+  const performSearch = async (pageNumber = 1, overrideStages = null, captureHistory = true, options = {}) => {
     const requestedSearchModel = pageNumber === 1
       ? normalizeSearchModel(searchModel)
       : submittedSearchModelRef.current || normalizeSearchModel(searchModel);
@@ -975,9 +1005,16 @@ export default function App() {
         ? await enhanceStagesForSearch(sourceStages, activeSearchModel)
         : submittedStagesRef.current || sourceStages;
       const modelPayload = buildSearchModelPayload(activeSearchModel);
+      const hasScopeOverride = Object.prototype.hasOwnProperty.call(options, 'similarityScope');
+      const requestedSimilarityScope = hasScopeOverride
+        ? options.similarityScope
+        : (pageNumber === 1 ? similarityScope : submittedSimilarityScopeRef.current);
+      const activeSimilarityScope = similarityScopeEnabled ? requestedSimilarityScope : null;
+      const candidateFrameNames = activeSimilarityScope?.frameNames || null;
       if (pageNumber === 1) {
         submittedStagesRef.current = activeStages;
         submittedSearchModelRef.current = activeSearchModel;
+        submittedSimilarityScopeRef.current = activeSimilarityScope;
       }
 
       if (activeStages.length === 1) {
@@ -993,6 +1030,7 @@ export default function App() {
           page: pageNumber,
           page_size: pageSize,
           ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
+          ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
         };
 
         response = await searchSingle(searchData);
@@ -1011,6 +1049,7 @@ export default function App() {
           page: pageNumber,
           page_size: pageSize,
           ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
+          ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
         };
 
         response = await searchTemporal(payload);
@@ -1038,6 +1077,21 @@ export default function App() {
         }));
       }
 
+      let nextSimilarityScope = activeSimilarityScope;
+      // A newly created list must never turn similarity-only mode on by itself.
+      const nextSimilarityScopeEnabled = options.activateSimilarityScope
+        ? false
+        : similarityScopeEnabled;
+      if (options.activateSimilarityScope) {
+        const frameNames = collectFrameNames(localResults);
+        nextSimilarityScope = frameNames.length > 0
+          ? { frameNames, sourceFrameName: options.similaritySourceFrameName || null }
+          : null;
+        setSimilarityScope(nextSimilarityScope);
+        setSimilarityScopeEnabled(false);
+        submittedSimilarityScopeRef.current = null;
+      }
+
       if (pageNumber === 1) {
         setSearchResults(filterByLockedVideos(localResults));
         setTimingInfo(response.timing_info);
@@ -1059,6 +1113,9 @@ export default function App() {
           submittedStages: activeStages,
           searchModel: activeSearchModel,
           submittedSearchModel: activeSearchModel,
+          similarityScope: nextSimilarityScope,
+          submittedSimilarityScope: nextSimilarityScopeEnabled ? nextSimilarityScope : null,
+          similarityScopeEnabled: nextSimilarityScopeEnabled,
           searchResults: pageNumber === 1
             ? localResults
             : [...(latestWorkspaceRef.current?.searchResults || []), ...localResults],
@@ -1080,9 +1137,13 @@ export default function App() {
     }
   };
 
-  // Change this part inside handleQuickImageSearch:
   const handleQuickImageSearch = async (shot) => {
+    // This retrieval is always global. Its returned frames are saved as a
+    // similarity list, but are not used to restrict later searches by default.
     setActiveWorkspaceTab('manual');
+    setSimilarityScope(null);
+    submittedSimilarityScopeRef.current = null;
+    setSimilarityScopeEnabled(false);
     setLoading(true);
     setSearchResults([]);
     setTimingInfo(null);
@@ -1093,74 +1154,82 @@ export default function App() {
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      let imageUrl;
-      if (shot.url?.startsWith('data:image')) {
-        imageUrl = shot.url;
+      let tempImageName = null;
+      let imageUrl = null;
+
+      // Frames captured in VideoPreview carry a display frame_name, but that
+      // keyframe does not exist on the backend filesystem. Upload their canvas
+      // image instead; only persisted search-result keyframes can use _frame_.
+      const isDynamicVideoFrame = shot.filepath?.startsWith('dynamic-frame-')
+        || shot.url?.startsWith('data:image');
+
+      if (shot.frame_name && !isDynamicVideoFrame) {
+        tempImageName = `_frame_:${shot.frame_name}`;
+        imageUrl = shot.url || getImageUrl(shot.frame_name);
       } else {
-        imageUrl = getImageUrl(shot.url || shot.frame_name);
+        if (shot.url?.startsWith('data:image')) {
+          imageUrl = shot.url;
+        } else {
+          imageUrl = getImageUrl(shot.url || shot.frame_name);
 
-        // Proxy external URLs (like Google Images) to bypass CORS
-        if (imageUrl.startsWith('http') && !imageUrl.includes(BASE_URL.replace(/\/$/, ''))) {
-          const backendHost = BASE_URL.replace(/\/$/, '');
-          imageUrl = `${backendHost}/proxy_image?url=${encodeURIComponent(imageUrl)}`;
+          // Proxy external URLs (like Google Images) to bypass CORS
+          if (imageUrl.startsWith('http') && !imageUrl.includes(BASE_URL.replace(/\/$/, ''))) {
+            const backendHost = BASE_URL.replace(/\/$/, '');
+            imageUrl = `${backendHost}/proxy_image?url=${encodeURIComponent(imageUrl)}`;
+          }
+
+          imageUrl += (imageUrl.includes('?') ? '&' : '?') + 'nocache=' + Date.now();
         }
 
-        imageUrl += (imageUrl.includes('?') ? '&' : '?') + 'nocache=' + Date.now();
+        const res = await fetch(imageUrl, { mode: 'cors' });
+        if (!res.ok) {
+          throw new Error(`Failed to retrieve image from asset server.`);
+        }
+        const blob = await res.blob();
+
+        const fd = new FormData();
+        fd.append('image', blob, shot.frame_name || 'quick_frame.jpg');
+
+        const backendHost = BASE_URL.replace(/\/$/, '');
+        const uploadUrl = `${backendHost}/upload_image`;
+
+        // Pass the abort signal to the fetch request
+        const uploadRes = await fetch(uploadUrl, {
+          method: 'POST',
+          body: fd,
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId); // Clear timeout if upload succeeded
+
+        if (!uploadRes.ok) {
+          let errorMsg = "Upload failed";
+          try {
+            const errData = await uploadRes.json();
+            if (errData?.detail) errorMsg = errData.detail;
+          } catch {
+            errorMsg = "Upload failed";
+          }
+          throw new Error(errorMsg);
+        }
+
+        const uploadData = await uploadRes.json();
+        tempImageName = uploadData.temp_image_name;
       }
 
-      const res = await fetch(imageUrl, { mode: 'cors' });
-      if (!res.ok) {
-        throw new Error(`Failed to retrieve image from asset server.`);
-      }
-      const blob = await res.blob();
+      // Quick Search ignores current stages and forces a pure 1-stage similarity search.
+      const updatedStages = [{
+        ...createEmptyStage(),
+        queryType: 'image',
+        tempImageName: tempImageName,
+        imagePreview: imageUrl,
+      }];
 
-      const fd = new FormData();
-      fd.append('image', blob, shot.frame_name || 'quick_frame.jpg');
-
-      const backendHost = BASE_URL.replace(/\/$/, '');
-      const uploadUrl = `${backendHost}/upload_image`;
-
-      // Pass the abort signal to the fetch request
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'POST',
-        body: fd,
-        signal: controller.signal
+      await performSearch(1, updatedStages, false, {
+        similarityScope: null,
+        activateSimilarityScope: true,
+        similaritySourceFrameName: shot.frame_name || null,
       });
-
-      clearTimeout(timeoutId); // Clear timeout if upload succeeded
-
-      if (!uploadRes.ok) {
-        let errorMsg = "Upload failed";
-        try {
-          const errData = await uploadRes.json();
-          if (errData?.detail) errorMsg = errData.detail;
-        } catch {
-          errorMsg = "Upload failed";
-        }
-        throw new Error(errorMsg);
-      }
-
-      const uploadData = await uploadRes.json();
-
-      const updatedStages = stages.map((stg, idx) => {
-        if (idx === 0) {
-          return {
-            ...stg,
-            queryType: 'image',
-            tempImageName: uploadData.temp_image_name,
-            imagePreview: shot.url,
-            imageText: '',
-            queryText: '',
-            ocrActive: false,
-            asrActive: false,
-            ocrText: '',
-            asrText: '',
-          };
-        }
-        return stg;
-      });
-
-      await performSearch(1, updatedStages, false);
 
     } catch (err) {
       clearTimeout(timeoutId);
@@ -1241,6 +1310,8 @@ export default function App() {
     const currentSearchModel = normalizeSearchModel(latestWorkspaceRef.current?.searchModel || searchModel, DEFAULT_SEARCH_MODEL);
     submittedStagesRef.current = null;
     submittedSearchModelRef.current = currentSearchModel;
+    submittedSimilarityScopeRef.current = null;
+    setSimilarityScope(null);
     setStages(nextStages);
     setSearchResults([]);
     setLastFinalQueries([]);
@@ -1255,6 +1326,28 @@ export default function App() {
   useEffect(() => {
     executeResetRef.current = executeReset;
   }, [executeReset]);
+
+  const handleToggleSimilarityScope = useCallback(() => {
+    if (!similarityScope?.frameNames?.length) {
+      toast.error('Run a similarity image search first to create a similarity list.');
+      return;
+    }
+    const nextEnabled = !similarityScopeEnabled;
+    setSimilarityScopeEnabled(nextEnabled);
+    submittedSimilarityScopeRef.current = nextEnabled ? similarityScope : null;
+    setPage(1);
+    setHasMore(false);
+    saveWorkspaceHistoryEntry({
+      similarityScope,
+      submittedSimilarityScope: nextEnabled ? similarityScope : null,
+      similarityScopeEnabled: nextEnabled,
+      page: 1,
+      hasMore: false,
+    });
+    toast.success(nextEnabled
+      ? 'Similarity-only search enabled. Future queries use the similarity list.'
+      : 'Similarity-only search disabled. Future queries search all videos.');
+  }, [similarityScope, similarityScopeEnabled]);
 
   const handleResetSearch = () => {
     toast(
@@ -1321,6 +1414,9 @@ export default function App() {
             setTheme={setTheme}
             showTrake={showTrake}
             setShowTrake={setShowTrake}
+            similarityScopeEnabled={similarityScopeEnabled}
+            hasSimilarityScope={Boolean(similarityScope?.frameNames?.length)}
+            onToggleSimilarityScope={handleToggleSimilarityScope}
             isClustered={isClustered}
             setIsClustered={setIsClusteredWithHistory}
             isAmbiguous={isAmbiguous}
