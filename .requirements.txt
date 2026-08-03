@@ -9,4 +9,5 @@ meilisearch
 
 # Host Model
 sentence-transformers[image]
-
+huggingface
+ 

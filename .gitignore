@@ -59,3 +59,6 @@ backend/temp_uploads
 
 summary.py
 summary.txt
+
+# Models
+models/
