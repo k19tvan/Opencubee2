@@ -209,14 +209,31 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
 
   const handlePushFrame = () => {
     const video = videoRef.current;
-    if (!video || !socket) return;
-    const frame = Math.round(video.currentTime * fps);
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const url = canvas.toDataURL('image/jpeg', 0.8);
+    if (!video) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      toast.error('Teamwork connection is not ready.');
+      return;
+    }
+
+    const frame = clamp(Math.round(video.currentTime * fps), 0, maxFrame);
+    let url;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (!context || !canvas.width || !canvas.height) {
+        throw new Error('Video frame is not ready.');
+      }
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      url = canvas.toDataURL('image/jpeg', 0.8);
+    } catch (error) {
+      console.error('Failed to capture video frame:', error);
+      toast.error('Could not capture the current video frame.');
+      return;
+    }
+
+    const frameName = `${videoId}_${String(frame).padStart(6, '0')}.webp`;
 
     socket.send(JSON.stringify({
       type: 'new_frame',
@@ -226,7 +243,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
           frame_id: frame,
           url,
           filepath: `dynamic-frame-${videoId}-${frame}`,
-          frame_name: `${videoId}_0000_${String(frame).padStart(6, '0')}.webp`,
+          frame_name: frameName,
         },
         user: { name: username, color: userColor },
       },
@@ -237,13 +254,14 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
   const handleSubmitFrame = () => {
     const video = videoRef.current;
     if (!video || !onDresSubmit) return;
-    const frame = Math.round(video.currentTime * fps);
+    const frame = clamp(Math.round(video.currentTime * fps), 0, maxFrame);
     
     // Create a mock shot object for DRES submission and Teamwork
     const mockShot = {
       video_id: videoId,
       frame_id: frame,
-      frame_name: `${videoId}_0000_${String(frame).padStart(6, '0')}.webp`,
+      frame_name: `${videoId}_${String(frame).padStart(6, '0')}.webp`,
+      filepath: `dynamic-frame-${videoId}-${frame}`,
       url: getVideoThumbnailUrl(videoId, frame, 480)
     };
     

@@ -1,6 +1,7 @@
 // src/api.js
 
 export const BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || `http://${window.location.hostname}:2108`;
+export const VIDEO_BACKEND_BASE_URL = import.meta.env.VITE_VIDEO_BACKEND_BASE_URL || BASE_URL;
 export const DRES_BASE_URL = import.meta.env.VITE_DRES_BASE_URL || 'http://192.168.28.151:5000';
 
 export function getWsUrl() {
@@ -106,12 +107,12 @@ export function getAgentLatestCanvasUrl() {
  * Lấy thông tin video (đặc biệt là FPS)
  */
 export async function getVideoInfo(videoId) {
-  const response = await fetch(`${BASE_URL}/video_info/${encodeURIComponent(videoId)}`);
+  const response = await fetch(`${VIDEO_BACKEND_BASE_URL.replace(/\/$/, '')}/video_info/${encodeURIComponent(videoId)}`);
   return handleResponse(response);
 }
 
 export function getVideoUrl(videoId) {
-  return `${BASE_URL}/videos/${encodeURIComponent(videoId)}`;
+  return `${VIDEO_BACKEND_BASE_URL.replace(/\/$/, '')}/videos/${encodeURIComponent(videoId)}`;
 }
 
 export function getVideoThumbnailUrl(videoId, frame, width = 160) {
@@ -119,7 +120,7 @@ export function getVideoThumbnailUrl(videoId, frame, width = 160) {
     frame: String(Math.max(0, Math.round(frame))),
     width: String(width),
   });
-  return `${BASE_URL}/video_thumbnail/${encodeURIComponent(videoId)}?${params.toString()}`;
+  return `${VIDEO_BACKEND_BASE_URL.replace(/\/$/, '')}/video_thumbnail/${encodeURIComponent(videoId)}?${params.toString()}`;
 }
 
 /**
@@ -137,4 +138,3 @@ export async function getSimilarFrames(frameName, limit = 15, threshold = 0.95) 
   });
   return handleResponse(response);
 }
-

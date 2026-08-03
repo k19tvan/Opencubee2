@@ -32,6 +32,7 @@ ssh -L 21081:localhost:2108 nguyenmv@192.168.20.156
    ```env
    # Trỏ API và WebSocket vào đường hầm SSH vừa tạo ở trên
    VITE_BACKEND_BASE_URL=http://localhost:21081
+   VITE_VIDEO_BACKEND_BASE_URL=http://localhost:21081
    
    # Load ảnh trực tiếp từ Nginx nội bộ
    VITE_ASSET_BASE_URL=/keyframes

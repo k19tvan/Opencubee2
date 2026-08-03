@@ -5,6 +5,7 @@ services:
       args:
         VITE_BACKEND_BASE_URL: ${VITE_BACKEND_BASE_URL:-http://localhost:21081}
         VITE_ASSET_BASE_URL: ${VITE_ASSET_BASE_URL:-/keyframes}
+        VITE_VIDEO_BACKEND_BASE_URL: ${VITE_VIDEO_BACKEND_BASE_URL:-http://localhost:21081}
     image: opencubee2-ui-nginx
     ports:
       - "2408:2408"
