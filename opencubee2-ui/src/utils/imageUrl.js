@@ -17,9 +17,7 @@ export const getImageUrl = (filename) => {
   if (/^(https?:|data:|blob:)/.test(filename)) return filename;
 
   const configuredAssetBase = import.meta.env.VITE_ASSET_BASE_URL?.replace(/\/$/, '');
-  const baseUrl = configuredAssetBase && configuredAssetBase !== '/keyframes'
-    ? configuredAssetBase
-    : `${BASE_URL}/keyframes`;
+  const baseUrl = configuredAssetBase || `${BASE_URL}/keyframes`;
   let normalized = String(filename).replace(/^\/keyframes\//, '').split(/[\\/]/).pop();
   if (!normalized || normalized.startsWith('/')) return filename;
   return `${baseUrl.replace(/\/$/, '')}/${encodeURIComponent(normalized)}`;
