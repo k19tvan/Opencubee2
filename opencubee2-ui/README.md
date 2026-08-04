@@ -1,6 +1,6 @@
 # OpenCubee2 UI
 
-> A high-speed video retrieval cockpit for AIC-style frame hunting, temporal search, agent-assisted reasoning, and team submissions.
+> A high-speed video retrieval cockpit for AIC-style frame hunting, temporal search, and team submissions.
 
 ![OpenCubee2 workbench](public/readme/image.png)
 
@@ -91,4 +91,3 @@ uvicorn main:app --host 0.0.0.0 --port 2108 --workers 1
 3. Add more stages for temporal search.
 4. Toggle cluster or ambiguous mode when the hunt calls for it.
 5. Hit Search, inspect frames, open context, preview video, or push candidates to Teamwork.
-6. Launch Agent Search when you want an autonomous pass with logs and candidate reasoning.

@@ -10,7 +10,6 @@ export default function LeftSearchPanel({
   setStages,
   focusRequest = null,
   onSearch,
-  onAgentSearch,
   onQuickSearch,
   loading,
 }) {
@@ -168,34 +167,6 @@ export default function LeftSearchPanel({
     }
   };
 
-  const deriveAgentPrompt = () => {
-    const stage = [...stages].reverse().find((item) => (
-      item.queryText?.trim() ||
-      item.imageText?.trim() ||
-      item.ocrText?.trim() ||
-      item.asrText?.trim()
-    ));
-    if (!stage) return '';
-
-    const primary = stage.queryType === 'image'
-      ? (stage.imageText || '').trim()
-      : (stage.queryText || '').trim();
-    return [
-      primary,
-      stage.ocrText?.trim() ? `OCR: ${stage.ocrText.trim()}` : null,
-      stage.asrText?.trim() ? `ASR: ${stage.asrText.trim()}` : null,
-    ].filter(Boolean).join(' | ');
-  };
-
-  const executeAgentSearch = () => {
-    const prompt = deriveAgentPrompt();
-    if (!prompt) {
-      toast.error('Enter a query before starting Agent Search.');
-      return;
-    }
-    onAgentSearch?.(prompt);
-  };
-
 
 
   return (
@@ -301,15 +272,6 @@ export default function LeftSearchPanel({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            className="group relative flex items-center justify-center gap-2 border border-[var(--border-color)] bg-[var(--glass-bg)] text-[var(--text-primary)] px-3 py-2 rounded-lg font-semibold text-xs tracking-normal hover:-translate-y-0.5 hover:border-[var(--border-hover)] active:scale-95 active:translate-y-0 transition-all duration-300 ease-smooth cursor-pointer disabled:opacity-50"
-            onClick={executeAgentSearch}
-            disabled={loading}
-            title="Start Agent Search"
-          >
-            <i className="fas fa-brain text-xs group-hover:scale-110 transition-transform duration-300"></i>
-            Agent
-          </button>
           <button
             className="group relative flex items-center gap-2 bg-[var(--text-primary)] text-[var(--bg-primary)] px-5 py-2 rounded-lg font-semibold text-xs tracking-normal hover:bg-[var(--accent-secondary)] hover:-translate-y-0.5 hover:shadow-glow active:scale-95 active:translate-y-0 transition-all duration-300 ease-smooth shadow-sm cursor-pointer disabled:opacity-50 disabled:hover:translate-y-0 overflow-hidden"
             onClick={onSearch}

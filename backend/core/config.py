@@ -17,13 +17,6 @@ else:
     TEMP_UPLOAD_DIR = Path("./temp_uploads")
 TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-SERVER_CANVAS_PATH = Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/agent_canvases")
-if SERVER_CANVAS_PATH.parent.exists():
-    AGENT_CANVAS_DIR = SERVER_CANVAS_PATH
-else:
-    AGENT_CANVAS_DIR = Path("./agent_canvases")
-AGENT_CANVAS_DIR.mkdir(parents=True, exist_ok=True)
-
 QDRANT_HOST = os.getenv("QDRANT_HOST", "opencubee2_qdrant")
 QDRANT_PORT = 6333
 QDRANT_GRPC_PORT = 6334

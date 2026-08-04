@@ -4,7 +4,6 @@ import toast, { Toaster } from 'react-hot-toast'; // Installed via npm i react-h
 import TopToolbar from './components/TopToolbar';
 import LeftSearchPanel from './components/LeftSearchPanel';
 import RightResultsPanel from './components/RightResultsPanel';
-import AgentRunView from './components/AgentRunView';
 import UsernameModal from './components/modals/UsernameModal';
 import ObjectFilterModal from './components/modals/ObjectFilterModal';
 import VideoPreviewModal from './components/modals/VideoPreviewModal';
@@ -12,12 +11,9 @@ import FrameContextModal from './components/modals/FrameContextModal';
 import HelpModal from './components/modals/HelpModal';
 import DresLoginModal from './components/modals/DresLoginModal';
 import DresSubmitModal from './components/modals/DresSubmitModal';
-import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, startAgentSearch, getWsUrl, DRES_BASE_URL } from './api';
+import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, getWsUrl, DRES_BASE_URL } from './api';
 import { getImageUrl } from './utils/imageUrl'; // Imported from separate utility to keep Fast Refresh functional
 import { getDresFrameNumber } from './utils/frameNumber';
-
-// WS now derives from the same backend origin as the REST API (see api.js),
-// so the agent stream and /agent/start always hit the same server.
 
 const createEmptyStage = () => ({
   id: Date.now(),
@@ -69,7 +65,6 @@ const cloneState = (value) => {
 };
 
 const createHistoryId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const createAgentTabId = () => `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const THEME_OPTIONS = ['normal', 'dark', 'light', 'blue', 'neon', 'jujutsu', 'random'];
 const RANDOM_THEME_OPTIONS = ['normal', 'dark', 'light', 'blue', 'neon', 'jujutsu'];
 export const SEARCH_MODEL_OPTIONS = [
@@ -100,21 +95,6 @@ const buildSearchModelPayload = (values) => {
     models: selectedModels,
     model_weights: selectedModels.reduce((acc, model) => ({ ...acc, [model]: weight }), {}),
   };
-};
-
-const createAgentTitle = (prompt = '') => {
-  const cleaned = prompt.replace(/\s+/g, ' ').trim();
-  return cleaned.length > 28 ? `${cleaned.slice(0, 28)}...` : cleaned || 'Agent Search';
-};
-
-const inferAgentStatusFromLog = (message = '', currentStatus = 'starting') => {
-  if (/ERROR|failed|halted/i.test(message)) return 'failed';
-  if (/MATCH_FOUND|Selected MATCH_FOUND/i.test(message)) return 'found';
-  if (/GIVE_UP|Selected GIVE_UP/i.test(message)) return 'gave_up';
-  if (/Inspecting|Compiling|Canvas/i.test(message)) return 'inspecting';
-  if (/Executing|search|Retrieving|Found/i.test(message)) return 'searching';
-  if (/Thought|Formulating|Selected/i.test(message)) return 'thinking';
-  return currentStatus;
 };
 
 const readWorkspaceHistory = () => {
@@ -152,8 +132,6 @@ export default function App() {
 
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [workspaceTabs, setWorkspaceTabs] = useState([]);
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState('manual');
 
   const [activeModal, setActiveModal] = useState(null);
   const [previewVideoData, setPreviewVideoData] = useState(null);
@@ -224,8 +202,6 @@ export default function App() {
   const submittedSearchModelRef = useRef(DEFAULT_SEARCH_MODEL);
   const submittedSimilarityScopeRef = useRef(null);
   const previousAutoTranslateRef = useRef(autoTranslate);
-  const activeAgentRun = workspaceTabs.find((tab) => tab.id === activeWorkspaceTab);
-
   latestWorkspaceRef.current = {
     stages,
     searchModel,
@@ -590,7 +566,7 @@ export default function App() {
     socketRef.current = ws;
 
     ws.onopen = () => console.info(`[ws] connected: ${wsUrl}`);
-    ws.onerror = () => console.error(`[ws] connection error: ${wsUrl} — agent/teamwork updates will not arrive`);
+    ws.onerror = () => console.error(`[ws] connection error: ${wsUrl} — teamwork updates will not arrive`);
     ws.onclose = (e) => console.warn(`[ws] closed (code ${e.code}): ${wsUrl}`);
 
     ws.onmessage = (event) => {
@@ -684,55 +660,6 @@ export default function App() {
           playingAudioRef.current = audio;
           audio.play().catch(e => console.log("Audio play failed:", e));
         } catch (e) { }
-      } else if (type === 'agent_log') {
-        setWorkspaceTabs((prev) => prev.map((tab) => {
-          if (tab.id !== data.tab_id) return tab;
-          const nextStatus = inferAgentStatusFromLog(data.message, tab.status);
-          return {
-            ...tab,
-            status: nextStatus,
-            logs: [
-              ...(tab.logs || []),
-              { message: data.message, receivedAt: Date.now() },
-            ],
-          };
-        }));
-      } else if (type === 'agent_observation' || type === 'agent_observation_grid') {
-        setWorkspaceTabs((prev) => prev.map((tab) => {
-          if (tab.id !== data.tab_id) return tab;
-          const observation = {
-            step: data.step || (tab.observations?.length || 0) + 1,
-            image: data.image,
-            shots: (data.shots || []).map((shot) => ({
-              ...shot,
-              url: getImageUrl(shot.url || shot.frame_name),
-            })),
-            receivedAt: Date.now(),
-          };
-          const withoutSameStep = (tab.observations || []).filter((item) => (
-            item.step !== observation.step || item.image !== observation.image
-          ));
-          return {
-            ...tab,
-            status: 'inspecting',
-            observations: [...withoutSameStep, observation],
-          };
-        }));
-      } else if (type === 'agent_final') {
-        setWorkspaceTabs((prev) => prev.map((tab) => {
-          if (tab.id !== data.tab_id) return tab;
-          return {
-            ...tab,
-            status: data.status === 'MATCH_FOUND' ? 'found' : data.status === 'GIVE_UP' ? 'gave_up' : tab.status,
-            final: {
-              ...data,
-              shot: data.shot ? {
-                ...data.shot,
-                url: getImageUrl(data.shot.url || data.shot.frame_name),
-              } : null,
-            },
-          };
-        }));
       }
     };
     return () => ws.close();
@@ -1253,56 +1180,6 @@ export default function App() {
   const executeSearch = () => { performSearch(1); };
   const handleLoadMore = () => { performSearch(page + 1); };
 
-  const handleStartAgentSearch = async (prompt) => {
-    const trimmedPrompt = (prompt || '').trim();
-    if (!trimmedPrompt) {
-      toast.error('Enter a query before starting Agent Search.');
-      return;
-    }
-
-    const tabId = createAgentTabId();
-    const nextTab = {
-      id: tabId,
-      prompt: trimmedPrompt,
-      title: createAgentTitle(trimmedPrompt),
-      status: 'starting',
-      logs: [],
-      observations: [],
-      final: null,
-      createdAt: Date.now(),
-    };
-
-    setWorkspaceTabs((prev) => [...prev, nextTab]);
-    setActiveWorkspaceTab(tabId);
-    setIsMobileMenuOpen(false);
-
-    try {
-      await startAgentSearch({ tab_id: tabId, prompt: trimmedPrompt });
-      toast.success('Agent Search started.');
-    } catch (error) {
-      setWorkspaceTabs((prev) => prev.map((tab) => (
-        tab.id === tabId
-          ? {
-            ...tab,
-            status: 'failed',
-            logs: [
-              ...tab.logs,
-              { message: `Failed to start agent: ${error.message}`, receivedAt: Date.now() },
-            ],
-          }
-          : tab
-      )));
-      toast.error(`Agent Search failed: ${error.message}`);
-    }
-  };
-
-  const closeAgentTab = (tabId) => {
-    setWorkspaceTabs((prev) => prev.filter((tab) => tab.id !== tabId));
-    if (activeWorkspaceTab === tabId) {
-      setActiveWorkspaceTab('manual');
-    }
-  };
-
   const handleOpenVideoPreview = (videoId, frameId) => {
     if (!videoId) return;
     setPreviewVideoData({ videoId, frameId });
@@ -1452,119 +1329,63 @@ export default function App() {
           />
 
           <div className={`flex flex-col flex-grow pt-[72px] h-[calc(100vh-72px)] w-full overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-transparent' : 'bg-[var(--bg-primary)]'} relative transition-colors duration-700 ease-smooth`}>
-            <div className="flex-shrink-0 h-[46px] border-b border-[var(--border-color)] bg-[var(--card-bg)] flex items-center gap-2 px-3 overflow-x-auto backdrop-blur-xl">
-              <button
-                className={`h-8 flex items-center gap-2 px-3 rounded-lg border text-xs font-bold transition-all whitespace-nowrap ${activeWorkspaceTab === 'manual'
-                  ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-primary)]'
-                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)]'
-                  }`}
-                onClick={() => setActiveWorkspaceTab('manual')}
-              >
-                <i className="fas fa-search text-[11px]"></i>
-                Manual Search
-              </button>
-              {workspaceTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  className={`h-8 flex items-center gap-2 px-3 rounded-lg border text-xs font-bold transition-all whitespace-nowrap ${activeWorkspaceTab === tab.id
-                    ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-primary)]'
-                    : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)]'
-                    }`}
-                  onClick={() => setActiveWorkspaceTab(tab.id)}
-                  title={tab.prompt}
-                >
-                  <i className={`fas ${tab.status === 'starting' || tab.status === 'thinking' || tab.status === 'searching' || tab.status === 'inspecting' ? 'fa-circle-notch fa-spin' : tab.status === 'found' ? 'fa-check-circle text-emerald-400' : tab.status === 'failed' ? 'fa-triangle-exclamation text-red-400' : 'fa-brain'} text-[11px]`}></i>
-                  Agent: {tab.title}
-                  <span
-                    className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-red-500/15 hover:text-red-400"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeAgentTab(tab.id);
-                    }}
-                    title="Close tab"
-                  >
-                    <i className="fas fa-times text-[10px]"></i>
-                  </span>
-                </button>
-              ))}
-            </div>
-
             <div className="flex flex-row flex-grow min-h-0 w-full overflow-hidden relative">
-              {activeWorkspaceTab === 'manual' ? (
-                <>
-                  {/* Mobile Sidebar Overlay */}
-                  {isMobileMenuOpen && (
-                    <div
-                      className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    />
-                  )}
+              {/* Mobile Sidebar Overlay */}
+              {isMobileMenuOpen && (
+                <div
+                  className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                />
+              )}
 
-                  <div className={`
+              <div className={`
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
                 md:translate-x-0 transition-transform duration-300 absolute md:relative z-[60] h-full shadow-2xl md:shadow-none w-[340px] max-w-[85vw]
               `}>
-                    <LeftSearchPanel
-                      stages={stages}
-                      searchModel={searchModel}
-                      lastFinalQueries={lastFinalQueries}
-                      setStages={setStagesWithHistory}
-                      setSearchModel={setSearchModel}
-                      focusRequest={stageFocusRequest}
-                      onSearch={executeSearch}
-                      onAgentSearch={handleStartAgentSearch}
-                      onQuickSearch={handleQuickImageSearch}
-                      loading={loading}
-                      theme={effectiveTheme}
-                    />
-                  </div>
-
-                  <RightResultsPanel
-                    searchResults={searchResults}
-                    teamworkFrames={teamworkFrames}
-                    trakeFrames={trakeFrames}
-                    wrongFrames={wrongFrames}
-                    showTrake={showTrake}
-                    loading={loading}
-                    loadingMore={loadingMore}
-                    hasMore={hasMore}
-                    onLoadMore={handleLoadMore}
-                    onPreview={handleOpenVideoPreview}
-                    socket={socketRef.current}
-                    username={username}
-                    userColor={userColor}
-                    onTeamworkAddLocal={addTeamworkFrameLocal}
-                    onTeamworkRemoveLocal={removeTeamworkFrameLocal}
-                    onPushToTrake={handlePushToTrake}
-                    correctSubmission={correctSubmission}
-                    onZoom={setZoomedImage}
-                    isClustered={isClustered}
-                    isAmbiguous={resultIsAmbiguous}
-                    onContext={setContextShot}
-                    onQuickSearch={handleQuickImageSearch}
-                    onToggleLock={toggleVideoLock}
-                    lockedVideoIds={lockedVideos.map(v => v.videoId)}
-                    dresMode={dresMode}
-                    setHoveredFrame={setHoveredFrame}
-                    setIsHoveringTrakePanel={setIsHoveringTrakePanel}
-                    onDresSubmit={handleInstantDresSubmit}
-                  />
-                </>
-              ) : (
-                <AgentRunView
-                  run={activeAgentRun}
-                  socket={socketRef.current}
-                  username={username}
-                  userColor={userColor}
-                  onTeamworkAddLocal={addTeamworkFrameLocal}
-                  onZoom={setZoomedImage}
-                  onPreview={handleOpenVideoPreview}
-                  onContext={setContextShot}
+                <LeftSearchPanel
+                  stages={stages}
+                  searchModel={searchModel}
+                  lastFinalQueries={lastFinalQueries}
+                  setStages={setStagesWithHistory}
+                  setSearchModel={setSearchModel}
+                  focusRequest={stageFocusRequest}
+                  onSearch={executeSearch}
                   onQuickSearch={handleQuickImageSearch}
-                  onToggleLock={toggleVideoLock}
-                  lockedVideoIds={lockedVideos.map(v => v.videoId)}
+                  loading={loading}
+                  theme={effectiveTheme}
                 />
-              )}
+              </div>
+
+              <RightResultsPanel
+                searchResults={searchResults}
+                teamworkFrames={teamworkFrames}
+                trakeFrames={trakeFrames}
+                wrongFrames={wrongFrames}
+                showTrake={showTrake}
+                loading={loading}
+                loadingMore={loadingMore}
+                hasMore={hasMore}
+                onLoadMore={handleLoadMore}
+                onPreview={handleOpenVideoPreview}
+                socket={socketRef.current}
+                username={username}
+                userColor={userColor}
+                onTeamworkAddLocal={addTeamworkFrameLocal}
+                onTeamworkRemoveLocal={removeTeamworkFrameLocal}
+                onPushToTrake={handlePushToTrake}
+                correctSubmission={correctSubmission}
+                onZoom={setZoomedImage}
+                isClustered={isClustered}
+                isAmbiguous={resultIsAmbiguous}
+                onContext={setContextShot}
+                onQuickSearch={handleQuickImageSearch}
+                onToggleLock={toggleVideoLock}
+                lockedVideoIds={lockedVideos.map(v => v.videoId)}
+                dresMode={dresMode}
+                setHoveredFrame={setHoveredFrame}
+                setIsHoveringTrakePanel={setIsHoveringTrakePanel}
+                onDresSubmit={handleInstantDresSubmit}
+              />
             </div>
           </div>
 

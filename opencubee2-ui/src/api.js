@@ -90,19 +90,6 @@ export async function enhanceQuery(payload) {
   return handleResponse(response);
 }
 
-export async function startAgentSearch(payload) {
-  const response = await fetch(`${BASE_URL}/agent/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse(response);
-}
-
-export function getAgentLatestCanvasUrl() {
-  return `${BASE_URL}/agent/latest_canvas`;
-}
-
 /**
  * Lấy thông tin video (đặc biệt là FPS)
  */
