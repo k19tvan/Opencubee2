@@ -6,6 +6,8 @@ npm install -g layerbase
 ROOT="$(pwd)"
 LBASE_DIR="$HOME/.spindb/containers"
 
+export QDRANT__STORAGE__ALLOW_NFS=true
+
 # ==================== Qdrant ====================
 QDRANT_NAME="opencubee2_qdrant"
 QDRANT_DATA="$ROOT/database/qdrant/storage"
@@ -23,6 +25,21 @@ mkdir -p "$QDRANT_DATA"
 
 rm -rf "$QDRANT_DIR/storage"
 ln -s "$QDRANT_DATA" "$QDRANT_DIR/storage"
+
+CONFIG_FILE="$QDRANT_DIR/config.yaml"
+if [ -f "$CONFIG_FILE" ]; then
+    python3 -c "
+import yaml
+path = '$CONFIG_FILE'
+with open(path, 'r') as f:
+    cfg = yaml.safe_load(f) or {}
+if 'storage' not in cfg or not isinstance(cfg['storage'], dict):
+    cfg['storage'] = {}
+cfg['storage']['allow_nfs'] = True
+with open(path, 'w') as f:
+    yaml.dump(cfg, f)
+"
+fi
 
 lbase start "$QDRANT_NAME"
 

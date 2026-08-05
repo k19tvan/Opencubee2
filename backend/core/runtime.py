@@ -106,7 +106,7 @@ similar_frames_map = {}
 
 def load_similar_frames_json():
     global similar_frames_map
-    json_path = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/similar_frames.json"
+    json_path = "./storage/similar_frames.json"
     if os.path.exists(json_path):
         import json
         try:
@@ -120,7 +120,7 @@ def load_similar_frames_json():
 
 def load_frame_context_json():
     global frame_context_cache
-    json_path = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/frame_context.json"
+    json_path = "./storage/frame_context.json"
     if os.path.exists(json_path):
         import json
         try:
