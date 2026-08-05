@@ -1073,7 +1073,6 @@ export default function App() {
   const handleQuickImageSearch = async (shot) => {
     // This retrieval is always global. Its returned frames are saved as a
     // similarity list, but are not used to restrict later searches by default.
-    setActiveWorkspaceTab('manual');
     setSimilarityScope(null);
     submittedSimilarityScopeRef.current = null;
     setSimilarityScopeEnabled(false);
