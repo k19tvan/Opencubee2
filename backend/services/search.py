@@ -31,7 +31,7 @@ def search_ocr_on_meilisearch_sync(
 ) -> List[Dict[str, Any]]:
     if not runtime.meili_client: 
         return []
-    print("cc")
+
     filter_expr = None
     if video_ids:
         filter_expr = " OR ".join([f"video_id = '{vid}'" for vid in video_ids])

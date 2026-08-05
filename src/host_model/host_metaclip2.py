@@ -12,7 +12,7 @@ app = FastAPI(default_response_class=JSONResponse)
 
 # 2. Cấu hình phần cứng và đường dẫn mô hình
 DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
-MODEL_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/models/metaclip-2-worldwide-huge-quickgelu"
+MODEL_PATH = "./models/metaclip-2-worldwide-huge-quickgelu"
 FALLBACK_HF_PATH = "facebook/metaclip-2-worldwide-huge-quickgelu"
 
 # Đường dẫn ưu tiên local

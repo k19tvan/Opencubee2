@@ -1,7 +1,6 @@
 // src/components/RightResultsPanel.jsx
 import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { getImageUrl } from '../utils/imageUrl';
-import { getSimilarFrames } from '../api';
 
 // Component cho mỗi item ảnh - Đã tối ưu hóa loại bỏ State và Observer thủ công
 const ResultItem = React.memo(({ 
@@ -33,30 +32,7 @@ const ResultItem = React.memo(({
     if (node && node.complete && node.naturalWidth > 0) setLoaded(true);
   }, []);
 
-  const [similarFrames, setSimilarFrames] = useState(null);
   const [isHovering, setIsHovering] = useState(false);
-  const [showCollapse, setShowCollapse] = useState(false);
-
-  useEffect(() => {
-    let timeout;
-    if (isHovering && similarFrames === null) {
-      timeout = setTimeout(async () => {
-        try {
-          const frameName = shot.frame_name || (shot.filepath ? shot.filepath.split('/').pop() : null);
-          if (frameName) {
-            const res = await getSimilarFrames(frameName);
-            if (res && res.results) {
-              setSimilarFrames(res.results);
-            }
-          }
-        } catch (e) {
-          console.error(e);
-          setSimilarFrames([]);
-        }
-      }, 300);
-    }
-    return () => clearTimeout(timeout);
-  }, [isHovering, similarFrames, shot]);
   useEffect(() => {
     if (!isHovering) return;
     const handleKeyDown = (e) => {
@@ -71,16 +47,6 @@ const ResultItem = React.memo(({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isHovering, shot, onPushToTeam]);
 
-  useEffect(() => {
-    if (!showCollapse) return;
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') {
-        setShowCollapse(false);
-      }
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [showCollapse]);
 
   return (
     <div
@@ -158,102 +124,6 @@ const ResultItem = React.memo(({
           </div>
         )}
         
-        {/* Duplicates Badge & Popover */}
-        {similarFrames && similarFrames.length > 0 && (() => {
-          // Filter out frames that are in the same video but too close (<= 100 frames distance)
-          const validSimilar = similarFrames.filter(s => {
-            if (s.video_id === shot.video_id) {
-              return Math.abs(s.frame_id - shot.frame_id) > 100;
-            }
-            return true;
-          });
-
-          if (validSimilar.length === 0) return null;
-
-          const intros = validSimilar.filter(s => s.video_id === shot.video_id);
-          const duplicates = validSimilar.filter(s => s.video_id !== shot.video_id);
-          
-          return (
-            <div className="pointer-events-auto relative">
-              <div 
-                className={`flex gap-1 transition-opacity shadow-lg ${showCollapse ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                onClick={(e) => { e.stopPropagation(); setShowCollapse(prev => !prev); }}
-              >
-                {intros.length > 0 && (
-                  <div className="px-1.5 py-0.5 rounded bg-blue-600/90 flex items-center justify-center cursor-pointer shadow hover:bg-blue-500">
-                    <span className="text-[10px] font-bold tracking-wider text-white">
-                      {intros.length} INTRO
-                    </span>
-                  </div>
-                )}
-                {duplicates.length > 0 && (
-                  <div className="px-1.5 py-0.5 rounded bg-orange-600/90 flex items-center justify-center cursor-pointer shadow hover:bg-orange-500">
-                    <span className="text-[10px] font-bold tracking-wider text-white">
-                      <i className="fas fa-copy mr-1"></i>{duplicates.length} DUP
-                    </span>
-                  </div>
-                )}
-              </div>
-              {showCollapse && (
-                <>
-                  {/* Invisible overlay to close popup when clicking outside */}
-                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowCollapse(false); }} />
-                  <div className={`absolute top-full left-0 mt-1 bg-[var(--card-bg)] border border-[var(--border-color)] rounded shadow-2xl p-2 grid gap-2 max-h-[400px] overflow-y-auto z-50 ${validSimilar.length === 1 ? 'w-[160px] grid-cols-1' : 'w-[320px] grid-cols-2'}`}>
-                  {[...intros, ...duplicates].map((sim, idx) => {
-                    const isIntro = sim.video_id === shot.video_id;
-                    return (
-                      <div 
-                        key={idx} 
-                        draggable={true}
-                        onDragStart={(e) => onDragStart(e, sim)}
-                        className={`relative aspect-video rounded overflow-hidden cursor-pointer hover:ring-2 group/mini ${isIntro ? 'hover:ring-blue-500 ring-blue-900' : 'hover:ring-orange-500 ring-orange-900'} ring-1`} 
-                        onClick={(e) => { e.stopPropagation(); onClick(e, sim); }}
-                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(sim); }}
-                      >
-                        <img src={getImageUrl(sim.url || sim.frame_name || sim.filepath)} alt="Duplicate" className="w-full h-full object-cover" loading="lazy" />
-                        <div className="absolute top-0 left-0 px-1 py-0.5 bg-black/80 text-[8px] font-bold text-white rounded-br z-10">
-                          {isIntro ? 'INTRO' : 'DUP'}
-                        </div>
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[9px] text-white px-1 py-0.5 flex justify-between z-10">
-                          <span className="font-semibold truncate max-w-[60%]">{sim.video_id}</span>
-                          <span>{sim.frame_id}</span>
-                        </div>
-                        
-                        {/* Mini frame actions */}
-                        <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover/mini:opacity-100 transition-opacity z-20">
-                          {(dresMode === 'KIS' || dresMode === 'QA') && (
-                            <button
-                              className="absolute top-1 right-1 w-7 h-7 rounded bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-[10px] hover:bg-blue-500 hover:border-transparent pointer-events-auto shadow-md"
-                              onClick={(e) => { e.stopPropagation(); onDresSubmit?.(sim); }}
-                              title="Submit to DRES"
-                            >
-                              <i className={`fas ${dresMode === 'KIS' ? 'fa-paper-plane' : 'fa-comment-dots'}`}></i>
-                            </button>
-                          )}
-                          <button 
-                            className="absolute bottom-1 left-1 w-7 h-7 rounded bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-[10px] hover:bg-slate-700 hover:border-transparent pointer-events-auto shadow-md"
-                            onClick={(e) => { e.stopPropagation(); onPushToTeam(sim); }} 
-                            title="Send to Team"
-                          >
-                            <i className="fas fa-users"></i>
-                          </button>
-                          <button 
-                            className="absolute bottom-1 right-1 w-7 h-7 rounded bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-[10px] hover:bg-slate-700 hover:border-transparent pointer-events-auto shadow-md"
-                            onClick={(e) => { e.stopPropagation(); onPushToTrake(sim); }} 
-                            title="Pin to Trake"
-                          >
-                            <i className="fas fa-thumbtack"></i>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-            </div>
-          );
-        })()}
       </div>
 
     </div>
