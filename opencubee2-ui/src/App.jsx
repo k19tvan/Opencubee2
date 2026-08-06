@@ -873,10 +873,9 @@ export default function App() {
 
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
-      if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
-        return;
-      }
+      const isTypingInField = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
 
+      // Allow DRES submission while a query field is focused.
       if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
         if (e.repeat) return;
         if (activeModal) return;
@@ -886,7 +885,10 @@ export default function App() {
         } else if (hoveredFrame) {
           handleInstantDresSubmit(hoveredFrame);
         }
+        return;
       }
+
+      if (isTypingInField) return;
 
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'KeyG') {
         e.preventDefault();
