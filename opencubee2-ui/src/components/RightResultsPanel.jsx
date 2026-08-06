@@ -17,6 +17,7 @@ const ResultItem = React.memo(({
   setHoveredFrame,
   onDresSubmit,
   isWrong = false,
+  isCorrect = false,
 }) => {
   const [loaded, setLoaded] = useState(false);
 
@@ -45,11 +46,18 @@ const ResultItem = React.memo(({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isHovering, shot, onPushToTeam]);
 
+  const hasSubmissionStatus = isCorrect || isWrong;
+  const statusColor = isCorrect ? '#39ff14' : '#ff1744';
+
   return (
     <div
       draggable={true}
       onDragStart={(e) => onDragStart(e, shot)}
-      className={`relative bg-[var(--card-bg)] rounded-lg border ${isWrong ? 'border-red-500 ring-2 ring-red-500/50' : 'border-[var(--border-color)]'} aspect-video cursor-pointer hover:border-[var(--border-hover)] hover:ring-1 hover:ring-white/20 shadow-[var(--shadow-heavy)] group`}
+      className={`relative bg-[var(--card-bg)] rounded-lg ${hasSubmissionStatus ? 'border-[5px]' : 'border'} ${isCorrect ? 'ring-[5px] ring-lime-300' : isWrong ? 'ring-[5px] ring-rose-500' : 'border-[var(--border-color)]'} aspect-video cursor-pointer ${hasSubmissionStatus ? '' : 'hover:border-[var(--border-hover)] hover:ring-1 hover:ring-white/20'} shadow-[var(--shadow-heavy)] group`}
+      style={hasSubmissionStatus ? {
+        borderColor: statusColor,
+        boxShadow: `0 0 10px ${statusColor}, 0 0 24px ${statusColor}, 0 0 36px ${statusColor}`,
+      } : undefined}
       onClick={(e) => onClick(e, shot)}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -114,6 +122,11 @@ const ResultItem = React.memo(({
         {isWrong && (
           <div className="px-1.5 py-0.5 rounded bg-red-600/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity w-fit pointer-events-auto shadow" title="Wrong Submission">
             <span className="text-[10px] font-bold tracking-wider text-white">WRONG</span>
+          </div>
+        )}
+        {isCorrect && (
+          <div className="px-1.5 py-0.5 rounded bg-lime-500/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity w-fit pointer-events-auto shadow" title="Correct Submission">
+            <span className="text-[10px] font-bold tracking-wider text-slate-950">CORRECT</span>
           </div>
         )}
       </div>
@@ -384,6 +397,8 @@ export default function RightResultsPanel({
 
   const renderResultItem = useCallback((shot, key) => {
     if (!shot || !shot.url) return null;
+    const isCorrect = isSameShot(shot, correctSubmission);
+    const isWrong = !isCorrect && wrongFrames.some((wrongShot) => isSameShot(shot, wrongShot));
     return (
       <ResultItem
         key={key}
@@ -399,10 +414,11 @@ export default function RightResultsPanel({
         dresMode={dresMode}
         setHoveredFrame={setHoveredFrame}
         onDresSubmit={onDresSubmit}
-        isWrong={wrongFrames.some(w => w.video_id === shot.video_id && w.frame_id === shot.frame_id)}
+        isWrong={isWrong}
+        isCorrect={isCorrect}
       />
     );
-  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, pushToTeam, pushToTrake, lockedVideoIds, dresMode, setHoveredFrame, onDresSubmit, wrongFrames]);
+  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, pushToTeam, pushToTrake, lockedVideoIds, dresMode, setHoveredFrame, onDresSubmit, wrongFrames, correctSubmission]);
 
   useEffect(() => {
     const firstResult = searchResults.length > 0 ? searchResults[0] : null;
