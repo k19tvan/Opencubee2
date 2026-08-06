@@ -26,7 +26,7 @@ export default function StageCard({
   onNavigateStage,
 }) {
   const [type, setType] = useState(stage.queryType || 'text');
-  const [ocrActive, setOcrActive] = useState(stage.ocrActive ?? !!stage.ocrText);
+  const [ocrActive, setOcrActive] = useState(stage.ocrActive ?? true);
   const [asrActive, setAsrActive] = useState(stage.asrActive ?? !!stage.asrText);
   const [isDragging, setIsDragging] = useState(false);
 

@@ -20,7 +20,7 @@ const createEmptyStage = () => ({
   queryText: '',
   ocrText: '',
   asrText: '',
-  ocrActive: false,
+  ocrActive: true,
   asrActive: false,
   queryType: 'text',
   options: { enhance: false, bge_caption: false },
@@ -228,7 +228,19 @@ export default function App() {
   };
 
   const restoreWorkspaceSnapshot = (snapshot) => {
-    setStages(snapshot.stages || [createEmptyStage()]);
+    const restoredStages = snapshot.stages || [createEmptyStage()];
+    // Migrate older empty workspaces that stored the initial stage with OCR
+    // disabled before OCR became the default input.
+    const stagesWithDefaultOcr = restoredStages.map((stage, index) => {
+      const isEmptyInitialStage = index === 0
+        && !stage.queryText
+        && !stage.ocrText
+        && !stage.asrText
+        && !stage.tempImageName
+        && !stage.imageText;
+      return isEmptyInitialStage ? { ...stage, ocrActive: true } : stage;
+    });
+    setStages(stagesWithDefaultOcr);
     submittedStagesRef.current = snapshot.submittedStages || snapshot.stages || null;
     setSearchModel(normalizeSearchModel(snapshot.searchModel, DEFAULT_SEARCH_MODEL));
     if (typeof snapshot.autoTranslate === 'boolean') {
