@@ -9,6 +9,7 @@ export default function LeftSearchPanel({
   lastFinalQueries = [],
   setStages,
   focusRequest = null,
+  onFocusStage = () => { },
   onSearch,
   onQuickSearch,
   loading,
@@ -83,6 +84,17 @@ export default function LeftSearchPanel({
   const handleStageDelete = (id) => {
     setStages((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
   };
+
+  const handleNavigateStage = useCallback((currentIndex, direction) => {
+    const targetStage = stages[currentIndex + direction];
+    if (!targetStage) return;
+    onFocusStage({
+      stageId: targetStage.id,
+      field: targetStage.queryType === 'image' ? 'imageText' : 'query',
+      select: false,
+      token: Date.now(),
+    });
+  }, [stages, onFocusStage]);
 
   const getTargetStageIndex = useCallback((clientY) => {
     const panel = panelRef.current;
@@ -292,6 +304,7 @@ export default function LeftSearchPanel({
                     canDelete={stages.length > 1}
                     isReordering={reorderingStageId === stage.id}
                     onReorderPointerDown={(event) => handleReorderPointerDown(idx, event)}
+                    onNavigateStage={handleNavigateStage}
                   />
                 </div>
               ))}

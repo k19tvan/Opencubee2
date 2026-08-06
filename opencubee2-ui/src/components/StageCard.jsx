@@ -23,6 +23,7 @@ export default function StageCard({
   canDelete = false,
   isReordering = false,
   onReorderPointerDown,
+  onNavigateStage,
 }) {
   const [type, setType] = useState(stage.queryType || 'text');
   const [ocrActive, setOcrActive] = useState(stage.ocrActive ?? !!stage.ocrText);
@@ -150,7 +151,12 @@ export default function StageCard({
       const target = targets[focusRequest.field];
       if (!target) return;
       target.focus();
-      if (typeof target.select === 'function') target.select();
+      if (focusRequest.select !== false && typeof target.select === 'function') {
+        target.select();
+      } else if (typeof target.setSelectionRange === 'function') {
+        const caretPosition = target.value.length;
+        target.setSelectionRange(caretPosition, caretPosition);
+      }
     };
 
     const frameId = window.requestAnimationFrame(focusTarget);
@@ -245,6 +251,20 @@ export default function StageCard({
   };
 
   const handleKeyDown = (e) => {
+    const isPlainArrowKey = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
+    const input = e.currentTarget;
+    if (isPlainArrowKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && onNavigateStage) {
+      const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+      const atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+      const direction = e.key === 'ArrowUp' ? -1 : 1;
+
+      if ((direction < 0 && atStart) || (direction > 0 && atEnd)) {
+        e.preventDefault();
+        onNavigateStage(index, direction);
+        return;
+      }
+    }
+
     // Ctrl + E: Enhance
     if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'e') {
       e.preventDefault();

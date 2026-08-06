@@ -1391,6 +1391,7 @@ export default function App() {
                   setStages={setStagesWithHistory}
                   setSearchModel={setSearchModel}
                   focusRequest={stageFocusRequest}
+                  onFocusStage={setStageFocusRequest}
                   onSearch={executeSearch}
                   onQuickSearch={handleQuickImageSearch}
                   loading={loading}
