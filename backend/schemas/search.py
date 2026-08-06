@@ -17,6 +17,7 @@ class UnifiedSearchRequest(BaseModel):
     model_weights: Optional[Dict[str, float]] = {"beit3": 1.0}
     # When set, every retrieval mode is restricted to these keyframes.
     candidate_frame_names: Optional[List[str]] = None
+    video_ids: Optional[List[str]] = None
 
 
 class StageData(BaseModel):
@@ -36,6 +37,7 @@ class TemporalSearchRequest(BaseModel):
     model_weights: Optional[Dict[str, float]] = {"beit3": 1.0}
     specified_videos: Optional[List[str]] = None
     # Persistent similarity-search scope supplied by the UI.
+    video_ids: Optional[List[str]] = None
     candidate_frame_names: Optional[List[str]] = None
 
 

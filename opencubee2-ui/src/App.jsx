@@ -1018,7 +1018,10 @@ export default function App() {
           ambiguous: isAmbiguous,
           page: pageNumber,
           page_size: pageSize,
-          ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
+          ...(lockedVideos.length > 0 ? {
+            video_ids: lockedVideos.map(v => v.videoId),
+            specified_videos: lockedVideos.map(v => v.videoId)
+          } : {}),
           ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
         };
 

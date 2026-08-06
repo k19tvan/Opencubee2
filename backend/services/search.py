@@ -239,24 +239,33 @@ async def search_qdrant(
     collection_name: str,
     limit: int = 200,
     candidate_frame_names: Optional[List[str]] = None,
+    video_ids: Optional[List[str]] = None,  # <--- Bổ sung video_ids
 ) -> List[Dict]:
     if not runtime.qdrant_client: return []
     try:
         allowed_frame_names = list(dict.fromkeys(candidate_frame_names or []))
         if candidate_frame_names is not None and not allowed_frame_names:
             return []
-        query_filter = None
+        
+        must_conditions = []
         if allowed_frame_names:
-            # Restrict before nearest-neighbor ranking so an unscoped top-K
-            # cannot hide valid frames from the active similarity scope.
-            query_filter = q_models.Filter(
-                must=[
-                    q_models.FieldCondition(
-                        key="frame_name",
-                        match=q_models.MatchAny(any=allowed_frame_names),
-                    )
-                ]
+            must_conditions.append(
+                q_models.FieldCondition(
+                    key="frame_name",
+                    match=q_models.MatchAny(any=allowed_frame_names),
+                )
             )
+        # Bổ sung lọc theo video_id trong Qdrant
+        if video_ids:
+            must_conditions.append(
+                q_models.FieldCondition(
+                    key="video_id",
+                    match=q_models.MatchAny(any=video_ids),
+                )
+            )
+
+        query_filter = q_models.Filter(must=must_conditions) if must_conditions else None
+
         response = await asyncio.to_thread(
             runtime.qdrant_client.query_points,
             collection_name=collection_name,
@@ -293,6 +302,7 @@ async def embed_and_search_model(
     image_text: Optional[str] = None,
     limit: int = MAX_FRAME_LIMIT,
     candidate_frame_names: Optional[List[str]] = None,
+    video_ids: Optional[List[str]] = None,  # <--- Bổ sung video_ids
 ):
     embedding = await get_embedding(
         model_name=model_name,
@@ -308,10 +318,10 @@ async def embed_and_search_model(
         config["collection"],
         limit=limit,
         candidate_frame_names=candidate_frame_names,
+        video_ids=video_ids,  # <--- Truyền video_ids vào
     )
     return model_name, raw_results
 
-# --- Helper: Chạy tất cả model song song và gom theo model ---
 async def search_all_models(
     models_to_use: List[str],
     text: Optional[str] = None,
@@ -319,6 +329,7 @@ async def search_all_models(
     image_text: Optional[str] = None,
     limit: int = MAX_FRAME_LIMIT,
     candidate_frame_names: Optional[List[str]] = None,
+    video_ids: Optional[List[str]] = None,  # <--- Bổ sung video_ids
 ) -> Dict[str, List[Dict]]:
     tasks = [
         embed_and_search_model(
@@ -328,6 +339,7 @@ async def search_all_models(
             image_text=image_text,
             limit=limit,
             candidate_frame_names=candidate_frame_names,
+            video_ids=video_ids,  # <--- Truyền video_ids vào
         )
         for m in models_to_use
     ]

@@ -125,6 +125,7 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
             image_text=search_model.image_search_text,
             limit=MAX_FRAME_LIMIT,
             candidate_frame_names=search_model.candidate_frame_names,
+            video_ids=search_model.video_ids,  
         )
         return fuse_results(results_by_model, {m: weights.get(m, 1.0) for m in models_to_use})
 
@@ -136,6 +137,7 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
             keyword=query_text,
             limit=5000,
             candidate_frame_names=search_model.candidate_frame_names,
+            video_ids=search_model.video_ids, 
         )
 
     start_retrieval = time.time()
@@ -394,7 +396,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
     timings = {}
     stages = request_data.stages
     ambiguous = request_data.ambiguous
-    specified_videos = set(request_data.specified_videos or [])
+    specified_videos = set(request_data.specified_videos or request_data.video_ids or [])
     candidate_frame_names = request_data.candidate_frame_names
 
     if not stages:
@@ -430,6 +432,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
                 image_text=stage.image_search_text,
                 limit=MAX_FRAME_LIMIT,
                 candidate_frame_names=candidate_frame_names,
+                video_ids=list(specified_videos) if specified_videos else None,
             )
             return fuse_results(
                 results_by_model,
@@ -443,6 +446,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
                 keyword=stage.ocr_query or stage.asr_query,
                 limit=MAX_FRAME_LIMIT,
                 candidate_frame_names=candidate_frame_names,
+                video_ids=list(specified_videos) if specified_videos else None,
             )
 
         vector_results, filter_results = await asyncio.gather(
