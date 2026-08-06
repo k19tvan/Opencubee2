@@ -1216,6 +1216,7 @@ export default function App() {
 
   const executeResetRef = useRef(null);
 
+  // Sửa lỗi 3: Reset sẽ hủy chế độ Semantic ASR và xóa query ASR
   const executeReset = useCallback(() => {
     const nextStages = [createEmptyStage()];
     const currentSearchModel = normalizeSearchModel(latestWorkspaceRef.current?.searchModel || searchModel, DEFAULT_SEARCH_MODEL);
@@ -1224,6 +1225,8 @@ export default function App() {
     submittedSimilarityScopeRef.current = null;
     setSimilarityScope(null);
     setStages(nextStages);
+    setIsSemanticAsr(false);         // <--- Hủy chế độ Semantic ASR
+    setSemanticAsrQuery('');        // <--- Xóa truy vấn Semantic ASR
     setSearchResults([]);
     setLastFinalQueries([]);
     setResultIsAmbiguous(false);
@@ -1360,7 +1363,6 @@ export default function App() {
 
           <div className={`flex flex-col flex-grow pt-[72px] h-[calc(100vh-72px)] w-full overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-transparent' : 'bg-[var(--bg-primary)]'} relative transition-colors duration-700 ease-smooth`}>
             <div className="flex flex-row flex-grow min-h-0 w-full overflow-hidden relative">
-              {/* Mobile Sidebar Overlay */}
               {isMobileMenuOpen && (
                 <div
                   className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm"

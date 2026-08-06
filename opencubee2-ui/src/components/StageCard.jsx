@@ -40,7 +40,6 @@ export default function StageCard({
     bge_caption: false,
   });
 
-  // Cờ hiệu để trì hoãn việc gọi onSearch cho đến khi nhận được hàm onSearch mới từ parent
   const [shouldSearch, setShouldSearch] = useState(false);
 
   const debounceRef = useRef(null);
@@ -50,10 +49,8 @@ export default function StageCard({
   const ocrRef = useRef(null);
   const asrRef = useRef(null);
 
-  // Ref lưu dữ liệu đã gửi lên parent gần nhất để tránh bị ghi đè ngược khi đang gõ
   const lastFlushedRef = useRef({});
 
-  // Gửi dữ liệu lên parent ngay lập tức
   const flushImmediate = useCallback(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -76,12 +73,10 @@ export default function StageCard({
     onChange(stage.id, data);
   }, [type, queryText, ocrActive, ocrText, asrActive, asrText, tempImageName, imageText, imagePreview, options, onChange, stage.id]);
 
-  // Đồng bộ hàm flush mới nhất vào ref
   useEffect(() => {
     flushRef.current = flushImmediate;
   }, [flushImmediate]);
 
-  // Debounce cập nhật (250ms)
   const scheduleUpdate = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -93,7 +88,6 @@ export default function StageCard({
     scheduleUpdate();
   }, [type, queryText, ocrActive, ocrText, asrActive, asrText, tempImageName, imageText, imagePreview, options, scheduleUpdate]);
 
-  // Đồng bộ props -> state khi dữ liệu bên ngoài thay đổi thực sự
   useEffect(() => {
     const last = lastFlushedRef.current;
 
@@ -134,7 +128,6 @@ export default function StageCard({
     }
   }, [stage.queryType, stage.queryText, stage.imageText, stage.tempImageName, stage.imagePreview, stage.ocrText, stage.asrText, stage.ocrActive, stage.asrActive, stage.options]);
 
-  // Lắng nghe cờ hiệu: khi cờ bật, ta tắt cờ đi và gọi hàm onSearch mới nhất nhận từ props
   useEffect(() => {
     if (shouldSearch) {
       setShouldSearch(false);
@@ -169,12 +162,11 @@ export default function StageCard({
     };
   }, [focusRequest, stage.id, type, ocrActive, asrActive]);
 
-  // Kích hoạt tìm kiếm
   const handleSearchTrigger = useCallback(() => {
     if (flushRef.current) {
-      flushRef.current(); // Lưu ngay dữ liệu hiện tại lên cha
+      flushRef.current();
     }
-    setShouldSearch(true); // Đánh dấu để kích hoạt search ở cycle tiếp theo (sau khi render lại)
+    setShouldSearch(true);
   }, []);
 
   const uploadImageFile = async (file) => {
@@ -220,9 +212,7 @@ export default function StageCard({
       }
 
       if (internalFrameName) {
-        // Skip fetching the URL and uploading! Just tell the backend to use the internal frame.
         setTempImageName(`_frame_:${internalFrameName}`);
-        // Optionally set the image preview to the targetUrl so the UI looks good
         if (targetUrl) setImagePreview(targetUrl);
         return;
       }
@@ -255,6 +245,7 @@ export default function StageCard({
   };
 
   const handleKeyDown = (e) => {
+    // Ctrl + E: Enhance
     if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'e') {
       e.preventDefault();
       e.stopPropagation();
@@ -262,6 +253,31 @@ export default function StageCard({
       return;
     }
 
+    // Alt + T: Toggle OCR cho Stage hiện tại
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 't') {
+      e.preventDefault();
+      e.stopPropagation();
+      setOcrActive((prev) => {
+        const next = !prev;
+        if (next) setTimeout(() => ocrRef.current?.focus(), 50);
+        return next;
+      });
+      return;
+    }
+
+    // Alt + Y: Toggle ASR cho Stage hiện tại
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      e.stopPropagation();
+      setAsrActive((prev) => {
+        const next = !prev;
+        if (next) setTimeout(() => asrRef.current?.focus(), 50);
+        return next;
+      });
+      return;
+    }
+
+    // Enter: Thực thi tìm kiếm
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSearchTrigger();
@@ -283,7 +299,6 @@ export default function StageCard({
       <div className="absolute -top-2.5 left-4 bg-[var(--text-primary)] w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] text-[var(--bg-primary)] shadow-sm z-10 transition-transform duration-300 ease-spring group-hover:scale-110">
         {index + 1}
       </div>
-      {/* Drag handle */}
       <div
         className="absolute -top-3 right-8 w-7 h-7 rounded-full border border-[var(--border-color)] bg-[var(--card-bg)] flex items-center justify-center text-[var(--text-secondary)] cursor-grab active:cursor-grabbing hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:scale-110 transition-all z-20 opacity-70 group-hover:opacity-100 touch-none"
         title="Drag to reorder"
@@ -314,16 +329,24 @@ export default function StageCard({
         ))}
         <button
           className={`${pillCls(ocrActive)} flex-shrink-0`}
-          onClick={() => setOcrActive(!ocrActive)}
-          title="OCR"
+          onClick={() => {
+            const next = !ocrActive;
+            setOcrActive(next);
+            if (next) setTimeout(() => ocrRef.current?.focus(), 50);
+          }}
+          title="OCR (Alt + T)"
           aria-label="OCR"
         >
           <i className="fas fa-text-height text-[11px]"></i>
         </button>
         <button
           className={`${pillCls(asrActive)} flex-shrink-0`}
-          onClick={() => setAsrActive(!asrActive)}
-          title="ASR"
+          onClick={() => {
+            const next = !asrActive;
+            setAsrActive(next);
+            if (next) setTimeout(() => asrRef.current?.focus(), 50);
+          }}
+          title="ASR (Alt + Y)"
           aria-label="ASR"
         >
           <i className="fas fa-microphone text-[11px]"></i>

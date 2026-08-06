@@ -1,5 +1,5 @@
 // src/components/LeftSearchPanel.jsx
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import StageCard from './StageCard';
 import { googleImageSearch } from '../api';
@@ -24,6 +24,17 @@ export default function LeftSearchPanel({
   const reorderIndexRef = useRef(null);
   const panelRef = useRef(null);
   const reorderFrameRef = useRef(null);
+  const semanticAsrRef = useRef(null);
+
+  // Tự động Focus vào con trỏ khi bật chế độ Semantic ASR
+  useEffect(() => {
+    if (isSemanticAsr) {
+      const timer = setTimeout(() => {
+        semanticAsrRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isSemanticAsr]);
 
   const isInteractiveStageTarget = useCallback((target) => {
     return !!target?.closest?.([
@@ -191,6 +202,8 @@ export default function LeftSearchPanel({
 
             <div className="space-y-3">
               <textarea
+                ref={semanticAsrRef}
+                autoFocus
                 className="w-full p-3 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] focus:ring-1 focus:ring-white/10 transition-all min-h-[120px] resize-y placeholder:text-[var(--text-secondary)]"
                 placeholder="Nhập nội dung thoại hoặc tóm tắt cần tìm (Ví dụ: Vụ tai nạn giao thông xe container đâm vào xe tải...)..."
                 rows="5"
