@@ -123,23 +123,48 @@ const ResultItem = React.memo(({
 
 ResultItem.displayName = 'ResultItem';
 
+const isSameShot = (first, second) => {
+  if (!first || !second) return false;
+  return (
+    (first.filepath && second.filepath && first.filepath === second.filepath)
+    || (first.frame_name && second.frame_name && first.frame_name === second.frame_name)
+    || (
+      first.video_id && second.video_id
+      && first.video_id === second.video_id
+      && first.frame_id != null && second.frame_id != null
+      && String(first.frame_id) === String(second.frame_id)
+    )
+  );
+};
+
 // Component cho Teamwork Panel
-const TeamworkPanel = React.memo(({ teamworkFrames, onDragStart, onItemClick, onContextMenu, onMouseEnter, onMouseLeave }) => {
+const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmission, onDragStart, onItemClick, onContextMenu, onMouseEnter, onMouseLeave }) => {
   if (teamworkFrames.length === 0) {
     return <p className="text-[var(--text-secondary)] text-xs italic px-6 py-4">No frames shared by the team yet...</p>;
   }
 
   return (
     <div className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none">
-      {teamworkFrames.map((frame, idx) => (
-        <div
+      {teamworkFrames.map((frame, idx) => {
+        const isCorrect = isSameShot(frame.shot, correctSubmission);
+        const isWrong = !isCorrect && wrongFrames.some((shot) => isSameShot(frame.shot, shot));
+        const statusColor = isCorrect
+          ? '#22c55e'
+          : isWrong
+            ? '#ef4444'
+            : (frame.user?.color || 'var(--accent-primary)');
+
+        return (
+          <div
           key={`teamwork-${idx}-${frame.shot?.url}`}
           draggable={true}
           onDragStart={(e) => onDragStart(e, frame.shot)}
-          className="relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border-2 border-transparent hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn"
+          className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border-2 hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${
+            isCorrect ? 'ring-2 ring-emerald-400/50' : isWrong ? 'ring-2 ring-red-400/50' : ''
+          }`}
           style={{
-            borderColor: frame.user?.color || 'var(--accent-primary)',
-            boxShadow: `0 4px 15px ${frame.user?.color || '#000000'}26`
+            borderColor: statusColor,
+            boxShadow: `0 4px 15px ${statusColor}26`
           }}
           onClick={(e) => onItemClick(e, frame.shot)}
           onContextMenu={(e) => {
@@ -162,12 +187,13 @@ const TeamworkPanel = React.memo(({ teamworkFrames, onDragStart, onItemClick, on
           />
           <div
             className="absolute bottom-1 left-1.5 bg-slate-900/90 text-white px-2 py-0.5 rounded text-[9px] font-bold border-l-2"
-            style={{ borderLeftColor: frame.user?.color || 'transparent' }}
+            style={{ borderLeftColor: statusColor }}
           >
             {frame.user?.name}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 });
@@ -433,6 +459,8 @@ export default function RightResultsPanel({
         </h3>
         <TeamworkPanel
           teamworkFrames={teamworkFrames}
+          wrongFrames={wrongFrames}
+          correctSubmission={correctSubmission}
           onDragStart={handleDragStart}
           onItemClick={handleItemClick}
           onContextMenu={handleOpenPreview}

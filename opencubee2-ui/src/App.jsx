@@ -902,7 +902,10 @@ export default function App() {
   useEffect(() => {
     const handleQaCorrect = (e) => {
       const shot = e.detail?.shot;
-      if (shot) setTeamworkFrames([{ shot, user: { name: username || 'ME', color: userColor || '#10b981' } }]);
+      if (shot) {
+        setCorrectSubmission(shot);
+        setTeamworkFrames([{ shot, user: { name: username || 'ME', color: userColor || '#10b981' } }]);
+      }
     };
     window.addEventListener('dres-qa-correct', handleQaCorrect);
     return () => window.removeEventListener('dres-qa-correct', handleQaCorrect);
