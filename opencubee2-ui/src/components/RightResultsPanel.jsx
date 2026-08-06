@@ -149,22 +149,25 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
         const isCorrect = isSameShot(frame.shot, correctSubmission);
         const isWrong = !isCorrect && wrongFrames.some((shot) => isSameShot(frame.shot, shot));
         const statusColor = isCorrect
-          ? '#22c55e'
+          ? '#39ff14'
           : isWrong
-            ? '#ef4444'
+            ? '#ff1744'
             : (frame.user?.color || 'var(--accent-primary)');
+        const hasSubmissionStatus = isCorrect || isWrong;
 
         return (
           <div
           key={`teamwork-${idx}-${frame.shot?.url}`}
           draggable={true}
           onDragStart={(e) => onDragStart(e, frame.shot)}
-          className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border-2 hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${
-            isCorrect ? 'ring-2 ring-emerald-400/50' : isWrong ? 'ring-2 ring-red-400/50' : ''
+          className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden ${hasSubmissionStatus ? 'border-[6px]' : 'border-2'} hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${
+            isCorrect ? 'ring-[6px] ring-lime-300' : isWrong ? 'ring-[6px] ring-rose-500' : ''
           }`}
           style={{
             borderColor: statusColor,
-            boxShadow: `0 4px 15px ${statusColor}26`
+            boxShadow: hasSubmissionStatus
+              ? `0 0 12px ${statusColor}, 0 0 28px ${statusColor}, 0 0 46px ${statusColor}`
+              : `0 4px 15px ${statusColor}26`
           }}
           onClick={(e) => onItemClick(e, frame.shot)}
           onContextMenu={(e) => {

@@ -660,6 +660,7 @@ export default function App() {
             : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
         };
         setCorrectSubmission(mappedShot);
+        setWrongFrames([]);
         setTeamworkFrames([{ shot: mappedShot, user: data.user || { name: 'SYSTEM', color: '#10b981' } }]);
 
         try {
@@ -783,6 +784,8 @@ export default function App() {
         try { resData = JSON.parse(resText); } catch (e) { }
 
         if (resData.submission === 'CORRECT') {
+          setCorrectSubmission(trakeFrames[0]);
+          setWrongFrames([]);
           setTeamworkFrames([{ shot: trakeFrames[0], user: { name: username || 'ME', color: userColor || '#10b981' } }]);
           toast.success('Trake Submit CORRECT!', { id: loadingToast });
           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -846,6 +849,7 @@ export default function App() {
 
         if (resData.submission === 'CORRECT') {
           setCorrectSubmission(shot);
+          setWrongFrames([]);
           toast.success('KIS Submit CORRECT!', { id: loadingToast });
           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             socketRef.current.send(JSON.stringify({
@@ -904,6 +908,7 @@ export default function App() {
       const shot = e.detail?.shot;
       if (shot) {
         setCorrectSubmission(shot);
+        setWrongFrames([]);
         setTeamworkFrames([{ shot, user: { name: username || 'ME', color: userColor || '#10b981' } }]);
       }
     };
