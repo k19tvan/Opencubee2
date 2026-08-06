@@ -20,12 +20,31 @@ class TemporalFrameRequest(BaseModel):
     base_frame_name: str
 
 IMAGE_BASE_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"
+CONTEXT_FRAME_RADIUS = 20
 
 from backend.core import runtime
 from backend.core.config import MODEL_CONFIGS, OCR_ASR_INDEX_NAME, TEMP_UPLOAD_DIR
 from backend.services.media import probe_video_info, render_video_thumbnail, resolve_video_path, resolve_keyframe_path_sync
 
 router = APIRouter()
+
+
+def select_surrounding_keyframes(candidates, target_frame: int):
+    """Return up to 20 keyframes before and 20 after a dynamic video frame."""
+    ordered = sorted(candidates, key=lambda candidate: candidate[0])
+    before = [candidate for candidate in ordered if candidate[0] < target_frame][-CONTEXT_FRAME_RADIUS:]
+    after = [candidate for candidate in ordered if candidate[0] >= target_frame][:CONTEXT_FRAME_RADIUS]
+    selected = before + after
+
+    # At the start/end of a video, fill the missing side with the closest
+    # remaining keyframes so the user still gets up to 40 context keyframes.
+    target_count = min(CONTEXT_FRAME_RADIUS * 2, len(ordered))
+    if len(selected) < target_count:
+        selected_names = {name for _, name in selected}
+        remaining = [candidate for candidate in ordered if candidate[1] not in selected_names]
+        selected.extend(sorted(remaining, key=lambda candidate: abs(candidate[0] - target_frame))[:target_count - len(selected)])
+
+    return [name for _, name in sorted(selected, key=lambda candidate: candidate[0])]
 
 @router.get("/models_status")
 async def get_models_status():
@@ -128,7 +147,13 @@ async def get_image(video_id: str, frame_id: str):
 
 @router.post("/check_temporal_frames")
 async def check_temporal_frames(request: TemporalFrameRequest):
-    base_name = request.base_frame_name
+    base_name = os.path.basename(request.base_frame_name)
+    parts = base_name.split("_")
+    video_id = "_".join(parts[:2]) if len(parts) >= 3 else None
+    try:
+        target_frame = int(os.path.splitext(parts[-1])[0]) if video_id else None
+    except ValueError:
+        target_frame = None
     from backend.core.runtime import frame_context_cache
     
     if frame_context_cache and base_name in frame_context_cache:
@@ -152,51 +177,52 @@ async def check_temporal_frames(request: TemporalFrameRequest):
             neighbors = await asyncio.to_thread(query_db)
             if neighbors:
                 return neighbors
+
+            # Dynamic frames from Video Preview are not stored in the context
+            # table. Resolve their 40 neighboring keyframes from the same video.
+            if video_id and target_frame is not None:
+                def query_nearest_context():
+                    conn = sqlite3.connect(DB_PATH)
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT frame_name FROM neighbors WHERE frame_name GLOB ?",
+                        (f"{video_id}_*.webp",),
+                    )
+                    candidates = []
+                    for (frame_name,) in cursor:
+                        try:
+                            indexed_frame = int(os.path.splitext(frame_name)[0].rsplit("_", 1)[-1])
+                        except ValueError:
+                            continue
+                        candidates.append((indexed_frame, frame_name))
+                    conn.close()
+                    return select_surrounding_keyframes(candidates, target_frame) if candidates else None
+
+                neighbors = await asyncio.to_thread(query_nearest_context)
+                if neighbors:
+                    return neighbors
         except Exception as e:
             print(f"Error querying SQLite frame context cache: {e}")
     # Fallback to globbing logic similar to keyframe_neighbor.py if cache misses or doesn't exist
-    parts = base_name.split("_")
-    if len(parts) >= 4:
-        prefix = f"{parts[0]}_{parts[1]}_"
-        pattern = os.path.join(IMAGE_BASE_PATH, f"{prefix}*.webp")
-        files = glob.glob(pattern)
-        
-        def sort_key(filepath):
-            filename = os.path.basename(filepath)
-            fps = filename.split("_")
-            if len(fps) >= 4:
-                return fps[3]
-            return filename
-            
-        files.sort(key=sort_key)
-        if not base_name.endswith(".webp"):
-            target_path = os.path.join(IMAGE_BASE_PATH, base_name + ".webp")
-        else:
-            target_path = os.path.join(IMAGE_BASE_PATH, base_name)
+    if video_id and target_frame is not None:
         try:
-            idx = files.index(target_path)
-        except ValueError:
-            # target_path not found, find the closest file by frame index
-            try:
-                target_frame = int(parts[3].split('.')[0])
-                closest_idx = 0
-                min_diff = float('inf')
-                for i, f in enumerate(files):
-                    f_parts = os.path.basename(f).split("_")
-                    if len(f_parts) >= 4:
-                        f_frame = int(f_parts[3].split('.')[0])
-                        diff = abs(f_frame - target_frame)
-                        if diff < min_diff:
-                            min_diff = diff
-                            closest_idx = i
-                idx = closest_idx
-            except:
+            # A dynamic frame from Video Preview does not exist as a keyframe.
+            # Its name has the form <collection>_<video>_<frame_id>.webp. A
+            # persisted keyframe includes an extra shot segment before the
+            # frame number, but the first two segments are the stable video ID.
+            pattern = os.path.join(IMAGE_BASE_PATH, f"{video_id}_*.webp")
+            files = glob.glob(pattern)
+            if not files:
                 return [base_name]
 
-        start_index = max(0, idx - 10)
-        end_index = min(len(files), idx + 11)
-        neighbors = files[start_index:end_index]
-        return [os.path.basename(p) for p in neighbors]
+            def frame_number(filepath):
+                return int(os.path.splitext(os.path.basename(filepath))[0].rsplit("_", 1)[-1])
+
+            candidates = [(frame_number(filepath), os.path.basename(filepath)) for filepath in files]
+        except (IndexError, ValueError):
+            return [base_name]
+
+        return select_surrounding_keyframes(candidates, target_frame)
             
     return [base_name]
 

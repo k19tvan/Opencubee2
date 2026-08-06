@@ -44,7 +44,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         });
         if (!response.ok) throw new Error("Failed to load context frames");
         const filenames = await response.json();
-        
+
         const mapped = filenames.map(fname => {
           const frame_id_match = fname.match(/_(\d+)\.[^.]+$/);
           const frameId = frame_id_match ? parseInt(frame_id_match[1], 10) : null;
@@ -57,7 +57,14 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
             url: getImageUrl(fname) 
           };
         });
-        setNeighbors(mapped);
+        const isDynamicVideoFrame = shotData.filepath?.startsWith('dynamic-frame-')
+          || shotData.url?.startsWith('data:image');
+        const originalFrame = isDynamicVideoFrame ? {
+          ...shotData,
+          url: shotData.url || getImageUrl(shotData.frame_name || shotData.filepath),
+          isOriginalFrame: true,
+        } : null;
+        setNeighbors(originalFrame ? [originalFrame, ...mapped] : mapped);
       } catch (e) {
         console.error("Error checking temporal frames:", e);
         toast.error("Error loading neighboring frames");
@@ -118,7 +125,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
             <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
               {neighbors.map((shot, idx) => {
                 const offset = shot.frame_id - shotData.frame_id;
-                const isCenter = offset === 0;
+                const isCenter = shot.isOriginalFrame || offset === 0;
                 const labelText = offset > 0 ? `+${offset}` : `${offset}`;
 
                 return (

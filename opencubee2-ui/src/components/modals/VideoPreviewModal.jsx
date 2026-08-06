@@ -14,7 +14,7 @@ const formatTime = (seconds) => {
   return `${String(minutes).padStart(2, '0')}:${remaining.toFixed(3).padStart(6, '0')}`;
 };
 
-export default function VideoPreviewModal({ videoId, initialFrame, onClose, socket, username, userColor, onDresSubmit, wrongFrames = [] }) {
+export default function VideoPreviewModal({ videoId, initialFrame, onClose, socketRef, username, userColor, onDresSubmit, wrongFrames = [] }) {
   const videoRef = useRef(null);
   const timelineRef = useRef(null);
   const dragRef = useRef(null);
@@ -210,6 +210,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
   const handlePushFrame = () => {
     const video = videoRef.current;
     if (!video) return;
+    const socket = socketRef?.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       toast.error('Teamwork connection is not ready.');
       return;
@@ -433,7 +434,6 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
                 type="button"
                 className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-wider hover:bg-[var(--accent-primary)] hover:border-transparent active:scale-95 disabled:opacity-40"
                 onClick={handlePushFrame}
-                disabled={!socket}
               >
                 <i className="fas fa-users mr-2"></i>Push to Team
               </button>

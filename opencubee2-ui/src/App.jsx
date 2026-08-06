@@ -1468,7 +1468,7 @@ export default function App() {
                 setActiveModal(null);
                 setPreviewVideoData(null);
               }}
-              socket={socketRef.current}
+              socketRef={socketRef}
               username={username}
               userColor={userColor}
               wrongFrames={wrongFrames}
