@@ -58,6 +58,18 @@ export async function searchTemporal(temporalPayload) {
 }
 
 /**
+ * Tìm kiếm Semantic ASR
+ */
+export async function searchSemanticAsr(payload) {
+  const response = await fetch(`${BASE_URL}/search_semantic_asr`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(response);
+}
+
+/**
  * Tải ảnh cục bộ tạm thời lên server
  */
 export async function uploadImage(file) {

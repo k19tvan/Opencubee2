@@ -1,10 +1,8 @@
 // src/components/TopToolbar.jsx
 import React, { useState, useRef, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { SEARCH_MODEL_OPTIONS, DEFAULT_SEARCH_MODEL } from '../App';
 
-// Theme cycle: Dark → Light → Judge (the special emerald theme ported from
-// the JudgeResearch dashboard) → back to Dark. Pressing the toggle once more
-// past Light turns on the special theme.
 const THEME_ORDER = ['normal', 'dark', 'light', 'blue', 'neon', 'random', 'jujutsu'];
 const THEME_META = {
   normal: { icon: 'fas fa-circle', label: 'Normal' },
@@ -16,8 +14,6 @@ const THEME_META = {
   jujutsu: { icon: 'fas fa-ghost', label: 'Jujutsu Kaisen' },
 };
 
-// Shared button class builders so the theme toggle and every ToolBtn keep the
-// exact same shape/style. Hoisted for stable identity across re-renders.
 const toolBtnBaseClasses = () =>
   'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-medium transition-all duration-200 ease-smooth cursor-pointer select-none hover:-translate-y-0.5 active:scale-95 active:translate-y-0 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:translate-y-0';
 
@@ -27,9 +23,6 @@ const toolBtnStateClasses = (isJJK, active) => isJJK
     ? 'bg-[var(--text-primary)] border-[var(--text-primary)] text-[var(--bg-primary)] shadow-glow'
     : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--glass-bg)]');
 
-// Hoisted out of TopToolbar so it keeps a stable component identity across
-// renders — otherwise every toolbar render (e.g. dragging a weight slider)
-// unmounts and remounts every button.
 const ToolBtn = ({ onClick, icon, label, active = false, title = '', disabled = false, theme = '' }) => {
   const isJJK = theme === 'jujutsu';
 
@@ -69,6 +62,8 @@ export default function TopToolbar({
   setIsClustered,
   isAmbiguous,
   setIsAmbiguous,
+  isSemanticAsr,
+  setIsSemanticAsr,
   onOpenModal,
   onGoBack,
   onGoForward,
@@ -122,7 +117,6 @@ export default function TopToolbar({
         >
           <i className="fas fa-bars"></i>
         </button>
-
 
         <div className="flex items-center gap-3 cursor-pointer group">
           <div className="h-16 w-16 flex items-center justify-center flex-shrink-0 transition-all duration-300 ease-spring group-hover:scale-110 group-hover:rotate-6 drop-shadow-lg">
@@ -225,6 +219,18 @@ export default function TopToolbar({
           label="Auto Translate"
           active={autoTranslate}
           title={autoTranslate ? "Auto Translate: ON (Alt + A)" : "Auto Translate: OFF (Alt + A)"}
+          theme={theme}
+        />
+        <ToolBtn
+          onClick={() => {
+            const next = !isSemanticAsr;
+            setIsSemanticAsr(next);
+            toast.success(next ? 'Semantic ASR Mode: ON (Ctrl+Q)' : 'Semantic ASR Mode: OFF');
+          }}
+          icon="fas fa-closed-captioning"
+          label="Semantic ASR"
+          active={isSemanticAsr}
+          title="Toggle Semantic ASR Search (Ctrl + Q)"
           theme={theme}
         />
         <ToolBtn

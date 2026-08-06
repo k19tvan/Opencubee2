@@ -486,3 +486,119 @@ async def find_similar_frames(frame_name: str, limit: int = 20, threshold: float
     ]
     
     return filtered_frames[:limit]
+
+def find_keyframes_for_chunk(video_id: str, start_id: int, end_id: int) -> List[Dict[str, Any]]:
+    """Lấy danh sách keyframe cho 1 chunk: Ưu tiên RAM Cache O(1), fallback quét đĩa nếu thiếu."""
+    
+    # 1. Tra cứu siêu tốc O(1) theo chunk_key chính xác
+    chunk_key = f"{video_id}_{start_id}_{end_id}"
+    if runtime.asr_chunk_frames_map and chunk_key in runtime.asr_chunk_frames_map:
+        return runtime.asr_chunk_frames_map[chunk_key]
+
+    # 2. Lọc siêu tốc từ RAM theo video_id
+    if runtime.video_keyframes_map and video_id in runtime.video_keyframes_map:
+        video_shots = runtime.video_keyframes_map[video_id]
+        return [
+            shot for shot in video_shots
+            if start_id <= shot["frame_id"] <= end_id
+        ]
+
+    # 3. Fallback quét đĩa (chỉ chạy khi cả 2 bước RAM ở trên không tìm thấy)
+    import glob
+    from pathlib import Path
+
+    candidate_dirs = [
+        Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"),
+        Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/ocr_vlm_keyframes_full"),
+        Path("/mlcv1/Datasets/HCMAI25/keyframes"),
+        Path("/mlcv1/Datasets/HCMAI25/frames"),
+    ]
+
+    matched_files = []
+    prefix = video_id.split('_')[0] if '_' in video_id else video_id
+
+    for cdir in candidate_dirs:
+        if not cdir.is_dir():
+            continue
+        matched_files.extend(glob.glob(str(cdir / f"{video_id}_*")))
+        matched_files.extend(glob.glob(str(cdir / prefix / f"{video_id}_*")))
+
+    unique_files = sorted(list(set(matched_files)))
+    found_shots = []
+
+    for fpath in unique_files:
+        fname = os.path.basename(fpath)
+        stem = os.path.splitext(fname)[0]
+        parts = stem.split('_')
+        try:
+            frame_id = int(parts[-1])
+            if start_id <= frame_id <= end_id:
+                shot_id = parts[-2] if len(parts) >= 4 else "1"
+                found_shots.append({
+                    "frame_name": fname,
+                    "filepath": fpath,
+                    "video_id": video_id,
+                    "frame_id": frame_id,
+                    "shot_id": str(shot_id),
+                    "url": f"/keyframes/{fname}"
+                })
+        except (ValueError, IndexError):
+            continue
+
+    found_shots.sort(key=lambda x: x["frame_id"])
+    return found_shots
+
+
+async def search_semantic_asr_qdrant(
+    query_vector: list,
+    limit: int = 50,
+    video_ids: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Retrieve ASR chunks từ collection 'qwen' trong Qdrant."""
+    if not runtime.qdrant_client:
+        return []
+    try:
+        must_conditions = []
+        if video_ids:
+            must_conditions.append(
+                q_models.FieldCondition(
+                    key="video_id",
+                    match=q_models.MatchAny(any=video_ids),
+                )
+            )
+        query_filter = q_models.Filter(must=must_conditions) if must_conditions else None
+
+        response = await asyncio.to_thread(
+            runtime.qdrant_client.query_points,
+            collection_name="qwen",
+            query=query_vector,
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=["video_id", "start_id", "end_id", "summary"],
+            timeout=60,
+        )
+
+        results = []
+        for hit in response.points:
+            payload = hit.payload or {}
+            video_id = payload.get("video_id")
+            start_id = payload.get("start_id", 0)
+            end_id = payload.get("end_id", 0)
+            summary = payload.get("summary", "")
+            if not video_id:
+                continue
+
+            shots = find_keyframes_for_chunk(video_id, start_id, end_id)
+            results.append({
+                "chunk_id": str(hit.id),
+                "score": hit.score,
+                "video_id": video_id,
+                "start_id": start_id,
+                "end_id": end_id,
+                "summary": summary,
+                "shots": shots,
+            })
+        return results
+    except Exception as e:
+        print(f"Error searching Qdrant collection 'qwen': {e}")
+        return []

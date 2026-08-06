@@ -44,3 +44,10 @@ class EnhanceQueryRequest(BaseModel):
     ocr_query: Optional[str] = None
     asr_query: Optional[str] = None
     literal_translate: bool = False
+
+class SemanticAsrSearchRequest(BaseModel):
+    query_text: str
+    page: int = 1
+    page_size: int = 50
+    candidate_frame_names: Optional[List[str]] = None
+    video_ids: Optional[List[str]] = None

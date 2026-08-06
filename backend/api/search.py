@@ -14,16 +14,19 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from backend.core import runtime
 from backend.core.config import MAX_FRAME_LIMIT, MODEL_CONFIGS, TEMP_UPLOAD_DIR, TRANSLATE_PROVIDER
-from backend.schemas.search import EnhanceQueryRequest, StageData, TemporalSearchRequest, UnifiedSearchRequest
+from backend.schemas.search import EnhanceQueryRequest, StageData, TemporalSearchRequest, UnifiedSearchRequest, SemanticAsrSearchRequest
 from backend.services.search import (
     _combine_and_rerank_results,
     fuse_results,
+    get_embedding,
     process_and_cluster_results,
     search_all_models,
     search_ocr_on_meilisearch_async,
     find_similar_frames,
+    search_semantic_asr_qdrant
 )
 from backend.services.translation import google_translate_text, llm_translate_text
+
 
 router = APIRouter()
 
@@ -674,3 +677,41 @@ async def similar_frames(frame_name: str, limit: int = 15, threshold: float = 0.
     except Exception as e:
         print(f"Error finding similar frames for {frame_name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/search_semantic_asr")
+async def search_semantic_asr_endpoint(request_data: SemanticAsrSearchRequest):
+    start_time = time.time()
+    timings = {}
+
+    query_text = (request_data.query_text or "").strip()
+    if not query_text:
+        raise HTTPException(status_code=400, detail="Query text is required.")
+
+    # 1. Embed bằng Qwen worker
+    embedding = await get_embedding(
+        model_name="qwen",
+        text=query_text,
+    )
+    if not embedding:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to generate embedding from Qwen worker (Check if Qwen worker is running on port 2006)."
+        )
+
+    # 2. Search trên Qdrant collection 'qwen'
+    results = await search_semantic_asr_qdrant(
+        query_vector=embedding,
+        limit=request_data.page_size,
+        video_ids=request_data.video_ids,
+    )
+
+    start_idx = (request_data.page - 1) * request_data.page_size
+    paginated = results[start_idx:start_idx + request_data.page_size]
+
+    timings["total_request_s"] = time.time() - start_time
+    return {
+        "results": paginated,
+        "total_results": len(results),
+        "is_semantic_asr": True,
+        "timing_info": timings,
+    }

@@ -37,6 +37,10 @@ MODEL_CONFIGS = {
     "jina_v5_omni": {
         "worker_url": os.getenv("JINA_V5_OMNI_WORKER_URL", 'http://127.0.0.1:2004/embed'),
         "collection": "jina_v5_omni",
+    },
+    "qwen": {
+        "worker_url": os.getenv("QWEN_WORKER_URL", 'http://127.0.0.1:2006/embed'),
+        "collection": "qwen",
     }
 }
 

@@ -2,15 +2,15 @@
 import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { getImageUrl } from '../utils/imageUrl';
 
-// Component cho mỗi item ảnh - Đã tối ưu hóa loại bỏ State và Observer thủ công
-const ResultItem = React.memo(({ 
-  shot, 
-  onDragStart, 
-  onClick, 
-  onContextMenu, 
+// Component cho mỗi item ảnh
+const ResultItem = React.memo(({
+  shot,
+  onDragStart,
+  onClick,
+  onContextMenu,
   onMouseEnter,
   onMouseLeave,
-  onPushToTeam, 
+  onPushToTeam,
   onPushToTrake,
   isLocked = false,
   dresMode,
@@ -26,8 +26,6 @@ const ResultItem = React.memo(({
     setLoaded(true);
   }, []);
 
-  // Smoothly fade frames in as they finish loading. The ref-callback covers
-  // cached images whose `load` event fires before React attaches onLoad.
   const setImgRef = useCallback((node) => {
     if (node && node.complete && node.naturalWidth > 0) setLoaded(true);
   }, []);
@@ -46,7 +44,6 @@ const ResultItem = React.memo(({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isHovering, shot, onPushToTeam]);
-
 
   return (
     <div
@@ -69,7 +66,6 @@ const ResultItem = React.memo(({
         setIsHovering(false);
       }}
     >
-      {/* Sử dụng cơ chế Native Lazy Load mượt mà của trình duyệt */}
       <img
         ref={setImgRef}
         src={getImageUrl(shot.url || shot.frame_name || shot.filepath)}
@@ -80,9 +76,7 @@ const ResultItem = React.memo(({
         loading="lazy"
         decoding="async"
       />
-      {/* Gradient sheen at the bottom for depth */}
       <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-slate-950/50 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none rounded-b-lg" />
-      {/* Teamwork, Pin, Submit actions in corners */}
       <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-20">
         <button
           className="absolute bottom-1.5 left-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent cursor-pointer pointer-events-auto shadow-md"
@@ -100,11 +94,10 @@ const ResultItem = React.memo(({
         </button>
         {(dresMode === 'KIS' || dresMode === 'QA') && (
           <button
-            className={`absolute top-1.5 right-1.5 w-9 h-9 rounded-lg border flex items-center justify-center text-xs text-white hover:border-transparent cursor-pointer pointer-events-auto ${
-              dresMode === 'KIS' 
-                ? 'bg-emerald-600/90 border-emerald-400/30 hover:bg-emerald-500' 
-                : 'bg-blue-600/90 border-blue-400/30 hover:bg-blue-500'
-            }`}
+            className={`absolute top-1.5 right-1.5 w-9 h-9 rounded-lg border flex items-center justify-center text-xs text-white hover:border-transparent cursor-pointer pointer-events-auto ${dresMode === 'KIS'
+              ? 'bg-emerald-600/90 border-emerald-400/30 hover:bg-emerald-500'
+              : 'bg-blue-600/90 border-blue-400/30 hover:bg-blue-500'
+              }`}
             onClick={(e) => { e.stopPropagation(); onDresSubmit?.(shot); }}
             title={`Submit ${dresMode}`}
           >
@@ -123,9 +116,7 @@ const ResultItem = React.memo(({
             <span className="text-[10px] font-bold tracking-wider text-white">WRONG</span>
           </div>
         )}
-        
       </div>
-
     </div>
   );
 });
@@ -137,7 +128,7 @@ const TeamworkPanel = React.memo(({ teamworkFrames, onDragStart, onItemClick, on
   if (teamworkFrames.length === 0) {
     return <p className="text-[var(--text-secondary)] text-xs italic px-6 py-4">No frames shared by the team yet...</p>;
   }
-  
+
   return (
     <div className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none">
       {teamworkFrames.map((frame, idx) => (
@@ -190,21 +181,21 @@ export default function RightResultsPanel({
   loading = false,
   loadingMore = false,
   hasMore = false,
-  onLoadMore = () => {},
-  onPreview = () => {},
+  onLoadMore = () => { },
+  onPreview = () => { },
   socket = null,
   username = '',
   userColor = '',
-  onTeamworkAddLocal = () => {},
-  onTeamworkRemoveLocal = () => {},
-  onPushToTrake = () => {},
+  onTeamworkAddLocal = () => { },
+  onTeamworkRemoveLocal = () => { },
+  onPushToTrake = () => { },
   correctSubmission = null,
-  onZoom = () => {},
+  onZoom = () => { },
   isClustered = false,
   isAmbiguous = false,
-  onContext = () => {},
-  onQuickSearch = () => {},
-  onToggleLock = () => {},
+  onContext = () => { },
+  onQuickSearch = () => { },
+  onToggleLock = () => { },
   lockedVideoIds = [],
   dresMode,
   setHoveredFrame,
@@ -217,7 +208,7 @@ export default function RightResultsPanel({
   const hoveredShotRef = useRef(null);
   const hoveredTeamShotRef = useRef(null);
   const pushedShortcutRef = useRef(false);
-  
+
   const pushToTeam = useCallback((shot) => {
     onTeamworkAddLocal(shot);
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -253,7 +244,7 @@ export default function RightResultsPanel({
         event.preventDefault();
         if (pushedShortcutRef.current) return;
         pushedShortcutRef.current = true;
-        
+
         if (hoveredTeamShotRef.current) {
           removeFromTeam(hoveredTeamShotRef.current);
           hoveredTeamShotRef.current = null;
@@ -298,10 +289,11 @@ export default function RightResultsPanel({
     if (hoveredTeamShotRef.current === shot) hoveredTeamShotRef.current = null;
     setHoveredFrame?.(null);
   }, [setHoveredFrame]);
+
   const pushToTrake = useCallback((shot) => {
     onPushToTrake(shot);
   }, [onPushToTrake]);
-  
+
   const handleDragStart = useCallback((e, shot) => {
     if (!shot) return;
     const fullUrl = getImageUrl(shot.url || shot.frame_name || shot.filepath);
@@ -311,7 +303,7 @@ export default function RightResultsPanel({
     e.dataTransfer.setData('text/plain', shot.frame_name || fullUrl);
     e.dataTransfer.effectAllowed = 'copy';
   }, []);
-  
+
   const handleItemClick = useCallback((e, shot) => {
     if (e.altKey) {
       e.preventDefault();
@@ -334,9 +326,13 @@ export default function RightResultsPanel({
     if (!shot) return;
     onPreview(shot.video_id, shot.frame_id);
   }, [onPreview]);
-  
+
   const isTemporalSearch = useMemo(() => {
     return searchResults && searchResults.length > 0 && searchResults.some(res => res.clusters || res.combined_score);
+  }, [searchResults]);
+
+  const isSemanticAsrResults = useMemo(() => {
+    return searchResults && searchResults.length > 0 && searchResults[0].summary !== undefined;
   }, [searchResults]);
 
   const rankedSingleStageShots = useMemo(() => {
@@ -356,8 +352,7 @@ export default function RightResultsPanel({
       ])).values()
     );
   }, [searchResults]);
-  
-  // Memoized render functions
+
   const renderResultItem = useCallback((shot, key) => {
     if (!shot || !shot.url) return null;
     return (
@@ -379,9 +374,7 @@ export default function RightResultsPanel({
       />
     );
   }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, pushToTeam, pushToTrake, lockedVideoIds, dresMode, setHoveredFrame, onDresSubmit, wrongFrames]);
-  
-  // Auto scroll to top CHỈ khi có một lần tìm kiếm mới (item đầu đổi tham chiếu),
-  // không cuộn khi infinite-scroll nối thêm kết quả (item đầu giữ nguyên tham chiếu).
+
   useEffect(() => {
     const firstResult = searchResults.length > 0 ? searchResults[0] : null;
     if (firstResult && firstResult !== prevFirstResult.current) {
@@ -405,11 +398,10 @@ export default function RightResultsPanel({
 
     if (!stillExists) hoveredTeamShotRef.current = null;
   }, [teamworkFrames]);
-  
-  // Độc lập kích hoạt Infinite Scroll thông qua IntersectionObserver của Sentinel phần tử cuối
+
   useEffect(() => {
     if (!containerRef.current || !hasMore || loading || loadingMore) return;
-    
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0] && entries[0].isIntersecting) {
@@ -418,27 +410,23 @@ export default function RightResultsPanel({
       },
       { rootMargin: '300px', threshold: 0.1 }
     );
-    
+
     if (sentinelRef.current) {
       observer.observe(sentinelRef.current);
     }
-    
+
     return () => {
       observer.disconnect();
     };
   }, [hasMore, loading, loadingMore, onLoadMore]);
-  
+
   return (
     <div
       id="right-results-panel"
       ref={containerRef}
-      // Đã loại bỏ onScroll={handleScroll} để trình duyệt tự do cuộn mượt mà ở tầng hệ thống
       className="flex-grow overflow-y-auto bg-[var(--bg-primary)] pb-12 transition-colors duration-300 relative w-full"
       style={{ willChange: 'transform' }}
     >
-
-      
-      {/* Loại bỏ backdrop-blur-md ở sticky để GPU không phải tính toán mờ liên tục khi cuộn */}
       <div id="teamworkPanelContainer" className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[49] transition-colors duration-300 shadow-sm">
         <h3 className="text-xs font-bold text-[var(--accent-primary)] uppercase tracking-widest flex items-center gap-2 px-6 mb-3">
           <i className="fas fa-users"></i> Teamwork Submission Panel
@@ -452,16 +440,16 @@ export default function RightResultsPanel({
           onMouseLeave={handleTeamMouseLeave}
         />
       </div>
-      
+
       {showTrake && (
         <div id="trakePanelContainer" className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[48] transition-colors duration-300 shadow-sm">
-          <div 
+          <div
             className="flex-shrink-0"
             onMouseEnter={() => setIsHoveringTrakePanel?.(true)}
             onMouseLeave={() => setIsHoveringTrakePanel?.(false)}
           >
             <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2 px-6 mb-3">
-              <i className="fas fa-thumbtack"></i> Trake Panel 
+              <i className="fas fa-thumbtack"></i> Trake Panel
               <span className="text-[10px] bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded-full font-mono ml-1">
                 {trakeFrames.length}
               </span>
@@ -505,7 +493,7 @@ export default function RightResultsPanel({
           </div>
         </div>
       )}
-      
+
       <div className="px-6 py-4">
         {loading ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4.5 animate-fadeIn">
@@ -535,6 +523,54 @@ export default function RightResultsPanel({
             <p className="text-sm font-semibold text-[var(--text-primary)]">Ready when you are</p>
             <p className="text-xs mt-1 text-[var(--text-secondary)]">Enter a query and hit Search to explore frames.</p>
           </div>
+        ) : isSemanticAsrResults ? (
+          <div className="space-y-6 animate-fadeIn">
+            {searchResults.map((chunk, chunkIdx) => (
+              <div
+                key={`asr-chunk-${chunk.chunk_id || chunkIdx}`}
+                className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl p-4 shadow-[var(--shadow-heavy)] hover:border-[var(--border-hover)] transition-all duration-200"
+              >
+                <div className="mb-3.5 pb-3 border-b border-[var(--border-color)]">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-md bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] font-mono text-xs font-bold border border-[var(--accent-primary)]/30">
+                        <i className="fas fa-video mr-1.5"></i>{chunk.video_id}
+                      </span>
+                      <span className="text-[11px] font-mono text-[var(--text-secondary)] bg-[var(--glass-bg)] px-2 py-0.5 rounded border border-[var(--border-color)]">
+                        Frame Range: {chunk.start_id} → {chunk.end_id}
+                      </span>
+                    </div>
+                    {chunk.score !== undefined && (
+                      <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                        Similarity: {(chunk.score * 100).toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="p-3 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-xs leading-relaxed text-[var(--text-primary)] shadow-inner">
+                    <span className="font-bold text-[var(--accent-primary)] mr-2 inline-flex items-center gap-1">
+                      <i className="fas fa-quote-left text-[10px]"></i> Summary:
+                    </span>
+                    {chunk.summary || "No summary text available."}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3.5 overflow-x-auto pb-2 custom-scrollbar select-none min-h-[110px]">
+                  {chunk.shots && chunk.shots.length > 0 ? (
+                    chunk.shots.map((shot, shotIdx) => (
+                      <div key={`chunk-shot-${chunkIdx}-${shotIdx}`} className="flex-shrink-0 w-[200px]">
+                        {renderResultItem(shot, `shot-chunk-${chunkIdx}-${shotIdx}`)}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-[var(--text-secondary)] italic py-4 px-2">
+                      No keyframe files found in frame range [{chunk.start_id} - {chunk.end_id}].
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <>
             {isTemporalSearch ? (
@@ -546,14 +582,14 @@ export default function RightResultsPanel({
                       <i className="fas fa-stream"></i>
                       {isAmbiguous ? `Ambiguous Match in Video: ${sequence.video_id}` : `Sequence ${seqIndex + 1} (Video: ${sequence.video_id})`}
                     </h3>
-                    
+
                     {isClustered ? (
                       (sequence.clusters || []).map((cluster, clusterIdx) => {
                         const sortedShots = [...(cluster.shots || [])].sort((a, b) => {
                           return (a.shot_id_int || 0) - (b.shot_id_int || 0) || (a.frame_id || 0) - (b.frame_id || 0);
                         });
                         if (sortedShots.length === 0) return null;
-                        
+
                         return (
                           <div key={`cluster-${seqIndex}-${clusterIdx}`} className="mb-6 pl-4 border-l-2 border-[var(--accent-secondary)]">
                             <h4 className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase tracking-wider mb-2.5">
@@ -580,7 +616,7 @@ export default function RightResultsPanel({
                     return (a.shot_id_int || 0) - (b.shot_id_int || 0) || (a.frame_id || 0) - (b.frame_id || 0);
                   });
                   if (sortedShots.length === 0) return null;
-                  
+
                   return (
                     <div key={`cluster-main-${index}`} className="mb-8 border-b border-[var(--border-color)] pb-6 last:border-0 last:pb-0 animate-fadeIn">
                       <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-3.5 px-1 flex items-center gap-2">
@@ -599,15 +635,14 @@ export default function RightResultsPanel({
                 </div>
               )
             )}
-            
+
             {loadingMore && (
               <div className="flex items-center justify-center text-[var(--accent-primary)] text-xs py-8 gap-2.5 animate-pulse w-full col-span-full">
                 <i className="fas fa-circle-notch fa-spin text-lg"></i>
                 <span className="font-semibold tracking-wide">Loading more frames...</span>
               </div>
             )}
-            
-            {/* Sentinel element duy nhất phục vụ infinite scroll */}
+
             {hasMore && !loading && !loadingMore && (
               <div ref={sentinelRef} style={{ height: '20px', marginTop: '20px' }} />
             )}

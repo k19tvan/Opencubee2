@@ -4,8 +4,8 @@ import toast from 'react-hot-toast';
 import { BASE_URL } from '../api';
 
 const MODES = [
-  { key: 'text',  icon: 'fas fa-font',        label: 'Text'   },
-  { key: 'image', icon: 'fas fa-image',        label: 'Image'  },
+  { key: 'text', icon: 'fas fa-font', label: 'Text' },
+  { key: 'image', icon: 'fas fa-image', label: 'Image' },
 ];
 
 const getBackendUrl = (path) => {
@@ -24,24 +24,24 @@ export default function StageCard({
   isReordering = false,
   onReorderPointerDown,
 }) {
-  const [type, setType]               = useState(stage.queryType || 'text');
-  const [ocrActive, setOcrActive]     = useState(stage.ocrActive ?? !!stage.ocrText);
-  const [asrActive, setAsrActive]     = useState(stage.asrActive ?? !!stage.asrText);
-  const [isDragging, setIsDragging]   = useState(false);
+  const [type, setType] = useState(stage.queryType || 'text');
+  const [ocrActive, setOcrActive] = useState(stage.ocrActive ?? !!stage.ocrText);
+  const [asrActive, setAsrActive] = useState(stage.asrActive ?? !!stage.asrText);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const [queryText,     setQueryText]     = useState(stage.queryText || '');
-  const [ocrText,       setOcrText]       = useState(stage.ocrText   || '');
-  const [asrText,       setAsrText]       = useState(stage.asrText   || '');
-  const [imagePreview,  setImagePreview]  = useState(stage.imagePreview || null);
-  const [imageText,     setImageText]     = useState(stage.imageText || '');
+  const [queryText, setQueryText] = useState(stage.queryText || '');
+  const [ocrText, setOcrText] = useState(stage.ocrText || '');
+  const [asrText, setAsrText] = useState(stage.asrText || '');
+  const [imagePreview, setImagePreview] = useState(stage.imagePreview || null);
+  const [imageText, setImageText] = useState(stage.imageText || '');
   const [tempImageName, setTempImageName] = useState(stage.tempImageName || null);
-  const [options, setOptions]             = useState({
+  const [options, setOptions] = useState({
     enhance: !!stage.options?.enhance,
     bge_caption: false,
   });
 
   // Cờ hiệu để trì hoãn việc gọi onSearch cho đến khi nhận được hàm onSearch mới từ parent
-  const [shouldSearch, setShouldSearch]   = useState(false);
+  const [shouldSearch, setShouldSearch] = useState(false);
 
   const debounceRef = useRef(null);
   const flushRef = useRef(null);
@@ -49,7 +49,7 @@ export default function StageCard({
   const imageTextRef = useRef(null);
   const ocrRef = useRef(null);
   const asrRef = useRef(null);
-  
+
   // Ref lưu dữ liệu đã gửi lên parent gần nhất để tránh bị ghi đè ngược khi đang gõ
   const lastFlushedRef = useRef({});
 
@@ -71,7 +71,7 @@ export default function StageCard({
       imagePreview,
       options,
     };
-    
+
     lastFlushedRef.current = data;
     onChange(stage.id, data);
   }, [type, queryText, ocrActive, ocrText, asrActive, asrText, tempImageName, imageText, imagePreview, options, onChange, stage.id]);
@@ -216,9 +216,9 @@ export default function StageCard({
           const shotData = JSON.parse(rawJson);
           if (shotData && shotData.url) targetUrl = shotData.url;
           if (shotData && shotData.frame_name) internalFrameName = shotData.frame_name;
-        } catch {}
+        } catch { }
       }
-      
+
       if (internalFrameName) {
         // Skip fetching the URL and uploading! Just tell the backend to use the internal frame.
         setTempImageName(`_frame_:${internalFrameName}`);
@@ -243,7 +243,7 @@ export default function StageCard({
             const urlObj = new URL(targetUrl);
             const pathParts = urlObj.pathname.split('/');
             filename = pathParts[pathParts.length - 1] || "dragged_frame.jpg";
-          } catch {}
+          } catch { }
           const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
           uploadImageFile(file);
         } catch (err) {
@@ -271,9 +271,9 @@ export default function StageCard({
   const pillCls = (active) =>
     `w-7 h-7 rounded-lg border text-[10px] flex items-center justify-center cursor-pointer transition-all duration-200 ease-spring select-none hover:-translate-y-0.5 active:scale-90 active:translate-y-0
      ${active
-       ? 'bg-[var(--text-primary)] border-[var(--text-primary)] text-[var(--bg-primary)] shadow-glow'
-       : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)]'
-     }`;
+      ? 'bg-[var(--text-primary)] border-[var(--text-primary)] text-[var(--bg-primary)] shadow-glow'
+      : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)]'
+    }`;
 
   return (
     <div
@@ -353,11 +353,10 @@ export default function StageCard({
         {type === 'image' && (
           <div className="space-y-2">
             <label
-              className={`relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg transition-all duration-200 overflow-hidden cursor-pointer ${
-                isDragging
-                  ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/10 scale-[1.02]'
-                  : 'border-[var(--border-color)] bg-[var(--glass-bg)] hover:border-[var(--border-hover)] hover:bg-white/5'
-              }`}
+              className={`relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg transition-all duration-200 overflow-hidden cursor-pointer ${isDragging
+                ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/10 scale-[1.02]'
+                : 'border-[var(--border-color)] bg-[var(--glass-bg)] hover:border-[var(--border-hover)] hover:bg-white/5'
+                }`}
               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
               onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
               onDrop={handleDrop}

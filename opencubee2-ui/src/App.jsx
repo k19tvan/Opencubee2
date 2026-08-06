@@ -1,6 +1,6 @@
 // src/App.jsx
 import { useState, useEffect, useRef, useCallback } from 'react';
-import toast, { Toaster } from 'react-hot-toast'; // Installed via npm i react-hot-toast
+import toast, { Toaster } from 'react-hot-toast';
 import TopToolbar from './components/TopToolbar';
 import LeftSearchPanel from './components/LeftSearchPanel';
 import RightResultsPanel from './components/RightResultsPanel';
@@ -11,8 +11,8 @@ import FrameContextModal from './components/modals/FrameContextModal';
 import HelpModal from './components/modals/HelpModal';
 import DresLoginModal from './components/modals/DresLoginModal';
 import DresSubmitModal from './components/modals/DresSubmitModal';
-import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, getWsUrl, DRES_BASE_URL } from './api';
-import { getImageUrl } from './utils/imageUrl'; // Imported from separate utility to keep Fast Refresh functional
+import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, searchSemanticAsr, getWsUrl, DRES_BASE_URL } from './api';
+import { getImageUrl } from './utils/imageUrl';
 import { getDresFrameNumber } from './utils/frameNumber';
 
 const createEmptyStage = () => ({
@@ -130,6 +130,10 @@ export default function App() {
   const [isClustered, setIsClustered] = useState(false);
   const [isAmbiguous, setIsAmbiguous] = useState(false);
 
+  // Semantic ASR State
+  const [isSemanticAsr, setIsSemanticAsr] = useState(false);
+  const [semanticAsrQuery, setSemanticAsrQuery] = useState('');
+
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -143,8 +147,6 @@ export default function App() {
   const [stageFocusRequest, setStageFocusRequest] = useState(null);
 
   const [searchResults, setSearchResults] = useState([]);
-  // A quick image search prepares a candidate list. It is only used after the
-  // user explicitly enables Similar only in the top toolbar.
   const [similarityScope, setSimilarityScope] = useState(null);
   const [similarityScopeEnabled, setSimilarityScopeEnabled] = useState(false);
   const [lastFinalQueries, setLastFinalQueries] = useState([]);
@@ -238,8 +240,6 @@ export default function App() {
       ? (snapshot.submittedSimilarityScope || snapshot.similarityScope || null)
       : null;
     setSimilarityScope(snapshot.similarityScope || null);
-    // Old history entries did not have this flag, so they must never silently
-    // turn similarity-only search back on.
     setSimilarityScopeEnabled(snapshot.similarityScopeEnabled === true);
     setSearchResults(snapshot.searchResults || []);
     setLastFinalQueries(snapshot.lastFinalQueries || []);
@@ -353,6 +353,7 @@ export default function App() {
     if (lockedVideos.length === 0) return results;
     const allowed = new Set(lockedVideos.map(v => v.videoId));
     return results.filter(result => {
+      if (result.video_id && allowed.has(result.video_id)) return true;
       if (result.shots) return result.shots.some(s => allowed.has(s.video_id));
       if (result.clusters) return result.clusters.some(c => c.shots?.some(s => allowed.has(s.video_id)));
       return false;
@@ -373,8 +374,6 @@ export default function App() {
         ? (stage.imageText || '').trim()
         : (stage.queryText || '').trim();
       if (!sourceQuery) return stage;
-
-
 
       try {
         const response = await enhanceQuery({
@@ -482,6 +481,16 @@ export default function App() {
     };
 
     const handleKeyDown = (event) => {
+      if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && event.code === 'KeyQ') {
+        event.preventDefault();
+        setIsSemanticAsr((prev) => {
+          const next = !prev;
+          toast.success(next ? 'Semantic ASR Mode: ON' : 'Semantic ASR Mode: OFF');
+          return next;
+        });
+        return;
+      }
+
       if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
         const key = event.key.toLowerCase();
         if (key === 'e') {
@@ -679,13 +688,11 @@ export default function App() {
     if (!shot) return;
     const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
 
-    // Add locally first
     setTrakeFrames(prev => {
       if (prev.some(s => s.filepath === shotWithUrl.filepath)) return prev;
       return [...prev, shotWithUrl];
     });
 
-    // Broadcast via WS
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({
         type: 'trake_add',
@@ -693,7 +700,7 @@ export default function App() {
       }));
     }
     toast.success('Pinned to Trake Panel');
-    setShowTrake(true); // Auto-open Trake panel
+    setShowTrake(true);
   };
 
   const removeTeamworkFrameLocal = (shotToRemove) => {
@@ -866,26 +873,21 @@ export default function App() {
 
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
-      // Ignore if input/textarea is focused, except if we still want to allow Trake submit
       if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
         return;
       }
 
-      // Ctrl + Shift + Space
       if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
         if (e.repeat) return;
-        if (activeModal) return; // Prevent background submit when a modal is open
+        if (activeModal) return;
         e.preventDefault();
         if (isHoveringTrakePanel) {
-          // Instant Trake submission
           handleInstantDresSubmit(null);
         } else if (hoveredFrame) {
-          // Instant KIS/QA submission
           handleInstantDresSubmit(hoveredFrame);
         }
       }
 
-      // Ctrl + G for Cluster toggle
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'KeyG') {
         e.preventDefault();
         setIsClustered(prev => !prev);
@@ -904,7 +906,43 @@ export default function App() {
     return () => window.removeEventListener('dres-qa-correct', handleQaCorrect);
   }, [username, userColor]);
 
+  const executeSemanticAsrSearch = async (queryText = semanticAsrQuery) => {
+    if (!queryText.trim()) {
+      toast.error('Please enter a Semantic ASR query.');
+      return;
+    }
+    setLoading(true);
+    setTimingInfo(null);
+    try {
+      const payload = {
+        query_text: queryText.trim(),
+        page: 1,
+        page_size: 50,
+        ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
+      };
+      const response = await searchSemanticAsr(payload);
+      const mappedResults = (response.results || []).map(chunk => ({
+        ...chunk,
+        shots: (chunk.shots || []).map(shot => ({
+          ...shot,
+          url: getImageUrl(shot.frame_name || shot.url)
+        }))
+      }));
+      setSearchResults(filterByLockedVideos(mappedResults));
+      setTimingInfo(response.timing_info);
+    } catch (err) {
+      toast.error('Semantic ASR Search failed: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const performSearch = async (pageNumber = 1, overrideStages = null, captureHistory = true, options = {}) => {
+    if (isSemanticAsr) {
+      await executeSemanticAsrSearch();
+      return;
+    }
+
     const requestedSearchModel = pageNumber === 1
       ? normalizeSearchModel(searchModel)
       : submittedSearchModelRef.current || normalizeSearchModel(searchModel);
@@ -930,8 +968,7 @@ export default function App() {
       const activeStages = pageNumber === 1
         ? await enhanceStagesForSearch(sourceStages, requestedSearchModel)
         : submittedStagesRef.current || sourceStages;
-      // Image mode is native BGE-VL composed retrieval.  Keep this client-side
-      // override for an accurate request payload; the backend enforces it too.
+
       const activeSearchModel = activeStages.some(
         (stage) => stage.queryType === 'image' && stage.tempImageName
       )
@@ -1011,7 +1048,6 @@ export default function App() {
       }
 
       let nextSimilarityScope = activeSimilarityScope;
-      // A newly created list must never turn similarity-only mode on by itself.
       const nextSimilarityScopeEnabled = options.activateSimilarityScope
         ? false
         : similarityScopeEnabled;
@@ -1060,7 +1096,7 @@ export default function App() {
         });
       }
 
-      if (isMobileMenuOpen) setIsMobileMenuOpen(false); // Close mobile sidebar on search
+      if (isMobileMenuOpen) setIsMobileMenuOpen(false);
 
     } catch (error) {
       toast.error("Search failed: " + error.message);
@@ -1071,8 +1107,6 @@ export default function App() {
   };
 
   const handleQuickImageSearch = async (shot) => {
-    // This retrieval is always global. Its returned frames are saved as a
-    // similarity list, but are not used to restrict later searches by default.
     setSimilarityScope(null);
     submittedSimilarityScopeRef.current = null;
     setSimilarityScopeEnabled(false);
@@ -1080,18 +1114,13 @@ export default function App() {
     setSearchResults([]);
     setTimingInfo(null);
 
-
     const controller = new AbortController();
-    // Set a 15-second timeout to abort the upload if the server hangs
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       let tempImageName = null;
       let imageUrl = null;
 
-      // Frames captured in VideoPreview carry a display frame_name, but that
-      // keyframe does not exist on the backend filesystem. Upload their canvas
-      // image instead; only persisted search-result keyframes can use _frame_.
       const isDynamicVideoFrame = shot.filepath?.startsWith('dynamic-frame-')
         || shot.url?.startsWith('data:image');
 
@@ -1104,7 +1133,6 @@ export default function App() {
         } else {
           imageUrl = getImageUrl(shot.url || shot.frame_name);
 
-          // Proxy external URLs (like Google Images) to bypass CORS
           if (imageUrl.startsWith('http') && !imageUrl.includes(BASE_URL.replace(/\/$/, ''))) {
             const backendHost = BASE_URL.replace(/\/$/, '');
             imageUrl = `${backendHost}/proxy_image?url=${encodeURIComponent(imageUrl)}`;
@@ -1125,14 +1153,13 @@ export default function App() {
         const backendHost = BASE_URL.replace(/\/$/, '');
         const uploadUrl = `${backendHost}/upload_image`;
 
-        // Pass the abort signal to the fetch request
         const uploadRes = await fetch(uploadUrl, {
           method: 'POST',
           body: fd,
           signal: controller.signal
         });
 
-        clearTimeout(timeoutId); // Clear timeout if upload succeeded
+        clearTimeout(timeoutId);
 
         if (!uploadRes.ok) {
           let errorMsg = "Upload failed";
@@ -1149,7 +1176,6 @@ export default function App() {
         tempImageName = uploadData.temp_image_name;
       }
 
-      // Quick Search ignores current stages and forces a pure 1-stage similarity search.
       const updatedStages = [{
         ...createEmptyStage(),
         queryType: 'image',
@@ -1303,6 +1329,8 @@ export default function App() {
             setIsClustered={setIsClusteredWithHistory}
             isAmbiguous={isAmbiguous}
             setIsAmbiguous={setIsAmbiguousWithHistory}
+            isSemanticAsr={isSemanticAsr}
+            setIsSemanticAsr={setIsSemanticAsr}
             searchModel={searchModel}
             setSearchModel={setSearchModel}
             autoTranslate={autoTranslate}
@@ -1352,6 +1380,10 @@ export default function App() {
                   onQuickSearch={handleQuickImageSearch}
                   loading={loading}
                   theme={effectiveTheme}
+                  isSemanticAsr={isSemanticAsr}
+                  semanticAsrQuery={semanticAsrQuery}
+                  setSemanticAsrQuery={setSemanticAsrQuery}
+                  onSemanticAsrSearch={executeSemanticAsrSearch}
                 />
               </div>
 

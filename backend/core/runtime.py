@@ -103,6 +103,8 @@ trake_panel_state = []
 wrong_frames_state = []
 frame_context_cache = {}
 similar_frames_map = {}
+asr_chunk_frames_map = {}
+video_keyframes_map = {}
 
 def load_similar_frames_json():
     global similar_frames_map
@@ -132,7 +134,21 @@ def load_frame_context_json():
             print(f"Error loading frame context JSON: {e}")
 
 
-
+def load_asr_chunk_frames_json():
+    global asr_chunk_frames_map, video_keyframes_map
+    json_path = "./storage/asr_chunk_frames.json"
+    if os.path.exists(json_path):
+        import json
+        try:
+            print("--- Loading ASR chunk frames JSON into RAM (Background)... ---")
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                asr_chunk_frames_map = data.get("chunks", {})
+                video_keyframes_map = data.get("videos", {})
+            print(f"--- ASR chunk frames JSON loaded! ({len(asr_chunk_frames_map)} chunks, {len(video_keyframes_map)} videos) ---")
+        except Exception as e:
+            print(f"Error loading ASR chunk frames JSON: {e}")
+            
 def startup_runtime():
     global qdrant_client, meili_client, http_client
 
@@ -144,6 +160,7 @@ def startup_runtime():
     import threading
     threading.Thread(target=load_frame_context_json, daemon=True).start()
     threading.Thread(target=load_similar_frames_json, daemon=True).start()
+    threading.Thread(target=load_asr_chunk_frames_json, daemon=True).start()
 
 
     try:
