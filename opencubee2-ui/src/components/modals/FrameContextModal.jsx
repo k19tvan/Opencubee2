@@ -132,10 +132,14 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                   <div
                     key={idx}
                     className={`relative bg-[var(--card-bg)] rounded-xl overflow-hidden border aspect-video cursor-zoom-in hover:scale-[1.03] transition-all duration-200 group ${
-                      isCenter 
-                        ? 'border-[var(--accent-purple)] shadow-[0_0_15px_rgba(102,126,234,0.6)]' 
+                      isCenter
+                        ? 'border-[6px] ring-[6px] ring-slate-100'
                         : 'border-[var(--border-color)] hover:border-[var(--accent-primary)]'
                     }`}
+                    style={isCenter ? {
+                      borderColor: '#d1d5db',
+                      boxShadow: '0 0 12px #f8fafc, 0 0 28px #e5e7eb, 0 0 46px #94a3b8',
+                    } : undefined}
                     onClick={(e) => {
                       if (e.ctrlKey && e.shiftKey && onQuickSearch) {
                         onQuickSearch(shot);
@@ -155,8 +159,10 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                   >
                     <img src={getImageUrl(shot.url || shot.frame_name || shot.filepath)} className="w-full h-full object-cover" alt="Context result" onError={(e) => { e.target.onerror = null; e.target.src = '/fallback-image.png'; }} />
                     
-                    <div className="absolute top-2 left-2 bg-black/80 text-white px-2 py-0.5 rounded text-[10px] font-bold z-10">
-                      {isCenter ? 'Original' : labelText}
+                    <div className={`absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider z-10 ${
+                      isCenter ? 'bg-slate-400/95 text-white flex items-center justify-center w-fit shadow' : 'bg-black/80 text-white'
+                    }`}>
+                      {isCenter ? 'ORIGINAL' : labelText}
                     </div>
 
                     <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20">
