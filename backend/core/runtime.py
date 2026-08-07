@@ -103,6 +103,7 @@ trake_panel_state = []
 wrong_frames_state = []
 frame_context_cache = {}
 similar_frames_map = {}
+frame_similarity_labels = {}
 asr_chunk_frames_map = {}
 video_keyframes_map = {}
 
@@ -118,6 +119,22 @@ def load_similar_frames_json():
             print(f"--- Similar frames JSON loaded! ({len(similar_frames_map)} entries) ---")
         except Exception as e:
             print(f"Error loading similar frames JSON: {e}")
+
+
+def load_frame_similarity_labels_json():
+    """Load pre-computed labels used directly by normal search results."""
+    global frame_similarity_labels
+    json_path = "./storage/frame_similarity_labels.json"
+    if os.path.exists(json_path):
+        import json
+        try:
+            print("--- Loading frame similarity labels into RAM (Background)... ---")
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            frame_similarity_labels = data.get("labels", data)
+            print(f"--- Frame similarity labels loaded! ({len(frame_similarity_labels)} frames) ---")
+        except Exception as e:
+            print(f"Error loading frame similarity labels: {e}")
 
 
 def load_frame_context_json():
@@ -160,6 +177,7 @@ def startup_runtime():
     import threading
     threading.Thread(target=load_frame_context_json, daemon=True).start()
     threading.Thread(target=load_similar_frames_json, daemon=True).start()
+    threading.Thread(target=load_frame_similarity_labels_json, daemon=True).start()
     threading.Thread(target=load_asr_chunk_frames_json, daemon=True).start()
 
 

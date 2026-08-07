@@ -32,6 +32,7 @@ const ResultItem = React.memo(({
   }, []);
 
   const [isHovering, setIsHovering] = useState(false);
+
   useEffect(() => {
     if (!isHovering) return;
     const handleKeyDown = (e) => {
@@ -48,6 +49,10 @@ const ResultItem = React.memo(({
 
   const hasSubmissionStatus = isCorrect || isWrong;
   const statusColor = isCorrect ? '#39ff14' : '#ff1744';
+  const similarityLabels = shot.similarity_labels || [];
+  const hasIntro = similarityLabels.includes('INTRO');
+  const hasDuplicate = similarityLabels.includes('DUP');
+  const hasReuse = similarityLabels.includes('REUSE');
 
   return (
     <div
@@ -119,6 +124,21 @@ const ResultItem = React.memo(({
         </div>
       )}
       <div className="absolute top-1.5 left-1.5 flex flex-col gap-1 z-30 pointer-events-none">
+        {hasIntro && (
+          <div className="px-1.5 py-0.5 rounded bg-[#0000ff]/90 flex items-center justify-center w-fit shadow">
+            <span className="text-[10px] font-bold tracking-wider text-white">INTRO</span>
+          </div>
+        )}
+        {hasReuse && (
+          <div className="px-1.5 py-0.5 rounded bg-[#08a045]/90 flex items-center justify-center w-fit shadow">
+            <span className="text-[10px] font-bold tracking-wider text-white">REPEAT</span>
+          </div>
+        )}
+        {hasDuplicate && (
+          <div className="px-1.5 py-0.5 rounded bg-[#ff4500]/90 flex items-center justify-center w-fit shadow">
+            <span className="text-[10px] font-bold tracking-wider text-white">DUP</span>
+          </div>
+        )}
         {isWrong && (
           <div className="px-1.5 py-0.5 rounded bg-red-600/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity w-fit pointer-events-auto shadow" title="Wrong Submission">
             <span className="text-[10px] font-bold tracking-wider text-white">WRONG</span>

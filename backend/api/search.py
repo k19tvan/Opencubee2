@@ -22,6 +22,7 @@ from backend.services.search import (
     process_and_cluster_results,
     search_all_models,
     search_ocr_on_meilisearch_async,
+    attach_similarity_labels,
     find_similar_frames,
     search_semantic_asr_qdrant
 )
@@ -156,6 +157,7 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
         final_results = sorted(filter_search_results, key=lambda x: x.get('score', 0), reverse=True)
 
     start_final = time.time()
+    attach_similarity_labels(final_results)
     clustered = process_and_cluster_results(final_results)
     total_results = len(clustered)
     
@@ -673,10 +675,22 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
     }
 
 @router.get("/similar")
-async def similar_frames(frame_name: str, limit: int = 15, threshold: float = 0.95):
-    """Fetch similar frames for a given frame name using beit3."""
+async def similar_frames(
+    frame_name: str,
+    limit: int = 15,
+    threshold: float = 0.95,
+    intro_min_frame_gap: int = 100,
+    intro_start_window_frames: int = 300,
+):
+    """Fetch and classify near-duplicate frames using BEiT3 similarity."""
     try:
-        similar = await find_similar_frames(frame_name, limit=limit, threshold=threshold)
+        similar = await find_similar_frames(
+            frame_name,
+            limit=limit,
+            threshold=threshold,
+            intro_min_frame_gap=intro_min_frame_gap,
+            intro_start_window_frames=intro_start_window_frames,
+        )
         return {"results": similar}
     except Exception as e:
         print(f"Error finding similar frames for {frame_name}: {e}")
