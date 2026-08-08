@@ -171,13 +171,25 @@ const isSameShot = (first, second) => {
 };
 
 // Component cho Teamwork Panel
-const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmission, onDragStart, onItemClick, onContextMenu, onMouseEnter, onMouseLeave }) => {
+const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmission, onDragStart, onItemClick, onContextMenu, onMouseEnter, onMouseLeave, onDropToTeam }) => {
   if (teamworkFrames.length === 0) {
-    return <p className="text-[var(--text-secondary)] text-xs italic px-6 py-4">No frames shared by the team yet...</p>;
+    return (
+      <div
+        className="px-6 py-4"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={onDropToTeam}
+      >
+        <p className="text-[var(--text-secondary)] text-xs italic">No frames shared by the team yet...</p>
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none">
+    <div
+      className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={onDropToTeam}
+    >
       {teamworkFrames.map((frame, idx) => {
         const isCorrect = isSameShot(frame.shot, correctSubmission);
         const isWrong = !isCorrect && wrongFrames.some((shot) => isSameShot(frame.shot, shot));
@@ -443,6 +455,17 @@ export default function RightResultsPanel({
     }
   }, [pushToTrake]);
 
+  const handleTeamPanelDrop = useCallback((event) => {
+    event.preventDefault();
+    try {
+      const serializedShot = event.dataTransfer.getData('application/json');
+      const shot = serializedShot ? JSON.parse(serializedShot) : null;
+      if (shot) pushToTeam(shot);
+    } catch {
+      // Ignore drops that were not created from one of this app's frame cards.
+    }
+  }, [pushToTeam]);
+
   const handleItemClick = useCallback((e, shot) => {
     if (e.altKey) {
       e.preventDefault();
@@ -582,6 +605,7 @@ export default function RightResultsPanel({
           onContextMenu={handleOpenPreview}
           onMouseEnter={handleTeamMouseEnter}
           onMouseLeave={handleTeamMouseLeave}
+          onDropToTeam={handleTeamPanelDrop}
         />
       </div>
 
