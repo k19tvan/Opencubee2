@@ -8,6 +8,25 @@ const STEP_SECONDS = 0.2;
 export default function TrakeFramePreviewSidebar({ shot, onClose, onZoom }) {
   const [videoInfo, setVideoInfo] = useState(null);
   const [error, setError] = useState('');
+  const [width, setWidth] = useState(340);
+  const [resizeStart, setResizeStart] = useState(null);
+
+  useEffect(() => {
+    if (!resizeStart) return undefined;
+
+    const handlePointerMove = (event) => {
+      const nextWidth = resizeStart.width + resizeStart.x - event.clientX;
+      setWidth(Math.min(Math.max(nextWidth, 280), Math.max(280, window.innerWidth - 240)));
+    };
+    const stopResizing = () => setResizeStart(null);
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResizing);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResizing);
+    };
+  }, [resizeStart]);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +70,18 @@ export default function TrakeFramePreviewSidebar({ shot, onClose, onZoom }) {
   }, [shot, videoInfo]);
 
   return (
-    <aside className="relative flex h-full w-[340px] max-w-[85vw] flex-shrink-0 flex-col border-l border-[var(--border-color)] bg-[var(--bg-primary)] shadow-[-10px_0_30px_rgba(0,0,0,0.25)] animate-fadeIn">
+    <aside
+      className="relative flex h-full flex-shrink-0 flex-col border-l border-[var(--border-color)] bg-[var(--bg-primary)] shadow-[-10px_0_30px_rgba(0,0,0,0.25)] animate-fadeIn"
+      style={{ width }}
+    >
+      <div
+        className="absolute inset-y-0 left-0 z-20 w-2 -translate-x-1/2 cursor-col-resize transition-colors hover:bg-[var(--accent-primary)]/70"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          setResizeStart({ x: event.clientX, width });
+        }}
+        title="Drag to resize"
+      />
       <header className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--glass-bg)] px-5 py-4">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[var(--accent-primary)]">
@@ -80,7 +110,7 @@ export default function TrakeFramePreviewSidebar({ shot, onClose, onZoom }) {
         )}
         {error && <p className="py-16 text-center text-xs text-red-400">{error}</p>}
         {frames.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             {frames.map((frame) => (
               <button
                 type="button"
