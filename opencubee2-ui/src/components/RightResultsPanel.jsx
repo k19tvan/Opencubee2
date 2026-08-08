@@ -253,6 +253,7 @@ export default function RightResultsPanel({
   onPushToTrake = () => { },
   onReorderTrake = () => { },
   onRemoveFromTrake = () => { },
+  onPreviewTrakeFrame = () => { },
   correctSubmission = null,
   onZoom = () => { },
   isClustered = false,
@@ -656,6 +657,21 @@ export default function RightResultsPanel({
                     loading="lazy"
                     decoding="async"
                   />
+                  <button
+                    type="button"
+                    draggable={false}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onPreviewTrakeFrame(shot);
+                    }}
+                    className="absolute bottom-1.5 right-1.5 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-slate-900/90 text-xs text-white shadow-md transition-all hover:scale-110 hover:border-transparent hover:bg-blue-500 cursor-pointer"
+                    title="Preview frames around this point"
+                    aria-label="Preview frames around this point"
+                  >
+                    <i className="fas fa-film"></i>
+                  </button>
                 </div>
               ))
             )}

@@ -8,6 +8,7 @@ import UsernameModal from './components/modals/UsernameModal';
 import ObjectFilterModal from './components/modals/ObjectFilterModal';
 import VideoPreviewModal from './components/modals/VideoPreviewModal';
 import FrameContextModal from './components/modals/FrameContextModal';
+import TrakeFramePreviewSidebar from './components/TrakeFramePreviewSidebar';
 import HelpModal from './components/modals/HelpModal';
 import DresLoginModal from './components/modals/DresLoginModal';
 import DresSubmitModal from './components/modals/DresSubmitModal';
@@ -153,6 +154,7 @@ export default function App() {
   const [resultIsAmbiguous, setResultIsAmbiguous] = useState(false);
   const [teamworkFrames, setTeamworkFrames] = useState([]);
   const [trakeFrames, setTrakeFrames] = useState([]);
+  const [trakePreviewShot, setTrakePreviewShot] = useState(null);
   const [wrongFrames, setWrongFrames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [timingInfo, setTimingInfo] = useState(null);
@@ -1464,6 +1466,7 @@ export default function App() {
                 onPushToTrake={handlePushToTrake}
                 onReorderTrake={handleReorderTrake}
                 onRemoveFromTrake={handleRemoveFromTrake}
+                onPreviewTrakeFrame={setTrakePreviewShot}
                 correctSubmission={correctSubmission}
                 onZoom={setZoomedImage}
                 isClustered={isClustered}
@@ -1477,6 +1480,13 @@ export default function App() {
                 setIsHoveringTrakePanel={setIsHoveringTrakePanel}
                 onDresSubmit={handleInstantDresSubmit}
               />
+              {trakePreviewShot && (
+                <TrakeFramePreviewSidebar
+                  shot={trakePreviewShot}
+                  onClose={() => setTrakePreviewShot(null)}
+                  onZoom={setZoomedImage}
+                />
+              )}
             </div>
           </div>
 
