@@ -177,7 +177,9 @@ export default function StageCard({
 
   const uploadImageFile = async (file) => {
     if (!file) return;
-    setImagePreview(URL.createObjectURL(file));
+    const previousPreview = imagePreview;
+    const nextPreview = URL.createObjectURL(file);
+    setImagePreview(nextPreview);
     const fd = new FormData();
     fd.append('image', file);
     try {
@@ -186,16 +188,19 @@ export default function StageCard({
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       setTempImageName(data.temp_image_name);
+      if (previousPreview?.startsWith('blob:')) URL.revokeObjectURL(previousPreview);
     } catch (err) {
       console.error("Image upload failed:", err);
       toast.error('Image upload failed.');
-      setImagePreview(null);
+      URL.revokeObjectURL(nextPreview);
+      setImagePreview(previousPreview);
     }
   };
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) uploadImageFile(file);
+    e.target.value = '';
   };
 
   const handleDrop = async (e) => {
@@ -232,11 +237,22 @@ export default function StageCard({
       }
       if (targetUrl) {
         try {
-          const res = await fetch(targetUrl);
+          // Remote image hosts (including Google image results) commonly block
+          // browser-side downloads with CORS.  Fetch those through our backend
+          // proxy, then upload the resulting file as a normal image query.
+          const sourceUrl = targetUrl.split(/\r?\n/)[0].trim();
+          const proxyUrl = getBackendUrl(`/proxy_image?url=${encodeURIComponent(sourceUrl)}`);
+          let res = /^https?:\/\//i.test(sourceUrl) ? await fetch(proxyUrl) : await fetch(sourceUrl);
+          // A few hosts allow the browser directly but block server downloads.
+          // Use that route as a fallback when the proxy is rejected.
+          if (!res.ok && /^https?:\/\//i.test(sourceUrl)) {
+            res = await fetch(sourceUrl);
+          }
+          if (!res.ok) throw new Error(`Image request failed: ${res.status}`);
           const blob = await res.blob();
           let filename = "dragged_frame.jpg";
           try {
-            const urlObj = new URL(targetUrl);
+            const urlObj = new URL(sourceUrl);
             const pathParts = urlObj.pathname.split('/');
             filename = pathParts[pathParts.length - 1] || "dragged_frame.jpg";
           } catch { }
@@ -412,6 +428,9 @@ export default function StageCard({
               ) : (
                 <>
                   <img src={imagePreview} className="absolute inset-0 w-full h-full object-cover" alt="Preview" />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/70 px-2 py-1 text-center text-[10px] text-white">
+                    Drop another image to replace
+                  </div>
                   <button
                     className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center text-[10px] hover:bg-red-500 transition-all cursor-pointer z-10"
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); setImagePreview(null); setTempImageName(null); }}
