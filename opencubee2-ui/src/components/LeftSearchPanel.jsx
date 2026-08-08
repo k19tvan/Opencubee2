@@ -264,23 +264,40 @@ export default function LeftSearchPanel({
               </div>
 
               {googleResults.length > 0 && (
-                <div className="mt-2.5 flex gap-2 overflow-x-auto p-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg min-h-[72px] items-center animate-fadeIn">
-                  {googleResults.map((url, idx) => (
-                    <div
-                      key={idx}
-                      className="flex-shrink-0 w-24 h-[52px] rounded-md overflow-hidden border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-105 hover:shadow-glow transition-all duration-300 ease-spring cursor-pointer animate-scaleIn"
-                      style={{ animationDelay: `${idx * 40}ms` }}
-                      onClick={(e) => {
-                        if (e.ctrlKey && e.shiftKey && onQuickSearch) {
-                          e.preventDefault();
-                          onQuickSearch({ url });
-                        }
-                      }}
-                      title="Ctrl+Shift+Click for Quick Image Search"
-                    >
-                      <img src={url} alt="Google result" className="w-full h-full object-cover" />
-                    </div>
-                  ))}
+                <div className="relative mt-2.5 animate-fadeIn">
+                  <button
+                    type="button"
+                    onClick={() => setGoogleResults([])}
+                    className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px] text-white/80 transition-colors hover:bg-black hover:text-white"
+                    title="Close Google image results"
+                    aria-label="Close Google image results"
+                  >
+                    <i className="fas fa-times"></i>
+                  </button>
+                  <div className="flex min-h-[72px] gap-2 overflow-x-auto rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] p-2 pr-8 items-center">
+                    {googleResults.map((url, idx) => (
+                      <div
+                        key={idx}
+                        draggable
+                        className="flex-shrink-0 w-24 h-[52px] rounded-md overflow-hidden border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-105 hover:shadow-glow transition-all duration-300 ease-spring cursor-grab active:cursor-grabbing animate-scaleIn"
+                        style={{ animationDelay: `${idx * 40}ms` }}
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'copy';
+                          e.dataTransfer.setData('text/uri-list', url);
+                          e.dataTransfer.setData('text/plain', url);
+                        }}
+                        onClick={(e) => {
+                          if (e.ctrlKey && e.shiftKey && onQuickSearch) {
+                            e.preventDefault();
+                            onQuickSearch({ url });
+                          }
+                        }}
+                        title="Drag to an Image query, or Ctrl+Shift+Click for Quick Image Search"
+                      >
+                        <img src={url} alt="Google result" className="w-full h-full object-cover" draggable={false} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

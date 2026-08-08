@@ -258,26 +258,43 @@ async def upload_image(image: UploadFile = File(...)):
 
 @router.get("/proxy_image")
 async def proxy_image(url: str):
-    if not url.startswith("http"):
+    parsed_url = urlparse(url)
+    if parsed_url.scheme not in {"http", "https"}:
         raise HTTPException(status_code=400, detail="Invalid URL")
     try:
         def fetch_image():
-            resp = requests.get(url, stream=True, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+            # Image-result URLs are commonly hosted by sites that reject the
+            # minimal default requests headers.  Use browser-like headers and
+            # follow redirects so Google/Tavily result links can be fetched.
+            resp = requests.get(
+                url,
+                stream=True,
+                timeout=(10, 30),
+                allow_redirects=True,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": "https://www.google.com/",
+                },
+            )
             resp.raise_for_status()
-            extension = ".jpg"
-            if "png" in resp.headers.get("Content-Type", ""):
-                extension = ".png"
+            content_type = resp.headers.get("Content-Type", "").split(";", 1)[0].lower()
+            if not content_type.startswith("image/"):
+                raise ValueError(f"Remote URL returned {content_type or 'non-image content'}")
+            extension = mimetypes.guess_extension(content_type) or ".jpg"
             temp_filename = f"proxy_{uuid.uuid4()}{extension}"
             temp_filepath = TEMP_UPLOAD_DIR / temp_filename
             with temp_filepath.open("wb") as buffer:
                 for chunk in resp.iter_content(chunk_size=8192):
-                    buffer.write(chunk)
+                    if chunk:
+                        buffer.write(chunk)
             return temp_filepath
             
         temp_filepath = await asyncio.to_thread(fetch_image)
         return FileResponse(temp_filepath, headers={"Cache-Control": "public, max-age=86400"})
     except Exception as e:
         print(f"Proxy image failed for {url}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch proxy image")
+        raise HTTPException(status_code=502, detail=f"Unable to fetch remote image: {e}")
 
 # --- WebSockets ---
