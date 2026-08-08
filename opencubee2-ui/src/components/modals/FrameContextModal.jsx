@@ -11,6 +11,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (e.repeat) return;
       if (e.key === 'Escape') {
         onClose();
         return;
@@ -26,6 +27,12 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
             pushToTeam(hoveredShot);
             toast.success('Sent to Team!');
           }
+        }
+      } else if (e.shiftKey && !e.ctrlKey && e.code === 'Space') {
+        e.preventDefault();
+        e.stopImmediatePropagation?.();
+        if (hoveredShot) {
+          pushToTrake(hoveredShot);
         }
       }
     };
@@ -160,7 +167,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                     <img src={getImageUrl(shot.url || shot.frame_name || shot.filepath)} className="w-full h-full object-cover" alt="Context result" onError={(e) => { e.target.onerror = null; e.target.src = '/fallback-image.png'; }} />
                     
                     <div className={`absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider z-10 ${
-                      isCenter ? 'bg-slate-400/95 text-white flex items-center justify-center w-fit shadow' : 'bg-black/80 text-white'
+                      isCenter ? 'bg-black text-white flex items-center justify-center w-fit shadow' : 'bg-black/80 text-white'
                     }`}>
                       {isCenter ? 'ORIGINAL' : labelText}
                     </div>

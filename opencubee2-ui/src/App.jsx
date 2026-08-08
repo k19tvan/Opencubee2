@@ -659,11 +659,14 @@ export default function App() {
             : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
         };
         setTrakeFrames(prev => {
-          if (prev.some(s => s.filepath === mappedShot.filepath)) return prev;
+          const incomingKey = getShotKey(mappedShot);
+          if (incomingKey && prev.some(s => getShotKey(s) === incomingKey)) return prev;
           return [...prev, mappedShot];
         });
+        setShowTrake(true);
       } else if (type === 'trake_remove') {
-        setTrakeFrames(prev => prev.filter(s => s.filepath !== data.filepath));
+        const frameKey = data.frame_key || data.filepath;
+        setTrakeFrames(prev => prev.filter(s => getShotKey(s) !== frameKey));
       } else if (type === 'global_correct_submission') {
         const mappedShot = {
           ...data.shot,
@@ -702,7 +705,8 @@ export default function App() {
     const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
 
     setTrakeFrames(prev => {
-      if (prev.some(s => s.filepath === shotWithUrl.filepath)) return prev;
+      const incomingKey = getShotKey(shotWithUrl);
+      if (incomingKey && prev.some(s => getShotKey(s) === incomingKey)) return prev;
       return [...prev, shotWithUrl];
     });
 
@@ -712,9 +716,30 @@ export default function App() {
         data: { shot: shotWithUrl }
       }));
     }
-    toast.success('Pinned to Trake Panel');
     setShowTrake(true);
   };
+
+  const handleReorderTrake = useCallback((orderedFrames) => {
+    setTrakeFrames(orderedFrames);
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'trake_reorder',
+        data: { frame_keys: orderedFrames.map(getShotKey).filter(Boolean) },
+      }));
+    }
+  }, []);
+
+  const handleRemoveFromTrake = useCallback((shot) => {
+    const frameKey = getShotKey(shot);
+    if (!frameKey) return;
+    setTrakeFrames((previous) => previous.filter((frame) => getShotKey(frame) !== frameKey));
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'trake_remove',
+        data: { frame_key: frameKey },
+      }));
+    }
+  }, []);
 
   const removeTeamworkFrameLocal = (shotToRemove) => {
     if (!shotToRemove) return;
@@ -769,18 +794,23 @@ export default function App() {
       const loadingToast = toast.loading('Submitting Trake to DRES...');
       try {
         const { getVideoInfo } = await import('./api');
-        const info = await getVideoInfo(trakeFrames[0].video_id);
-        const fps = info?.fps || 25;
-        const time = getDresFrameNumber(trakeFrames[0]) / fps;
-        const ms = Math.floor(time * 1000);
+        const fpsByVideo = new Map();
+        const answers = await Promise.all(trakeFrames.map(async (frame) => {
+          if (!fpsByVideo.has(frame.video_id)) {
+            const info = await getVideoInfo(frame.video_id);
+            fpsByVideo.set(frame.video_id, info?.fps || 25);
+          }
+          const ms = Math.floor((getDresFrameNumber(frame) / fpsByVideo.get(frame.video_id)) * 1000);
+          return {
+            mediaItemName: frame.video_id,
+            start: ms,
+            end: ms,
+          };
+        }));
 
         const payload = {
           answerSets: [{
-            answers: [{
-              mediaItemName: trakeFrames[0].video_id,
-              start: ms,
-              end: ms
-            }]
+            answers,
           }]
         };
 
@@ -1432,6 +1462,8 @@ export default function App() {
                 onTeamworkAddLocal={addTeamworkFrameLocal}
                 onTeamworkRemoveLocal={removeTeamworkFrameLocal}
                 onPushToTrake={handlePushToTrake}
+                onReorderTrake={handleReorderTrake}
+                onRemoveFromTrake={handleRemoveFromTrake}
                 correctSubmission={correctSubmission}
                 onZoom={setZoomedImage}
                 isClustered={isClustered}
@@ -1486,6 +1518,7 @@ export default function App() {
               userColor={userColor}
               wrongFrames={wrongFrames}
               onDresSubmit={handleInstantDresSubmit}
+              onPushToTrake={handlePushToTrake}
             />
           )}
 

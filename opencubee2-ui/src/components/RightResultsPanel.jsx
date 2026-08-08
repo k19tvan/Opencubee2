@@ -251,6 +251,8 @@ export default function RightResultsPanel({
   onTeamworkAddLocal = () => { },
   onTeamworkRemoveLocal = () => { },
   onPushToTrake = () => { },
+  onReorderTrake = () => { },
+  onRemoveFromTrake = () => { },
   correctSubmission = null,
   onZoom = () => { },
   isClustered = false,
@@ -269,7 +271,11 @@ export default function RightResultsPanel({
   const prevFirstResult = useRef(null);
   const hoveredShotRef = useRef(null);
   const hoveredTeamShotRef = useRef(null);
-  const pushedShortcutRef = useRef(false);
+  const hoveredTrakeShotRef = useRef(null);
+  const hoveredTrakeIndexRef = useRef(null);
+  const trakeFramesRef = useRef(trakeFrames);
+  const trakeDragIndexRef = useRef(null);
+  trakeFramesRef.current = trakeFrames;
 
   const pushToTeam = useCallback((shot) => {
     onTeamworkAddLocal(shot);
@@ -300,41 +306,81 @@ export default function RightResultsPanel({
     }
   }, [socket, onTeamworkRemoveLocal]);
 
+  const pushToTrake = useCallback((shot) => {
+    onPushToTrake(shot);
+  }, [onPushToTrake]);
+
+  const removeFromTrake = useCallback((shot) => {
+    const currentFrames = trakeFramesRef.current;
+    const frameKey = shot?.filepath || shot?.frame_name || shot?.url;
+    const index = currentFrames.findIndex((frame) => (
+      (frame.filepath || frame.frame_name || frame.url) === frameKey
+    ));
+    // The next card slides into the same slot without emitting mouseenter.
+    // Keep the slot index so the next shortcut resolves against new state.
+    const nextFrame = index >= 0 ? currentFrames[index + 1] : null;
+    hoveredTrakeIndexRef.current = nextFrame ? index : null;
+    hoveredTrakeShotRef.current = nextFrame || null;
+    trakeFramesRef.current = index >= 0
+      ? currentFrames.filter((_, frameIndex) => frameIndex !== index)
+      : currentFrames;
+    onRemoveFromTrake(shot);
+  }, [onRemoveFromTrake]);
+
   useEffect(() => {
     const handleShortcut = (event) => {
+      if (event.repeat) return;
+      const hoveredTrakeShot = hoveredTrakeIndexRef.current != null
+        ? trakeFramesRef.current[hoveredTrakeIndexRef.current]
+        : hoveredTrakeShotRef.current;
       if (event.ctrlKey && event.code === 'Space' && !event.shiftKey) {
         event.preventDefault();
-        if (pushedShortcutRef.current) return;
-        pushedShortcutRef.current = true;
 
-        if (hoveredTeamShotRef.current) {
+        if (hoveredTrakeShot) {
+          pushToTeam(hoveredTrakeShot);
+        } else if (hoveredTeamShotRef.current) {
           removeFromTeam(hoveredTeamShotRef.current);
           hoveredTeamShotRef.current = null;
         } else if (hoveredShotRef.current) {
           pushToTeam(hoveredShotRef.current);
         }
+      } else if (event.shiftKey && !event.ctrlKey && event.code === 'Space') {
+        event.preventDefault();
+
+        if (hoveredTrakeShot) {
+          removeFromTrake(hoveredTrakeShot);
+        } else if (hoveredTeamShotRef.current) {
+          pushToTrake(hoveredTeamShotRef.current);
+        } else if (hoveredShotRef.current) {
+          pushToTrake(hoveredShotRef.current);
+        }
       }
     };
 
-    const clearShortcut = (event) => {
-      if (event.key === 'Control' || event.code === 'Space') pushedShortcutRef.current = false;
-    };
-
-    const clearOnBlur = () => { pushedShortcutRef.current = false; };
-
     window.addEventListener('keydown', handleShortcut);
-    window.addEventListener('keyup', clearShortcut);
-    window.addEventListener('blur', clearOnBlur);
     return () => {
       window.removeEventListener('keydown', handleShortcut);
-      window.removeEventListener('keyup', clearShortcut);
-      window.removeEventListener('blur', clearOnBlur);
     };
-  }, [pushToTeam, removeFromTeam]);
+  }, [pushToTeam, removeFromTeam, pushToTrake, removeFromTrake]);
+
+  useEffect(() => {
+    const hoveredShot = hoveredTrakeShotRef.current;
+    if (hoveredTrakeIndexRef.current != null && hoveredTrakeIndexRef.current >= trakeFrames.length) {
+      hoveredTrakeIndexRef.current = null;
+    }
+    if (!hoveredShot) return;
+    const hoveredKey = hoveredShot.filepath || hoveredShot.frame_name || hoveredShot.url;
+    const stillInTrake = trakeFrames.some((shot) => (
+      (shot.filepath || shot.frame_name || shot.url) === hoveredKey
+    ));
+    if (!stillInTrake) hoveredTrakeShotRef.current = null;
+  }, [trakeFrames]);
 
   const handleResultMouseEnter = useCallback((shot) => {
     hoveredShotRef.current = shot || null;
     hoveredTeamShotRef.current = null;
+    hoveredTrakeShotRef.current = null;
+    hoveredTrakeIndexRef.current = null;
   }, []);
 
   const handleResultMouseLeave = useCallback((shot) => {
@@ -344,6 +390,8 @@ export default function RightResultsPanel({
   const handleTeamMouseEnter = useCallback((shot) => {
     hoveredTeamShotRef.current = shot || null;
     hoveredShotRef.current = null;
+    hoveredTrakeShotRef.current = null;
+    hoveredTrakeIndexRef.current = null;
     setHoveredFrame?.(shot);
   }, [setHoveredFrame]);
 
@@ -351,10 +399,6 @@ export default function RightResultsPanel({
     if (hoveredTeamShotRef.current === shot) hoveredTeamShotRef.current = null;
     setHoveredFrame?.(null);
   }, [setHoveredFrame]);
-
-  const pushToTrake = useCallback((shot) => {
-    onPushToTrake(shot);
-  }, [onPushToTrake]);
 
   const handleDragStart = useCallback((e, shot) => {
     if (!shot) return;
@@ -365,6 +409,39 @@ export default function RightResultsPanel({
     e.dataTransfer.setData('text/plain', shot.frame_name || fullUrl);
     e.dataTransfer.effectAllowed = 'copy';
   }, []);
+
+  const handleTrakeDragStart = useCallback((event, shot, index) => {
+    trakeDragIndexRef.current = index;
+    handleDragStart(event, shot);
+    event.dataTransfer.effectAllowed = 'move';
+  }, [handleDragStart]);
+
+  const handleTrakeDrop = useCallback((event, targetIndex) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceIndex = trakeDragIndexRef.current;
+    trakeDragIndexRef.current = null;
+    if (sourceIndex == null || sourceIndex === targetIndex) return;
+
+    const reorderedFrames = [...trakeFrames];
+    const [movedFrame] = reorderedFrames.splice(sourceIndex, 1);
+    if (!movedFrame) return;
+    reorderedFrames.splice(targetIndex, 0, movedFrame);
+    onReorderTrake(reorderedFrames);
+  }, [trakeFrames, onReorderTrake]);
+
+  const handleTrakePanelDrop = useCallback((event) => {
+    event.preventDefault();
+    if (trakeDragIndexRef.current != null) return;
+
+    try {
+      const serializedShot = event.dataTransfer.getData('application/json');
+      const shot = serializedShot ? JSON.parse(serializedShot) : null;
+      if (shot) pushToTrake(shot);
+    } catch {
+      // Ignore drops that were not created from one of this app's frame cards.
+    }
+  }, [pushToTrake]);
 
   const handleItemClick = useCallback((e, shot) => {
     if (e.altKey) {
@@ -509,12 +586,17 @@ export default function RightResultsPanel({
       </div>
 
       {showTrake && (
-        <div id="trakePanelContainer" className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[48] transition-colors duration-300 shadow-sm">
-          <div
-            className="flex-shrink-0"
-            onMouseEnter={() => setIsHoveringTrakePanel?.(true)}
-            onMouseLeave={() => setIsHoveringTrakePanel?.(false)}
-          >
+        <div
+          id="trakePanelContainer"
+          className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[48] transition-colors duration-300 shadow-sm"
+          onMouseEnter={() => setIsHoveringTrakePanel?.(true)}
+          onMouseLeave={() => {
+            hoveredTrakeShotRef.current = null;
+            hoveredTrakeIndexRef.current = null;
+            setIsHoveringTrakePanel?.(false);
+          }}
+        >
+          <div className="flex-shrink-0">
             <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2 px-6 mb-3">
               <i className="fas fa-thumbtack"></i> Trake Panel
               <span className="text-[10px] bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded-full font-mono ml-1">
@@ -527,20 +609,40 @@ export default function RightResultsPanel({
               )}
             </h3>
           </div>
-          <div id="trakeGrid" className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none min-h-[110px]">
+          <div
+            id="trakeGrid"
+            className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none min-h-[110px]"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleTrakePanelDrop}
+          >
             {trakeFrames.length === 0 ? (
               <p className="text-[var(--text-secondary)] text-xs italic py-2">Drag or pin frames here to compare...</p>
             ) : (
               trakeFrames.map((shot, idx) => (
                 <div
-                  key={`trake-${idx}-${shot?.url}`}
+                  key={`trake-${shot?.filepath || shot?.frame_name || shot?.url || idx}`}
                   draggable={true}
-                  onDragStart={(e) => handleDragStart(e, shot)}
+                  onDragStart={(e) => handleTrakeDragStart(e, shot, idx)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => handleTrakeDrop(e, idx)}
+                  onDragEnd={() => { trakeDragIndexRef.current = null; }}
                   className="relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-[1.03] hover:-translate-y-0.5 transition-all duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn"
                   onClick={(e) => handleItemClick(e, shot)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     handleOpenPreview(shot);
+                  }}
+                  onMouseEnter={() => {
+                    hoveredTrakeShotRef.current = shot;
+                    hoveredTrakeIndexRef.current = idx;
+                    setIsHoveringTrakePanel?.(true);
+                  }}
+                  onMouseMove={() => {
+                    hoveredTrakeShotRef.current = shot;
+                    hoveredTrakeIndexRef.current = idx;
+                  }}
+                  onMouseLeave={() => {
+                    if (hoveredTrakeShotRef.current === shot) hoveredTrakeShotRef.current = null;
                   }}
                 >
                   <img
