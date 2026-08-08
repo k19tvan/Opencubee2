@@ -14,7 +14,7 @@ const formatTime = (seconds) => {
   return `${String(minutes).padStart(2, '0')}:${remaining.toFixed(3).padStart(6, '0')}`;
 };
 
-export default function VideoPreviewModal({ videoId, initialFrame, onClose, socketRef, username, userColor, onDresSubmit, wrongFrames = [] }) {
+export default function VideoPreviewModal({ videoId, initialFrame, onClose, socketRef, username, userColor, onDresSubmit, onPushToTrake, wrongFrames = [] }) {
   const videoRef = useRef(null);
   const timelineRef = useRef(null);
   const dragRef = useRef(null);
@@ -134,26 +134,6 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        onClose();
-      } else if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        seekToFrame(currentFrame - (event.shiftKey ? 10 : 1));
-      } else if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        seekToFrame(currentFrame + (event.shiftKey ? 10 : 1));
-      } else if (event.code === 'Space') {
-        event.preventDefault();
-        handlePlayPause();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentFrame, handlePlayPause, onClose, seekToFrame]);
-
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -252,22 +232,63 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
     toast.success('Frame sent to Teamwork Panel!');
   };
 
-  const handleSubmitFrame = () => {
+  const createCurrentShot = () => {
     const video = videoRef.current;
-    if (!video || !onDresSubmit) return;
+    if (!video) return null;
     const frame = clamp(Math.round(video.currentTime * fps), 0, maxFrame);
-    
-    // Create a mock shot object for DRES submission and Teamwork
-    const mockShot = {
+
+    return {
       video_id: videoId,
       frame_id: frame,
       frame_name: `${videoId}_${String(frame).padStart(6, '0')}.webp`,
       filepath: `dynamic-frame-${videoId}-${frame}`,
       url: getVideoThumbnailUrl(videoId, frame, 480)
     };
+  };
+
+  const handleSubmitFrame = () => {
+    if (!onDresSubmit) return;
+    const mockShot = createCurrentShot();
+    if (!mockShot) return;
     
     onDresSubmit(mockShot, false);
   };
+
+  const handlePinToTrake = () => {
+    const mockShot = createCurrentShot();
+    if (!mockShot || !onPushToTrake) return;
+    onPushToTrake(mockShot);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        seekToFrame(currentFrame - (event.shiftKey ? 10 : 1));
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        seekToFrame(currentFrame + (event.shiftKey ? 10 : 1));
+      } else if (event.ctrlKey && !event.shiftKey && event.code === 'Space') {
+        if (event.repeat) return;
+        event.preventDefault();
+        event.stopImmediatePropagation?.();
+        handlePushFrame();
+      } else if (event.shiftKey && !event.ctrlKey && event.code === 'Space') {
+        if (event.repeat) return;
+        event.preventDefault();
+        event.stopImmediatePropagation?.();
+        handlePinToTrake();
+      } else if (event.code === 'Space') {
+        event.preventDefault();
+        handlePlayPause();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentFrame, handlePinToTrake, handlePushFrame, handlePlayPause, onClose, seekToFrame]);
 
   const stripPosition = currentTime / thumbnailInterval * THUMB_STEP;
   const stripTranslate = timelineWidth / 2 - stripPosition - THUMB_WIDTH / 2;
@@ -421,6 +442,15 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg bg-rose-500/20 border border-rose-500/50 text-rose-400 text-xs font-bold uppercase tracking-wider hover:bg-rose-500 hover:text-white active:scale-95 disabled:opacity-40"
+                onClick={handlePinToTrake}
+                disabled={!onPushToTrake}
+                title="Pin current frame to Trake"
+              >
+                <i className="fas fa-thumbtack mr-2"></i>Pin to Trake
+              </button>
               <button
                 type="button"
                 className="px-4 py-2 rounded-lg bg-[var(--accent-primary)]/20 border border-[var(--accent-primary)]/50 text-[var(--accent-primary)] text-xs font-bold uppercase tracking-wider hover:bg-[var(--accent-primary)] hover:text-white active:scale-95 disabled:opacity-40"
