@@ -716,7 +716,6 @@ export default function App() {
         data: { shot: shotWithUrl }
       }));
     }
-    toast.success('Pinned to Trake Panel');
     setShowTrake(true);
   };
 
@@ -740,7 +739,6 @@ export default function App() {
         data: { frame_key: frameKey },
       }));
     }
-    toast.success('Removed from Trake Panel');
   }, []);
 
   const removeTeamworkFrameLocal = (shotToRemove) => {

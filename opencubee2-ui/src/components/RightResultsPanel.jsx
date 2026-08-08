@@ -272,8 +272,10 @@ export default function RightResultsPanel({
   const hoveredShotRef = useRef(null);
   const hoveredTeamShotRef = useRef(null);
   const hoveredTrakeShotRef = useRef(null);
-  const pushedShortcutRef = useRef(false);
+  const hoveredTrakeIndexRef = useRef(null);
+  const trakeFramesRef = useRef(trakeFrames);
   const trakeDragIndexRef = useRef(null);
+  trakeFramesRef.current = trakeFrames;
 
   const pushToTeam = useCallback((shot) => {
     onTeamworkAddLocal(shot);
@@ -309,17 +311,34 @@ export default function RightResultsPanel({
   }, [onPushToTrake]);
 
   const removeFromTrake = useCallback((shot) => {
+    const currentFrames = trakeFramesRef.current;
+    const frameKey = shot?.filepath || shot?.frame_name || shot?.url;
+    const index = currentFrames.findIndex((frame) => (
+      (frame.filepath || frame.frame_name || frame.url) === frameKey
+    ));
+    // The next card slides into the same slot without emitting mouseenter.
+    // Keep the slot index so the next shortcut resolves against new state.
+    const nextFrame = index >= 0 ? currentFrames[index + 1] : null;
+    hoveredTrakeIndexRef.current = nextFrame ? index : null;
+    hoveredTrakeShotRef.current = nextFrame || null;
+    trakeFramesRef.current = index >= 0
+      ? currentFrames.filter((_, frameIndex) => frameIndex !== index)
+      : currentFrames;
     onRemoveFromTrake(shot);
   }, [onRemoveFromTrake]);
 
   useEffect(() => {
     const handleShortcut = (event) => {
+      if (event.repeat) return;
+      const hoveredTrakeShot = hoveredTrakeIndexRef.current != null
+        ? trakeFramesRef.current[hoveredTrakeIndexRef.current]
+        : hoveredTrakeShotRef.current;
       if (event.ctrlKey && event.code === 'Space' && !event.shiftKey) {
         event.preventDefault();
-        if (pushedShortcutRef.current) return;
-        pushedShortcutRef.current = true;
 
-        if (hoveredTeamShotRef.current) {
+        if (hoveredTrakeShot) {
+          pushToTeam(hoveredTrakeShot);
+        } else if (hoveredTeamShotRef.current) {
           removeFromTeam(hoveredTeamShotRef.current);
           hoveredTeamShotRef.current = null;
         } else if (hoveredShotRef.current) {
@@ -327,11 +346,9 @@ export default function RightResultsPanel({
         }
       } else if (event.shiftKey && !event.ctrlKey && event.code === 'Space') {
         event.preventDefault();
-        if (pushedShortcutRef.current) return;
-        pushedShortcutRef.current = true;
 
-        if (hoveredTrakeShotRef.current) {
-          removeFromTrake(hoveredTrakeShotRef.current);
+        if (hoveredTrakeShot) {
+          removeFromTrake(hoveredTrakeShot);
         } else if (hoveredTeamShotRef.current) {
           pushToTrake(hoveredTeamShotRef.current);
         } else if (hoveredShotRef.current) {
@@ -340,26 +357,30 @@ export default function RightResultsPanel({
       }
     };
 
-    const clearShortcut = (event) => {
-      if (event.key === 'Control' || event.code === 'Space') pushedShortcutRef.current = false;
-    };
-
-    const clearOnBlur = () => { pushedShortcutRef.current = false; };
-
     window.addEventListener('keydown', handleShortcut);
-    window.addEventListener('keyup', clearShortcut);
-    window.addEventListener('blur', clearOnBlur);
     return () => {
       window.removeEventListener('keydown', handleShortcut);
-      window.removeEventListener('keyup', clearShortcut);
-      window.removeEventListener('blur', clearOnBlur);
     };
   }, [pushToTeam, removeFromTeam, pushToTrake, removeFromTrake]);
+
+  useEffect(() => {
+    const hoveredShot = hoveredTrakeShotRef.current;
+    if (hoveredTrakeIndexRef.current != null && hoveredTrakeIndexRef.current >= trakeFrames.length) {
+      hoveredTrakeIndexRef.current = null;
+    }
+    if (!hoveredShot) return;
+    const hoveredKey = hoveredShot.filepath || hoveredShot.frame_name || hoveredShot.url;
+    const stillInTrake = trakeFrames.some((shot) => (
+      (shot.filepath || shot.frame_name || shot.url) === hoveredKey
+    ));
+    if (!stillInTrake) hoveredTrakeShotRef.current = null;
+  }, [trakeFrames]);
 
   const handleResultMouseEnter = useCallback((shot) => {
     hoveredShotRef.current = shot || null;
     hoveredTeamShotRef.current = null;
     hoveredTrakeShotRef.current = null;
+    hoveredTrakeIndexRef.current = null;
   }, []);
 
   const handleResultMouseLeave = useCallback((shot) => {
@@ -370,6 +391,7 @@ export default function RightResultsPanel({
     hoveredTeamShotRef.current = shot || null;
     hoveredShotRef.current = null;
     hoveredTrakeShotRef.current = null;
+    hoveredTrakeIndexRef.current = null;
     setHoveredFrame?.(shot);
   }, [setHoveredFrame]);
 
@@ -570,6 +592,7 @@ export default function RightResultsPanel({
           onMouseEnter={() => setIsHoveringTrakePanel?.(true)}
           onMouseLeave={() => {
             hoveredTrakeShotRef.current = null;
+            hoveredTrakeIndexRef.current = null;
             setIsHoveringTrakePanel?.(false);
           }}
         >
@@ -611,7 +634,12 @@ export default function RightResultsPanel({
                   }}
                   onMouseEnter={() => {
                     hoveredTrakeShotRef.current = shot;
+                    hoveredTrakeIndexRef.current = idx;
                     setIsHoveringTrakePanel?.(true);
+                  }}
+                  onMouseMove={() => {
+                    hoveredTrakeShotRef.current = shot;
+                    hoveredTrakeIndexRef.current = idx;
                   }}
                   onMouseLeave={() => {
                     if (hoveredTrakeShotRef.current === shot) hoveredTrakeShotRef.current = null;
