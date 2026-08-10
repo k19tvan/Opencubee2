@@ -56,6 +56,10 @@ Thumbs.db
 
 # Temp
 backend/temp_uploads
+backend/api/gemini_profile/
+backend/api/gemini_session/
+backend/api/gemini_sessions/
+backend/api/gemini_error.png
 
 summary.py
 summary.txt

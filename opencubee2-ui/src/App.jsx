@@ -4,6 +4,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import TopToolbar from './components/TopToolbar';
 import LeftSearchPanel from './components/LeftSearchPanel';
 import RightResultsPanel from './components/RightResultsPanel';
+import AgentWorkspace from './components/AgentWorkspace';
 import UsernameModal from './components/modals/UsernameModal';
 import ObjectFilterModal from './components/modals/ObjectFilterModal';
 import VideoPreviewModal from './components/modals/VideoPreviewModal';
@@ -137,6 +138,7 @@ export default function App() {
 
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState('search');
 
   const [activeModal, setActiveModal] = useState(null);
   const [previewVideoData, setPreviewVideoData] = useState(null);
@@ -720,6 +722,16 @@ export default function App() {
     }
     setShowTrake(true);
   };
+
+  const handleAgentPushToTeam = useCallback((shot) => {
+    addTeamworkFrameLocal(shot);
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'new_frame',
+        data: { shot, user: { name: username, color: userColor } },
+      }));
+    }
+  }, [username, userColor, addTeamworkFrameLocal]);
 
   const handleReorderTrake = useCallback((orderedFrames) => {
     setTrakeFrames(orderedFrames);
@@ -1342,6 +1354,37 @@ export default function App() {
     );
   };
 
+  const handlePushAgentQueries = useCallback((queries = {}) => {
+    const nextStage = {
+      ...createEmptyStage(),
+      queryText: queries.text_query || '',
+      ocrText: queries.ocr_query || '',
+      asrText: queries.asr_query || '',
+      ocrActive: Boolean(queries.ocr_query),
+      asrActive: Boolean(queries.asr_query),
+      queryType: 'text',
+    };
+    submittedStagesRef.current = null;
+    submittedSimilarityScopeRef.current = null;
+    setStages([nextStage]);
+    setSearchResults([]);
+    setLastFinalQueries([]);
+    setTimingInfo(null);
+    setSimilarityScope(null);
+    setSimilarityScopeEnabled(false);
+    setPage(1);
+    setHasMore(false);
+    setWorkspaceMode('search');
+    setIsMobileMenuOpen(false);
+    setStageFocusRequest({ stageId: nextStage.id, field: 'query', token: Date.now() });
+    toast.success('Agent queries were pushed to Search.');
+  }, []);
+
+  const handleAgentQuickSearch = useCallback((shot) => {
+    setWorkspaceMode('search');
+    handleQuickImageSearch(shot);
+  }, [handleQuickImageSearch]);
+
   return (
     <div className={`theme-${effectiveTheme} flex flex-col w-full h-screen overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-[#050505]' : 'bg-[var(--bg-primary)]'} text-[var(--text-primary)] transition-colors duration-1000 ease-smooth relative`}>
       {theme === 'random' && (
@@ -1413,10 +1456,12 @@ export default function App() {
             timingInfo={timingInfo}
             isMuted={isMuted}
             setIsMuted={setIsMuted}
+            workspaceMode={workspaceMode}
+            setWorkspaceMode={setWorkspaceMode}
           />
 
           <div className={`flex flex-col flex-grow pt-[72px] h-[calc(100vh-72px)] w-full overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-transparent' : 'bg-[var(--bg-primary)]'} relative transition-colors duration-700 ease-smooth`}>
-            <div className="flex flex-row flex-grow min-h-0 w-full overflow-hidden relative">
+            <div className={`${workspaceMode === 'search' ? 'flex' : 'hidden'} flex-row flex-grow min-h-0 w-full overflow-hidden relative`}>
               {isMobileMenuOpen && (
                 <div
                   className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm"
@@ -1487,6 +1532,21 @@ export default function App() {
                   onZoom={setZoomedImage}
                 />
               )}
+            </div>
+
+            <div className={`${workspaceMode === 'agent' ? 'flex' : 'hidden'} flex-grow min-h-0 w-full overflow-hidden relative`}>
+              <AgentWorkspace
+                searchModel={searchModel}
+                onPushQueries={handlePushAgentQueries}
+                onZoom={setZoomedImage}
+                onPreview={handleOpenVideoPreview}
+                onContext={setContextShot}
+                onQuickSearch={handleAgentQuickSearch}
+                onPushToTeam={handleAgentPushToTeam}
+                onPushToTrake={handlePushToTrake}
+                onDresSubmit={handleInstantDresSubmit}
+                onToggleLock={toggleVideoLock}
+              />
             </div>
           </div>
 

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api.media import router as media_router
+from backend.api.agent import router as agent_router, shutdown_agent_runtime
 from backend.api.realtime import router as realtime_router
 from backend.api.search import router as search_router
 from backend.core.runtime import shutdown_runtime, startup_runtime
@@ -21,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(media_router)
+app.include_router(agent_router)
 app.include_router(search_router)
 app.include_router(realtime_router)
 
@@ -32,6 +34,7 @@ def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    await shutdown_agent_runtime()
     await shutdown_runtime()
 
 

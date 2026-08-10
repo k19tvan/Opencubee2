@@ -12,7 +12,13 @@
 conda create -n env python=3.10 
 conda activate env
 pip install -r requirements.txt
+playwright install chromium
 ```
+
+Agent research uses five isolated Chromium profiles by default under
+`backend/api/gemini_sessions`. The profile count, profile paths, headless mode,
+Gemini timeout, and Qwen endpoint can be configured with the `GEMINI_*` and
+`AGENT_MODEL_*` variables documented in `.env_example`.
 
 if your device requires the lower torch version, installed cu126 version:
 ```

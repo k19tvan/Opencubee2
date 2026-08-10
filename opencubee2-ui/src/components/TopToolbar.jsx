@@ -80,7 +80,9 @@ export default function TopToolbar({
   setAutoTranslate,
   dresUsername,
   isMuted,
-  setIsMuted
+  setIsMuted,
+  workspaceMode = 'search',
+  setWorkspaceMode = () => { },
 }) {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const themeRef = useRef(null);
@@ -145,9 +147,34 @@ export default function TopToolbar({
             </div>
           </div>
         </div>
+
+        <div className="hidden md:flex items-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-1">
+          <button
+            type="button"
+            onClick={() => setWorkspaceMode('search')}
+            className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all ${workspaceMode === 'search' ? 'bg-[var(--accent-primary)] text-[var(--bg-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+          >
+            <i className="fas fa-search mr-1.5" /> Search
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkspaceMode('agent')}
+            className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all ${workspaceMode === 'agent' ? 'bg-[var(--accent-primary)] text-[var(--bg-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+          >
+            <i className="fas fa-wand-magic-sparkles mr-1.5" /> Agent
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-1.5 items-center flex-wrap">
+        <button
+          type="button"
+          onClick={() => setWorkspaceMode(workspaceMode === 'search' ? 'agent' : 'search')}
+          className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', workspaceMode === 'agent')} md:hidden`}
+          title={`Switch to ${workspaceMode === 'search' ? 'Agent' : 'Search'}`}
+        >
+          <i className={`fas ${workspaceMode === 'search' ? 'fa-wand-magic-sparkles' : 'fa-search'}`} />
+        </button>
         <div className="relative flex items-center group" ref={themeRef}>
           <button
             onClick={() => setIsThemeOpen(!isThemeOpen)}
