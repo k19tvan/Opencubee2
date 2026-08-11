@@ -20,6 +20,7 @@ export default function StageCard({
   onDelete,
   onChange,
   onSearch,
+  onAgentSearch,
   canDelete = false,
   isReordering = false,
   onReorderPointerDown,
@@ -72,6 +73,7 @@ export default function StageCard({
 
     lastFlushedRef.current = data;
     onChange(stage.id, data);
+    return data;
   }, [type, queryText, ocrActive, ocrText, asrActive, asrText, tempImageName, imageText, imagePreview, options, onChange, stage.id]);
 
   useEffect(() => {
@@ -174,6 +176,11 @@ export default function StageCard({
     }
     setShouldSearch(true);
   }, []);
+
+  const handleAgentSearchTrigger = useCallback(() => {
+    const currentStage = flushRef.current?.();
+    if (currentStage && onAgentSearch) onAgentSearch(currentStage);
+  }, [onAgentSearch]);
 
   const uploadImageFile = async (file) => {
     if (!file) return;
@@ -313,7 +320,14 @@ export default function StageCard({
       return;
     }
 
-    // Enter: Thực thi tìm kiếm
+    // Ctrl + Enter: keep Search mode open while the Agent works in background.
+    if (e.key === 'Enter' && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      handleAgentSearchTrigger();
+      return;
+    }
+
+    // Enter: Thực thi tìm kiếm bình thường
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSearchTrigger();

@@ -11,6 +11,7 @@ export default function LeftSearchPanel({
   focusRequest = null,
   onFocusStage = () => { },
   onSearch,
+  onAgentSearch,
   onQuickSearch,
   loading,
   isSemanticAsr = false,
@@ -318,6 +319,7 @@ export default function LeftSearchPanel({
                     onDelete={() => handleStageDelete(stage.id)}
                     onChange={handleStageChange}
                     onSearch={onSearch}
+                    onAgentSearch={onAgentSearch}
                     canDelete={stages.length > 1}
                     isReordering={reorderingStageId === stage.id}
                     onReorderPointerDown={(event) => handleReorderPointerDown(idx, event)}

@@ -84,6 +84,8 @@ const STEP_LABELS = {
   option: 'Research option',
   query_planner: 'Query planner',
   search: 'Frame search',
+  image_search: 'Image search',
+  compose_image_retrieval: 'Compose image retrieval',
   canvas: 'Critic canvas',
   critic: 'Visual critic',
   refine: 'Query refinement',
@@ -129,9 +131,34 @@ function DetailValue({ name, value }) {
   return <span className="whitespace-pre-wrap break-words text-[var(--text-primary)]">{String(value ?? '') || '—'}</span>;
 }
 
+function KeptFrameStrip({ frames = [] }) {
+  if (!frames.length) return null;
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {frames.map((frame) => {
+        const imageUrl = getImageUrl(frame.url || frame.frame_name || frame.filepath);
+        return (
+          <a
+            key={frame.frame_name || imageUrl}
+            href={imageUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="group overflow-hidden rounded-lg border border-emerald-500/30 bg-[var(--bg-primary)]"
+            title={`Open ${frame.frame_name}`}
+          >
+            <img src={imageUrl} alt={frame.frame_name || 'Critic-selected frame'} className="aspect-video w-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
+            <span className="block truncate px-1.5 py-1 font-mono text-[8px] text-emerald-300">{frame.frame_name}</span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 function EventRow({ event }) {
   const [expanded, setExpanded] = useState(false);
   const details = Object.entries(event.details || {}).filter(([, value]) => value !== undefined && value !== null);
+  const selectedFrames = Array.isArray(event.details?.selected_frames) ? event.details.selected_frames : [];
   const hasDetails = details.length > 0;
   const statusIcon = event.status === 'failed'
     ? 'fa-circle-xmark text-rose-400'
@@ -160,6 +187,12 @@ function EventRow({ event }) {
         </span>
         <i className={`fas fa-chevron-right mt-2 text-[8px] text-[var(--text-secondary)] transition-transform ${expanded ? 'rotate-90' : ''} ${hasDetails ? 'opacity-100' : 'opacity-0'}`} />
       </button>
+      {selectedFrames.length > 0 && (
+        <div className="mx-11 mb-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5">
+          <div className="text-[9px] font-semibold text-emerald-300"><i className="fas fa-bookmark mr-1.5" /> Critic kept {selectedFrames.length} frame(s) in this round</div>
+          <KeptFrameStrip frames={selectedFrames} />
+        </div>
+      )}
       {hasDetails && expanded && (
         <div className="mb-3 ml-11 mr-2 grid gap-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/65 p-3 text-[10px] shadow-inner">
           {details.map(([name, value]) => (
@@ -318,12 +351,35 @@ function ResultMessage({ message, votes, onVote, onPushQueries, frameActions }) 
       <div className="p-4 md:p-6">
         <div className="min-w-0">
           {message.rounds?.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {message.rounds.map((round) => (
-                <span key={round.round} title={round.analysis} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[9px] font-medium ${round.satisfied ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-[var(--border-color)] bg-[var(--bg-primary)]/40 text-[var(--text-secondary)]'}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${round.satisfied ? 'bg-emerald-400' : 'bg-amber-400'}`} /> Round {round.round} · {round.candidate_count} frames
-                </span>
-              ))}
+            <div className="grid gap-2.5">
+              <div className="flex flex-wrap gap-2">
+                {message.rounds.map((round) => (
+                  <span key={round.round} title={round.analysis} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[9px] font-medium ${round.satisfied ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-[var(--border-color)] bg-[var(--bg-primary)]/40 text-[var(--text-secondary)]'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${round.satisfied ? 'bg-emerald-400' : 'bg-amber-400'}`} /> Round {round.round} · {round.candidate_count} frames · kept {round.selected_frames?.length || 0}
+                  </span>
+                ))}
+              </div>
+              {message.rounds.some((round) => round.selected_frames?.length) && (
+                <div className="overflow-hidden rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
+                  <div className="border-b border-emerald-500/15 px-4 py-3 text-[10px] font-semibold text-emerald-300">
+                    <i className="fas fa-bookmark mr-2" /> Frames kept by the critic after each round
+                  </div>
+                  <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {message.rounds.flatMap((round) => (round.selected_frames || []).map((frame) => (
+                      <button
+                        type="button"
+                        key={`round-${round.round}-${frame.frame_name}`}
+                        onClick={() => frameActions.onZoom(getImageUrl(frame.url || frame.frame_name || frame.filepath))}
+                        className="group flex min-w-0 items-center gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/55 p-2 text-left transition-colors hover:border-emerald-400/50"
+                        title={`View ${frame.frame_name}`}
+                      >
+                        <img src={getImageUrl(frame.url || frame.frame_name || frame.filepath)} alt={frame.frame_name} className="h-12 w-20 flex-shrink-0 rounded-lg object-cover" loading="lazy" />
+                        <span className="min-w-0"><span className="block text-[9px] font-bold text-emerald-400">Round {round.round} · kept</span><span className="mt-1 block truncate font-mono text-[9px] text-[var(--text-primary)]">{frame.frame_name}</span></span>
+                      </button>
+                    )))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <QueryBlock queries={message.queries} onPush={onPushQueries} />
@@ -344,8 +400,8 @@ function ResultMessage({ message, votes, onVote, onPushQueries, frameActions }) 
 
       <div className="mt-7 flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border-color)] pb-3">
         <div>
-          <h3 className="text-xs font-semibold text-[var(--text-primary)]">Ranked results</h3>
-          <p className="mt-1 text-[9px] text-[var(--text-secondary)]">Ordered against the original request · hover a frame for actions</p>
+          <h3 className="text-xs font-semibold text-[var(--text-primary)]">Critic-selected results</h3>
+          <p className="mt-1 text-[9px] text-[var(--text-secondary)]">Only frames explicitly kept by the critic across all rounds · hover a frame for actions</p>
         </div>
         <span className="rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-3 py-1 font-mono text-[9px] text-[var(--text-secondary)]">{message.frames?.length || 0} of {message.topK}</span>
       </div>
@@ -465,6 +521,7 @@ function ResearchOptions({ message, loading, onSelect }) {
 
 export default function AgentWorkspace({
   searchModel,
+  backgroundAgentJob = null,
   onPushQueries,
   onZoom,
   onPreview,
@@ -486,6 +543,7 @@ export default function AgentWorkspace({
   const [votes, setVotes] = useState({});
   const bottomRef = useRef(null);
   const pollTokenRef = useRef(0);
+  const displayedBackgroundResultRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -565,6 +623,13 @@ export default function AgentWorkspace({
     setFeedback('');
     setAwaitingOption(false);
   };
+
+  useEffect(() => {
+    const response = backgroundAgentJob?.response;
+    if (!response || displayedBackgroundResultRef.current === backgroundAgentJob.sessionId) return;
+    displayedBackgroundResultRef.current = backgroundAgentJob.sessionId;
+    appendCompleted(response);
+  }, [backgroundAgentJob]);
 
   const handleSend = async () => {
     const message = prompt.trim();
@@ -693,6 +758,10 @@ export default function AgentWorkspace({
     onPushToTrake, onDresSubmit, onToggleLock,
   };
   const hasResult = messages.some((message) => message.type === 'result');
+  // A Search-mode Ctrl+Enter task arrives through backgroundAgentJob before
+  // this workspace owns a local message, so it must also hide the landing UI.
+  const hasStartedSearch = Boolean(backgroundAgentJob)
+    || messages.some((message) => message.type !== 'welcome');
   const positiveVoteCount = Object.values(votes).filter((value) => value === 'positive').length;
   const negativeVoteCount = Object.values(votes).filter((value) => value === 'negative').length;
   const activeModelLabel = modelPayload.models.map((model) => model.replaceAll('_', ' ')).join(' + ');
@@ -723,6 +792,22 @@ export default function AgentWorkspace({
 
       <div className="flex-grow overflow-y-auto px-3 py-5 md:px-6 md:py-7">
         <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
+          {backgroundAgentJob?.status === 'running' && (
+            <PipelineLog message={{
+              id: `background-agent-${backgroundAgentJob.sessionId}`,
+              label: 'Background search from Search mode is running…',
+              events: backgroundAgentJob.events || [],
+              complete: false,
+            }} />
+          )}
+          {backgroundAgentJob?.status === 'failed' && (
+            <TextMessage message={{
+              id: `background-agent-error-${backgroundAgentJob.sessionId}`,
+              role: 'assistant',
+              error: true,
+              text: `Background agent search failed: ${backgroundAgentJob.error}`,
+            }} />
+          )}
           {messages.map((message) => (
             message.type === 'result' ? (
               <ResultMessage key={message.id} message={message} votes={votes} onVote={handleVote} onPushQueries={onPushQueries} frameActions={frameActions} />
@@ -731,7 +816,7 @@ export default function AgentWorkspace({
             ) : message.type === 'options' ? (
               <ResearchOptions key={message.id} message={message} loading={loading} onSelect={handleSelectOption} />
             ) : message.type === 'welcome' ? (
-              <WelcomeMessage key={message.id} onSelectPrompt={setPrompt} />
+              !hasStartedSearch ? <WelcomeMessage key={message.id} onSelectPrompt={setPrompt} /> : null
             ) : (
               <TextMessage key={message.id} message={message} />
             )

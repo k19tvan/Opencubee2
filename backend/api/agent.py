@@ -71,6 +71,9 @@ class AgentSession:
     selected_option: Optional[dict[str, str]] = None
     queries: dict[str, str] = field(default_factory=dict)
     frames: list[dict[str, Any]] = field(default_factory=list)
+    # Explicit critic selections survive later rounds and can seed composed
+    # image + text retrieval in the next round.
+    kept_frames: list[dict[str, Any]] = field(default_factory=list)
     rounds: list[dict[str, Any]] = field(default_factory=list)
     positive_frame_names: list[str] = field(default_factory=list)
     negative_frame_names: list[str] = field(default_factory=list)
@@ -318,6 +321,87 @@ def _valid_models(models: list[str]) -> list[str]:
     return selected or ["beit3"]
 
 
+def _deduplicate_frames(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep the first instance of every stable keyframe name."""
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for frame in frames:
+        name = str(frame.get("frame_name") or "")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        unique.append(frame)
+    return unique
+
+
+async def compose_image_retrieval_tool(
+    session: AgentSession,
+    reference_frame_name: str,
+    text_instruction: str,
+    top_k: int,
+) -> list[dict[str, Any]]:
+    """BGE-VL retrieval from a kept frame composed with a text instruction."""
+    _log_step(
+        session,
+        "compose_image_retrieval",
+        "Composing a kept frame with the current visual query.",
+        reference_frame_name=reference_frame_name,
+        text_instruction=text_instruction,
+        model="bge",
+    )
+    try:
+        by_model = await search_all_models(
+            ["bge"],
+            image_name=f"_frame_:{reference_frame_name}",
+            image_text=text_instruction,
+            limit=MAX_FRAME_LIMIT,
+        )
+        results = fuse_results(by_model, {"bge": 1.0})
+        results = [item for item in results if item.get("frame_name") not in set(session.negative_frame_names)]
+        for item in results:
+            item["retrieval_source"] = "composed_image"
+        attach_similarity_labels(results)
+        _log_step(
+            session,
+            "compose_image_retrieval",
+            f"Composed-image retrieval returned {len(results)} candidate frame(s).",
+            "completed",
+            reference_frame_name=reference_frame_name,
+            candidate_count=len(results),
+        )
+        return results[:max(1, min(top_k, MAX_AGENT_FRAMES))]
+    except Exception as exc:
+        # The ordinary text retrieval remains useful when the image worker is down.
+        _log_step(session, "compose_image_retrieval", f"Composed-image retrieval was skipped: {exc}", "failed")
+        return []
+
+
+async def image_search_tool(session: AgentSession, query: str) -> list[str]:
+    """Agent-accessible web image search, used as a fallback/reference tool."""
+    query = _clean_query(query)
+    if not query:
+        return []
+    _log_step(session, "image_search", "Searching for visual reference images.", query=query)
+    try:
+        # Keep a single image-search implementation and its Tavily configuration.
+        from backend.api.search import get_google_images
+
+        image_urls = await asyncio.to_thread(get_google_images, query, 5)
+        image_urls = [url for url in image_urls if isinstance(url, str) and url]
+        _log_step(
+            session,
+            "image_search",
+            f"Image search found {len(image_urls)} visual reference(s).",
+            "completed",
+            query=query,
+            image_urls=image_urls,
+        )
+        return image_urls
+    except Exception as exc:
+        _log_step(session, "image_search", f"Image search was skipped: {exc}", "failed", query=query)
+        return []
+
+
 async def search_node(
     session: AgentSession,
     models: list[str],
@@ -369,6 +453,25 @@ async def search_node(
     rejected = set(session.negative_frame_names)
     results = [item for item in results if item.get("frame_name") not in rejected]
     attach_similarity_labels(results)
+
+    # From round two onwards, use the critic's strongest retained frame as an
+    # image anchor.  The composed result is placed first because it has both
+    # a visual reference and the refined textual instruction; text results
+    # still fill any remaining slots.
+    if session.kept_frames:
+        reference = session.kept_frames[-1]
+        composed_results = await compose_image_retrieval_tool(
+            session,
+            str(reference.get("frame_name") or ""),
+            text_query,
+            top_k,
+        )
+        results = _deduplicate_frames(composed_results + results)
+    elif not results:
+        # This tool is deliberately a non-blocking fallback. Its references
+        # are exposed in the agent trace for a user to inspect, while a failed
+        # external image provider never turns a no-result search into an error.
+        await image_search_tool(session, text_query or session.original_query)
 
     previous = {item.get("frame_name"): item for item in session.frames}
     positives = [previous[name] for name in session.positive_frame_names if name in previous]
@@ -722,6 +825,12 @@ async def _run_retrieval_graph(
         final_critique = await critic_node(session, frames, canvas, round_number)
         best_frames = frames
         best_critique = final_critique
+        selected_frames = [
+            frames[number - 1]
+            for number in final_critique["selected_frame_numbers"]
+            if 1 <= number <= len(frames)
+        ]
+        session.kept_frames = _deduplicate_frames(session.kept_frames + selected_frames)
         _log_step(
             session,
             "critic",
@@ -731,6 +840,8 @@ async def _run_retrieval_graph(
             satisfied=final_critique["satisfied"],
             selected_count=len(final_critique["selected_frame_numbers"]),
             selected_frame_numbers=final_critique["selected_frame_numbers"],
+            selected_frames=selected_frames,
+            kept_frame_count=len(session.kept_frames),
             ranked_frame_numbers=final_critique["ranked_frame_numbers"],
             ranking_basis="original_query",
             current_queries=round_queries,
@@ -745,6 +856,9 @@ async def _run_retrieval_graph(
             "analysis": final_critique["analysis"],
             "selected_frame_numbers": final_critique["selected_frame_numbers"],
             "ranked_frame_numbers": final_critique["ranked_frame_numbers"],
+            # Actual frame payloads are retained so the client can display
+            # the critic-approved frames for this particular round.
+            "selected_frames": selected_frames,
         }
         rounds.append(round_result)
         session.rounds = rounds
@@ -763,11 +877,11 @@ async def _run_retrieval_graph(
             ).strip(),
         }
 
-    session.frames = _rank_final_frames(
-        frames,
-        final_critique.get("ranked_frame_numbers", []),
-        session.top_k,
-    )
+    # The final result grid is intentionally restricted to frames the visual
+    # critic explicitly selected in one of the rounds.  Candidate rankings are
+    # useful for the critic internally, but must not leak unselected frames to
+    # the user-facing "Ranked results" list.
+    session.frames = session.kept_frames[:session.top_k]
     session.rounds = rounds
     _log_step(
         session,
@@ -776,9 +890,10 @@ async def _run_retrieval_graph(
         "completed",
         frame_count=len(session.frames),
         final_queries=session.queries,
-        ranking_basis="original_query",
+        ranking_basis="critic_selected_frames",
         ranked_frame_numbers=final_critique.get("ranked_frame_numbers", []),
         frame_names=[item.get("frame_name") for item in session.frames],
+        kept_frame_names=[item.get("frame_name") for item in session.kept_frames],
     )
     return _completed_response(session, final_critique.get("analysis", ""))
 
@@ -790,6 +905,7 @@ def _completed_response(session: AgentSession, analysis: str) -> dict[str, Any]:
         "assistant_message": analysis or "Đã chọn các frame có khả năng phù hợp nhất.",
         "queries": session.queries,
         "frames": session.frames,
+        "kept_frames": session.kept_frames,
         "rounds": session.rounds,
         "top_k": session.top_k,
         "canvas_image": session.canvas_image,
@@ -822,6 +938,7 @@ async def create_agent_message(request: AgentMessageRequest):
         session.selected_option = None
         session.queries = {}
         session.frames = []
+        session.kept_frames = []
         session.rounds = []
         session.feedback = ""
         session.positive_frame_names = []
