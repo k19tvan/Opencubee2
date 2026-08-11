@@ -1,6 +1,7 @@
 # Backend
 fastapi 
 uvicorn
+gunicorn
 python-multipart
 
 # Database

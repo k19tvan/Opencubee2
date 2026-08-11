@@ -36,8 +36,3 @@ def startup_event():
 async def shutdown_event():
     await shutdown_agent_runtime()
     await shutdown_runtime()
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=2108)

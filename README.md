@@ -53,5 +53,14 @@ src/scripts/setup_database.sh
 
 # STEP 5. Host Backend
 ```
-python -m backend.main
+conda run --no-capture-output -n env gunicorn -c gunicorn.conf.py backend.main:app
+```
+
+Gunicorn uses `uvicorn.workers.UvicornWorker` for FastAPI/ASGI and starts with
+one worker by default because the backend keeps model and agent runtime state
+in memory. Override the bind address or worker count when needed:
+
+```bash
+BACKEND_BIND=0.0.0.0:2108 GUNICORN_WORKERS=1 \
+  conda run --no-capture-output -n env gunicorn -c gunicorn.conf.py backend.main:app
 ```

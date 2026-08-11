@@ -56,9 +56,9 @@ npm install
 npm run build
 npx serve -s dist -l 2208
 ```
-Và đảm bảo Backend FastAPI đang chạy (ở thư mục `Opencubee2/backend`):
+Và đảm bảo Backend FastAPI đang chạy (từ thư mục gốc `Opencubee2`):
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 2108 --workers 1
+conda run --no-capture-output -n env gunicorn -c gunicorn.conf.py backend.main:app
 ```
 
 ---
