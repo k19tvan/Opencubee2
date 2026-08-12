@@ -618,6 +618,9 @@ export default function App() {
       } else if (key === 'a') {
         event.preventDefault();
         setAutoTranslate((prev) => !prev);
+      } else if (key === 'm') {
+        event.preventDefault();
+        setMetaClipOnly((prev) => !prev);
       }
     };
 

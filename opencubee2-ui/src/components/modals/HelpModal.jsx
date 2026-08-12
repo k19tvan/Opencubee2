@@ -9,6 +9,7 @@ const SHORTCUTS = [
   { label: 'Push / Remove Hovered Teamwork Frame', keys: 'Hover, then Ctrl + Space' },
   { label: 'Focus OCR Filter', keys: 'Alt + T' },
   { label: 'Focus ASR Filter', keys: 'Alt + Y' },
+  { label: 'Toggle MetaCLIP Only', keys: 'Alt + M' },
   { label: 'Toggle Latest Cell Image Mode', keys: 'Alt + I' },
   { label: 'Toggle Enhance On Search', keys: 'Ctrl + E' },
   { label: 'Add Temporal Search Cell', keys: 'Alt + +' },
