@@ -14,7 +14,7 @@ const formatTime = (seconds) => {
   return `${String(minutes).padStart(2, '0')}:${remaining.toFixed(3).padStart(6, '0')}`;
 };
 
-export default function VideoPreviewModal({ videoId, initialFrame, onClose, socketRef, username, userColor, onDresSubmit, onPushToTrake, wrongFrames = [] }) {
+export default function VideoPreviewModal({ videoId, initialFrame, onClose, socketRef, sendRealtimeMessage, username, userColor, onDresSubmit, onPushToTrake, wrongFrames = [] }) {
   const videoRef = useRef(null);
   const timelineRef = useRef(null);
   const dragRef = useRef(null);
@@ -216,7 +216,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
 
     const frameName = `${videoId}_${String(frame).padStart(6, '0')}.webp`;
 
-    socket.send(JSON.stringify({
+    sendRealtimeMessage({
       type: 'new_frame',
       data: {
         shot: {
@@ -228,7 +228,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
         },
         user: { name: username, color: userColor },
       },
-    }));
+    });
     toast.success('Frame sent to Teamwork Panel!');
   };
 

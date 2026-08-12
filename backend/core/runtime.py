@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from typing import Optional
 
@@ -13,24 +15,44 @@ from backend.core.config import (
     QDRANT_PORT,
 )
 
+LOGGER = logging.getLogger(__name__)
+
+
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: list[WebSocket] = []
+        self._connections: dict[WebSocket, asyncio.Lock] = {}
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        self._connections[websocket] = asyncio.Lock()
 
     def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
+        self._connections.pop(websocket, None)
+
+    async def send_text(self, websocket: WebSocket, message: str) -> bool:
+        lock = self._connections.get(websocket)
+        if lock is None:
+            return False
+        try:
+            async with lock:
+                await asyncio.wait_for(websocket.send_text(message), timeout=5.0)
+            return True
+        except Exception as exc:
+            self.disconnect(websocket)
+            LOGGER.debug("Removing dead WebSocket connection: %s", exc)
+            return False
 
     async def broadcast(self, message: str):
-        for connection in list(self.active_connections):
-            try:
-                await connection.send_text(message)
-            except Exception:
-                pass
+        connections = list(self._connections)
+        if connections:
+            await asyncio.gather(
+                *(self.send_text(connection, message) for connection in connections),
+                return_exceptions=True,
+            )
+
+    @property
+    def connection_count(self) -> int:
+        return len(self._connections)
 
 
 try:
@@ -99,6 +121,7 @@ qdrant_client = None
 meili_client = None
 http_client: Optional[httpx.AsyncClient] = None
 manager = ConnectionManager()
+teamwork_panel_state = []
 trake_panel_state = []
 wrong_frames_state = []
 frame_context_cache = {}

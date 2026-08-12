@@ -245,7 +245,7 @@ export default function RightResultsPanel({
   hasMore = false,
   onLoadMore = () => { },
   onPreview = () => { },
-  socket = null,
+  sendRealtimeMessage = () => false,
   username = '',
   userColor = '',
   onTeamworkAddLocal = () => { },
@@ -280,32 +280,24 @@ export default function RightResultsPanel({
 
   const pushToTeam = useCallback((shot) => {
     onTeamworkAddLocal(shot);
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(
-        JSON.stringify({
-          type: 'new_frame',
-          data: { shot, user: { name: username, color: userColor } },
-        })
-      );
-    }
-  }, [socket, username, userColor, onTeamworkAddLocal]);
+    sendRealtimeMessage({
+      type: 'new_frame',
+      data: { shot, user: { name: username, color: userColor } },
+    });
+  }, [sendRealtimeMessage, username, userColor, onTeamworkAddLocal]);
 
   const removeFromTeam = useCallback((shot) => {
     if (!shot) return;
     onTeamworkRemoveLocal(shot);
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(
-        JSON.stringify({
-          type: 'remove_frame',
-          data: {
-            filepath: shot.filepath,
-            frame_name: shot.frame_name,
-            url: shot.url,
-          },
-        })
-      );
-    }
-  }, [socket, onTeamworkRemoveLocal]);
+    sendRealtimeMessage({
+      type: 'remove_frame',
+      data: {
+        filepath: shot.filepath,
+        frame_name: shot.frame_name,
+        url: shot.url,
+      },
+    });
+  }, [sendRealtimeMessage, onTeamworkRemoveLocal]);
 
   const pushToTrake = useCallback((shot) => {
     onPushToTrake(shot);

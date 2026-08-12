@@ -21,7 +21,7 @@ from backend.services.search import (
     get_embedding,
     process_and_cluster_results,
     search_all_models,
-    search_ocr_on_meilisearch_async,
+    search_ocr_asr_on_meilisearch_async,
     attach_similarity_labels,
     find_similar_frames,
     search_semantic_asr_qdrant
@@ -133,9 +133,9 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
     async def _ocr_stage():
         if not has_filter_query:
             return []
-        query_text = search_model.ocr_query or search_model.asr_query
-        return await search_ocr_on_meilisearch_async(
-            keyword=query_text,
+        return await search_ocr_asr_on_meilisearch_async(
+            ocr_keyword=search_model.ocr_query,
+            asr_keyword=search_model.asr_query,
             limit=5000,
             candidate_frame_names=search_model.candidate_frame_names,
             video_ids=search_model.video_ids, 
@@ -280,8 +280,9 @@ async def _temporal_search_legacy(request_data: TemporalSearchRequest):
         async def _stage_ocr(stg=stage):
             if not (stg.ocr_query or stg.asr_query):
                 return []
-            query_text = stg.ocr_query or stg.asr_query
-            return await search_ocr_on_meilisearch_async(keyword=query_text, limit=MAX_FRAME_LIMIT)
+            return await search_ocr_asr_on_meilisearch_async(
+                ocr_keyword=stg.ocr_query, asr_keyword=stg.asr_query, limit=MAX_FRAME_LIMIT,
+            )
 
         fused_stage_results, filter_stage_results = await asyncio.gather(_stage_vector(), _stage_ocr())
 
@@ -444,8 +445,8 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
         async def filter_search():
             if not has_filter_query:
                 return []
-            return await search_ocr_on_meilisearch_async(
-                keyword=stage.ocr_query or stage.asr_query,
+            return await search_ocr_asr_on_meilisearch_async(
+                ocr_keyword=stage.ocr_query, asr_keyword=stage.asr_query,
                 limit=MAX_FRAME_LIMIT,
                 candidate_frame_names=candidate_frame_names,
                 video_ids=list(specified_videos) if specified_videos else None,

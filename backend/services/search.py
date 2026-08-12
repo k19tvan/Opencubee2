@@ -18,13 +18,16 @@ from backend.core.config import (
     MAX_FRAME_LIMIT,
     MODEL_CONFIGS,
     OCR_ASR_INDEX_NAME,
+    OCR_SEARCH_FIELD,
+    ASR_SEARCH_FIELD,
     TEMP_UPLOAD_DIR,
     VLLM_BASE_URL,
     VLLM_MODEL,
 )
 
-def search_ocr_on_meilisearch_sync(
+def search_text_on_meilisearch_sync(
     keyword: str,
+    search_field: str,
     limit: int = 500,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
@@ -38,7 +41,8 @@ def search_ocr_on_meilisearch_sync(
         
     opt_params = {
         "limit": limit,
-        "showRankingScore": True
+        "showRankingScore": True,
+        "attributesToSearchOn": [search_field],
     }
     if filter_expr:
         opt_params["filter"] = filter_expr
@@ -67,8 +71,18 @@ def search_ocr_on_meilisearch_sync(
                 })
         return results
     except Exception as e: 
-        print(f"Lỗi Meilisearch OCR: {e}")
+        print(f"Lỗi Meilisearch {search_field}: {e}")
         return []
+
+def search_ocr_on_meilisearch_sync(
+    keyword: str,
+    limit: int = 500,
+    video_ids: Optional[List[str]] = None,
+    candidate_frame_names: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    return search_text_on_meilisearch_sync(
+        keyword, OCR_SEARCH_FIELD, limit, video_ids, candidate_frame_names
+    )
 
 async def search_ocr_on_meilisearch_async(
     keyword: str,
@@ -77,12 +91,44 @@ async def search_ocr_on_meilisearch_async(
     candidate_frame_names: Optional[List[str]] = None,
 ):
     return await asyncio.to_thread(
-        search_ocr_on_meilisearch_sync,
+        search_text_on_meilisearch_sync,
         keyword,
+        OCR_SEARCH_FIELD,
         limit,
         video_ids,
         candidate_frame_names,
     )
+
+async def search_ocr_asr_on_meilisearch_async(
+    ocr_keyword: Optional[str] = None,
+    asr_keyword: Optional[str] = None,
+    limit: int = 500,
+    video_ids: Optional[List[str]] = None,
+    candidate_frame_names: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Search OCR and ASR fields independently; when both are present, intersect frames."""
+    queries = []
+    if ocr_keyword and ocr_keyword.strip():
+        queries.append((ocr_keyword.strip(), OCR_SEARCH_FIELD))
+    if asr_keyword and asr_keyword.strip():
+        queries.append((asr_keyword.strip(), ASR_SEARCH_FIELD))
+    if not queries:
+        return []
+    results = await asyncio.gather(*[
+        asyncio.to_thread(
+            search_text_on_meilisearch_sync,
+            keyword, field, limit, video_ids, candidate_frame_names,
+        )
+        for keyword, field in queries
+    ])
+    if len(results) == 1:
+        return results[0]
+    by_frame = [{item["frame_name"]: item for item in group} for group in results]
+    common_frames = set(by_frame[0]).intersection(*by_frame[1:])
+    return [
+        {**by_frame[0][frame_name], "score": min(float(group[frame_name].get("score", 0.0)) for group in by_frame)}
+        for frame_name in common_frames
+    ]
 
 # --- Helper: Fusion Vector & Meilisearch Results ---
 def _combine_and_rerank_results(

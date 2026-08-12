@@ -68,7 +68,7 @@ export default function LeftSearchPanel({
     setStages((prev) => [...prev, {
       id: Date.now(),
       queryText: '', ocrText: '', asrText: '',
-      ocrActive: true, asrActive: false,
+      ocrActive: true, asrActive: true,
       queryType: 'text',
       options: { enhance: false, bge_caption: false },
     }]);

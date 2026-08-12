@@ -23,7 +23,7 @@ const createEmptyStage = () => ({
   ocrText: '',
   asrText: '',
   ocrActive: true,
-  asrActive: false,
+  asrActive: true,
   queryType: 'text',
   options: { enhance: false, bge_caption: false },
 });
@@ -238,6 +238,8 @@ export default function App() {
   const [backgroundAgentJob, setBackgroundAgentJob] = useState(null);
 
   const socketRef = useRef(null);
+  const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
+  const lastRealtimeWarningRef = useRef(0);
   const latestWorkspaceRef = useRef(null);
   const submittedStagesRef = useRef(null);
   const submittedSearchModelRef = useRef(DEFAULT_SEARCH_MODEL);
@@ -260,6 +262,23 @@ export default function App() {
     contextShot,
   };
 
+  const sendRealtimeMessage = useCallback((message, { notify = true } = {}) => {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify(message));
+        return true;
+      } catch (error) {
+        console.error('[ws] failed to send message:', error);
+      }
+    }
+    if (notify && Date.now() - lastRealtimeWarningRef.current > 3000) {
+      lastRealtimeWarningRef.current = Date.now();
+      toast.error('Teamwork is reconnecting. Please try again in a moment.');
+    }
+    return false;
+  }, []);
+
   const updateHistoryDepths = (store = readWorkspaceHistory()) => {
     const currentIndex = store.entries.findIndex((entry) => entry.id === store.currentId);
     setGoBackDepth(currentIndex > 0 ? Math.min(currentIndex, MAX_GO_BACK_STEPS - 1) : 0);
@@ -268,16 +287,9 @@ export default function App() {
 
   const restoreWorkspaceSnapshot = (snapshot) => {
     const restoredStages = snapshot.stages || [createEmptyStage()];
-    // Migrate older empty workspaces that stored the initial stage with OCR
-    // disabled before OCR became the default input.
-    const stagesWithDefaultOcr = restoredStages.map((stage, index) => {
-      const isEmptyInitialStage = index === 0
-        && !stage.queryText
-        && !stage.ocrText
-        && !stage.asrText
-        && !stage.tempImageName
-        && !stage.imageText;
-      return isEmptyInitialStage ? { ...stage, ocrActive: true } : stage;
+    // Older workspaces may have stored either filter as disabled.
+    const stagesWithDefaultOcr = restoredStages.map((stage) => {
+      return { ...stage, ocrActive: true, asrActive: true };
     });
     setStages(stagesWithDefaultOcr);
     submittedStagesRef.current = snapshot.submittedStages || snapshot.stages || null;
@@ -581,16 +593,10 @@ export default function App() {
         }
       } else if (key === 't') {
         event.preventDefault();
-        const latestStage = latestWorkspaceRef.current?.stages?.at(-1);
-        const willActivate = !(latestStage?.ocrActive ?? !!latestStage?.ocrText);
-        updateLatestStage((stage) => ({ ...stage, ocrActive: !(stage.ocrActive ?? !!stage.ocrText) }));
-        if (willActivate) focusLatestStageField('ocr');
+        focusLatestStageField('ocr');
       } else if (key === 'y') {
         event.preventDefault();
-        const latestStage = latestWorkspaceRef.current?.stages?.at(-1);
-        const willActivate = !(latestStage?.asrActive ?? !!latestStage?.asrText);
-        updateLatestStage((stage) => ({ ...stage, asrActive: !(stage.asrActive ?? !!stage.asrText) }));
-        if (willActivate) focusLatestStageField('asr');
+        focusLatestStageField('asr');
       } else if (key === 'i') {
         event.preventDefault();
         const latestStage = latestWorkspaceRef.current?.stages?.at(-1);
@@ -619,19 +625,53 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!username) return;
+    if (!username) {
+      return undefined;
+    }
 
     const wsUrl = getWsUrl();
-    const ws = new WebSocket(wsUrl);
-    socketRef.current = ws;
+    let disposed = false;
+    let currentSocket = null;
+    let reconnectTimer = null;
+    let heartbeatTimer = null;
+    let reconnectAttempt = 0;
+    let lastPongAt = 0;
 
-    ws.onopen = () => console.info(`[ws] connected: ${wsUrl}`);
-    ws.onerror = () => console.error(`[ws] connection error: ${wsUrl} — teamwork updates will not arrive`);
-    ws.onclose = (e) => console.warn(`[ws] closed (code ${e.code}): ${wsUrl}`);
+    const clearHeartbeat = () => {
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    };
 
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer) return;
+      const delay = Math.min(1000 * (2 ** reconnectAttempt), 10000);
+      reconnectAttempt += 1;
+      setRealtimeStatus('reconnecting');
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delay);
+    };
+
+    const handleMessage = (event) => {
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch (error) {
+        console.error('[ws] invalid JSON message:', error);
+        return;
+      }
       const { type, data } = message;
+
+      if (type === 'pong') {
+        lastPongAt = Date.now();
+        return;
+      }
+      if (type === 'error') {
+        console.error('[ws] server rejected a message:', data?.detail || data);
+        toast.error(data?.detail || 'Teamwork message was rejected.');
+        return;
+      }
 
       if (type === 'new_frame') {
         if (!data?.shot) return;
@@ -726,10 +766,68 @@ export default function App() {
         } catch (e) { }
       }
     };
-    return () => ws.close();
+
+    function connect() {
+      if (disposed) return;
+      setRealtimeStatus(reconnectAttempt ? 'reconnecting' : 'connecting');
+      const ws = new WebSocket(wsUrl);
+      currentSocket = ws;
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        if (disposed || currentSocket !== ws) {
+          ws.close(1000, 'stale connection');
+          return;
+        }
+        reconnectAttempt = 0;
+        lastPongAt = Date.now();
+        setRealtimeStatus('connected');
+        console.info(`[ws] connected: ${wsUrl}`);
+        clearHeartbeat();
+        heartbeatTimer = window.setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            if (Date.now() - lastPongAt > 45000) {
+              ws.close(4000, 'heartbeat timeout');
+              return;
+            }
+            try {
+              ws.send(JSON.stringify({ type: 'ping', data: { timestamp: Date.now() } }));
+            } catch (error) {
+              console.error('[ws] heartbeat send failed:', error);
+              ws.close(4001, 'heartbeat send failed');
+            }
+          }
+        }, 20000);
+      };
+
+      ws.onmessage = handleMessage;
+      ws.onerror = () => console.error(`[ws] connection error: ${wsUrl}`);
+      ws.onclose = (event) => {
+        clearHeartbeat();
+        if (socketRef.current === ws) socketRef.current = null;
+        if (currentSocket === ws) {
+          currentSocket = null;
+        }
+        console.warn(`[ws] closed (code ${event.code}): ${wsUrl}`);
+        scheduleReconnect();
+      };
+    }
+
+    connect();
+    return () => {
+      disposed = true;
+      clearHeartbeat();
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      if (socketRef.current === currentSocket) socketRef.current = null;
+      setRealtimeStatus('disconnected');
+      if (currentSocket && currentSocket.readyState < WebSocket.CLOSING) {
+        currentSocket.close(1000, 'component cleanup');
+      }
+    };
   }, [username]);
 
-  const addTeamworkFrameLocal = (shot) => {
+  const addTeamworkFrameLocal = useCallback((shot) => {
     if (!shot) return;
     const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
     const incomingKey = getShotKey(shotWithUrl);
@@ -737,7 +835,7 @@ export default function App() {
       if (incomingKey && prev.some((frame) => getShotKey(frame.shot) === incomingKey)) return prev;
       return [{ shot: shotWithUrl, user: { name: username, color: userColor } }, ...prev];
     });
-  };
+  }, [username, userColor]);
 
   const handlePushToTrake = (shot) => {
     if (!shot) return;
@@ -749,46 +847,32 @@ export default function App() {
       return [...prev, shotWithUrl];
     });
 
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'trake_add',
-        data: { shot: shotWithUrl }
-      }));
-    }
+    sendRealtimeMessage({ type: 'trake_add', data: { shot: shotWithUrl } });
     setShowTrake(true);
   };
 
   const handleAgentPushToTeam = useCallback((shot) => {
     addTeamworkFrameLocal(shot);
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'new_frame',
-        data: { shot, user: { name: username, color: userColor } },
-      }));
-    }
-  }, [username, userColor, addTeamworkFrameLocal]);
+    sendRealtimeMessage({
+      type: 'new_frame',
+      data: { shot, user: { name: username, color: userColor } },
+    });
+  }, [username, userColor, addTeamworkFrameLocal, sendRealtimeMessage]);
 
   const handleReorderTrake = useCallback((orderedFrames) => {
     setTrakeFrames(orderedFrames);
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'trake_reorder',
-        data: { frame_keys: orderedFrames.map(getShotKey).filter(Boolean) },
-      }));
-    }
-  }, []);
+    sendRealtimeMessage({
+      type: 'trake_reorder',
+      data: { frame_keys: orderedFrames.map(getShotKey).filter(Boolean) },
+    });
+  }, [sendRealtimeMessage]);
 
   const handleRemoveFromTrake = useCallback((shot) => {
     const frameKey = getShotKey(shot);
     if (!frameKey) return;
     setTrakeFrames((previous) => previous.filter((frame) => getShotKey(frame) !== frameKey));
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'trake_remove',
-        data: { frame_key: frameKey },
-      }));
-    }
-  }, []);
+    sendRealtimeMessage({ type: 'trake_remove', data: { frame_key: frameKey } });
+  }, [sendRealtimeMessage]);
 
   const removeTeamworkFrameLocal = (shotToRemove) => {
     if (!shotToRemove) return;
@@ -879,21 +963,17 @@ export default function App() {
           setWrongFrames([]);
           setTeamworkFrames([{ shot: trakeFrames[0], user: { name: username || 'ME', color: userColor || '#10b981' } }]);
           toast.success('Trake Submit CORRECT!', { id: loadingToast });
-          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({
-              type: 'global_correct_submission',
-              data: { shot: trakeFrames[0] }
-            }));
-          }
+          sendRealtimeMessage({
+            type: 'global_correct_submission',
+            data: { shot: trakeFrames[0], user: { name: username, color: userColor } }
+          });
         } else if (resData.submission === 'WRONG') {
           toast.error(`Trake Submit WRONG`, { id: loadingToast });
           setWrongFrames(prev => [trakeFrames[0], ...prev]);
-          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({
-              type: 'global_wrong_submission',
-              data: { shot: trakeFrames[0] }
-            }));
-          }
+          sendRealtimeMessage({
+            type: 'global_wrong_submission',
+            data: { shot: trakeFrames[0] }
+          });
         } else {
           toast.success(`Trake Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
         }
@@ -942,21 +1022,14 @@ export default function App() {
           setCorrectSubmission(shot);
           setWrongFrames([]);
           toast.success('KIS Submit CORRECT!', { id: loadingToast });
-          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({
-              type: 'global_correct_submission',
-              data: { shot: shot, user: { name: username, color: userColor } }
-            }));
-          }
+          sendRealtimeMessage({
+            type: 'global_correct_submission',
+            data: { shot, user: { name: username, color: userColor } }
+          });
         } else if (resData.submission === 'WRONG') {
           toast.error(`KIS Submit WRONG`, { id: loadingToast });
           setWrongFrames(prev => [shot, ...prev]);
-          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({
-              type: 'global_wrong_submission',
-              data: { shot: shot }
-            }));
-          }
+          sendRealtimeMessage({ type: 'global_wrong_submission', data: { shot } });
         } else {
           toast.success(`KIS Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
         }
@@ -964,7 +1037,7 @@ export default function App() {
         toast.error(`KIS Submit Error: ${err.message}`, { id: loadingToast });
       }
     }
-  }, [dresSessionId, dresEvaluationId, dresMode, trakeFrames, username, userColor]);
+  }, [dresSessionId, dresEvaluationId, dresMode, trakeFrames, username, userColor, sendRealtimeMessage]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
@@ -1518,6 +1591,12 @@ export default function App() {
       <div className="relative z-10 flex flex-col w-full h-full pointer-events-none">
         <div className="pointer-events-auto flex flex-col w-full h-full">
           <Toaster position="bottom-right" reverseOrder={false} />
+          {username && realtimeStatus !== 'connected' && (
+            <div className="fixed right-4 top-[78px] z-[3000] rounded-lg border border-amber-500/40 bg-amber-950/90 px-3 py-1.5 text-[10px] font-semibold text-amber-200 shadow-lg backdrop-blur">
+              <i className="fas fa-rotate fa-spin mr-1.5" />
+              Teamwork {realtimeStatus === 'reconnecting' ? 'reconnecting' : 'connecting'}…
+            </div>
+          )}
 
           <TopToolbar
             username={username}
@@ -1605,7 +1684,7 @@ export default function App() {
                 hasMore={hasMore}
                 onLoadMore={handleLoadMore}
                 onPreview={handleOpenVideoPreview}
-                socket={socketRef.current}
+                sendRealtimeMessage={sendRealtimeMessage}
                 username={username}
                 userColor={userColor}
                 onTeamworkAddLocal={addTeamworkFrameLocal}
@@ -1687,6 +1766,7 @@ export default function App() {
                 setPreviewVideoData(null);
               }}
               socketRef={socketRef}
+              sendRealtimeMessage={sendRealtimeMessage}
               username={username}
               userColor={userColor}
               wrongFrames={wrongFrames}
@@ -1701,7 +1781,7 @@ export default function App() {
               onClose={() => setContextShot(null)}
               onZoom={setZoomedImage}
               onPreview={handleOpenVideoPreview}
-              socket={socketRef.current}
+              sendRealtimeMessage={sendRealtimeMessage}
               username={username}
               userColor={userColor}
               onSubmitDres={handleInstantDresSubmit}

@@ -25,7 +25,7 @@ from backend.services.search import (
     attach_similarity_labels,
     fuse_results,
     search_all_models,
-    search_ocr_on_meilisearch_async,
+    search_ocr_asr_on_meilisearch_async,
 )
 
 
@@ -433,8 +433,8 @@ async def search_node(
     async def filter_stage():
         if not has_filter_query:
             return []
-        return await search_ocr_on_meilisearch_async(
-            keyword=ocr_query or asr_query,
+        return await search_ocr_asr_on_meilisearch_async(
+            ocr_keyword=ocr_query, asr_keyword=asr_query,
             limit=5000,
         )
 

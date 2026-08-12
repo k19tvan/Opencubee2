@@ -27,8 +27,8 @@ export default function StageCard({
   onNavigateStage,
 }) {
   const [type, setType] = useState(stage.queryType || 'text');
-  const [ocrActive, setOcrActive] = useState(stage.ocrActive ?? true);
-  const [asrActive, setAsrActive] = useState(stage.asrActive ?? !!stage.asrText);
+  const [ocrActive] = useState(true);
+  const [asrActive] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
 
   const [queryText, setQueryText] = useState(stage.queryText || '');
@@ -111,17 +111,9 @@ export default function StageCard({
     }
     if (stage.ocrText !== undefined && stage.ocrText !== ocrText && stage.ocrText !== last.ocrText) {
       setOcrText(stage.ocrText);
-      if (stage.ocrActive === undefined) setOcrActive(!!stage.ocrText);
     }
     if (stage.asrText !== undefined && stage.asrText !== asrText && stage.asrText !== last.asrText) {
       setAsrText(stage.asrText);
-      if (stage.asrActive === undefined) setAsrActive(!!stage.asrText);
-    }
-    if (stage.ocrActive !== undefined && stage.ocrActive !== ocrActive && stage.ocrActive !== last.ocrActive) {
-      setOcrActive(stage.ocrActive);
-    }
-    if (stage.asrActive !== undefined && stage.asrActive !== asrActive && stage.asrActive !== last.asrActive) {
-      setAsrActive(stage.asrActive);
     }
     if (stage.options !== undefined && stage.options !== last.options) {
       setOptions({
@@ -296,27 +288,19 @@ export default function StageCard({
       return;
     }
 
-    // Alt + T: Toggle OCR cho Stage hiện tại
+    // Alt + T: Focus OCR for the current stage
     if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 't') {
       e.preventDefault();
       e.stopPropagation();
-      setOcrActive((prev) => {
-        const next = !prev;
-        if (next) setTimeout(() => ocrRef.current?.focus(), 50);
-        return next;
-      });
+      ocrRef.current?.focus();
       return;
     }
 
-    // Alt + Y: Toggle ASR cho Stage hiện tại
+    // Alt + Y: Focus ASR for the current stage
     if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'y') {
       e.preventDefault();
       e.stopPropagation();
-      setAsrActive((prev) => {
-        const next = !prev;
-        if (next) setTimeout(() => asrRef.current?.focus(), 50);
-        return next;
-      });
+      asrRef.current?.focus();
       return;
     }
 
@@ -380,9 +364,7 @@ export default function StageCard({
         <button
           className={`${pillCls(ocrActive)} flex-shrink-0`}
           onClick={() => {
-            const next = !ocrActive;
-            setOcrActive(next);
-            if (next) setTimeout(() => ocrRef.current?.focus(), 50);
+            ocrRef.current?.focus();
           }}
           title="OCR (Alt + T)"
           aria-label="OCR"
@@ -392,9 +374,7 @@ export default function StageCard({
         <button
           className={`${pillCls(asrActive)} flex-shrink-0`}
           onClick={() => {
-            const next = !asrActive;
-            setAsrActive(next);
-            if (next) setTimeout(() => asrRef.current?.focus(), 50);
+            asrRef.current?.focus();
           }}
           title="ASR (Alt + Y)"
           aria-label="ASR"
@@ -469,8 +449,7 @@ export default function StageCard({
             </p>
           </div>
         )}
-        {ocrActive && (
-          <input
+        <input
             ref={ocrRef}
             type="text"
             className="w-full px-3 py-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] transition-all placeholder:text-[var(--text-secondary)]"
@@ -478,10 +457,8 @@ export default function StageCard({
             value={ocrText}
             onChange={(e) => setOcrText(e.target.value)}
             onKeyDown={handleKeyDown}
-          />
-        )}
-        {asrActive && (
-          <input
+        />
+        <input
             ref={asrRef}
             type="text"
             className="w-full px-3 py-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] transition-all placeholder:text-[var(--text-secondary)]"
@@ -489,8 +466,7 @@ export default function StageCard({
             value={asrText}
             onChange={(e) => setAsrText(e.target.value)}
             onKeyDown={handleKeyDown}
-          />
-        )}
+        />
         <div className="rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] px-3 py-2">
           <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
             <i className="fas fa-terminal text-[8px]"></i>

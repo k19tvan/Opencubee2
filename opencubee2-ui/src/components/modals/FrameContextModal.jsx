@@ -1,13 +1,24 @@
 // src/components/modals/FrameContextModal.jsx
-import React, { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { getImageUrl } from '../../utils/imageUrl'; // Import URL builder helper
 import { BASE_URL } from '../../api';
 
-export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, socket, username, userColor, onSubmitDres, onContext, onQuickSearch }) {
+export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onSubmitDres, onContext, onQuickSearch }) {
   const [neighbors, setNeighbors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hoveredShot, setHoveredShot] = useState(null);
+
+  const pushToTeam = useCallback((shot) => {
+    sendRealtimeMessage?.({
+      type: 'new_frame',
+      data: { shot, user: { name: username, color: userColor } },
+    });
+  }, [sendRealtimeMessage, username, userColor]);
+
+  const pushToTrake = useCallback((shot) => {
+    sendRealtimeMessage?.({ type: 'trake_add', data: { shot } });
+  }, [sendRealtimeMessage]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -38,7 +49,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hoveredShot, onSubmitDres, onClose]);
+  }, [hoveredShot, onSubmitDres, onClose, pushToTeam, pushToTrake]);
 
   useEffect(() => {
     const fetchNeighbors = async () => {
@@ -81,28 +92,6 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     };
     fetchNeighbors();
   }, [shotData]);
-
-  const pushToTeam = (shot) => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(
-        JSON.stringify({
-          type: 'new_frame',
-          data: { shot, user: { name: username, color: userColor } },
-        })
-      );
-    }
-  };
-
-  const pushToTrake = (shot) => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(
-        JSON.stringify({
-          type: 'trake_add',
-          data: { shot },
-        })
-      );
-    }
-  };
 
   return (
     <div className="fixed inset-0 bg-black/90 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
