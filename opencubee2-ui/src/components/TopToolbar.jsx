@@ -311,7 +311,7 @@ export default function TopToolbar({
               <button
                 onClick={() => setIsDresModeOpen(!isDresModeOpen)}
                 className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', false)} relative pr-8`}
-                title="DRES Submit Mode"
+                title="DRES Submit Mode (Alt + Q to switch KIS/QA)"
               >
                 <i className={`fas fa-paper-plane ${theme === 'jujutsu' ? 'text-[14px]' : 'text-xs'}`}></i>
                 <span className="hidden sm:inline">{dresMode}</span>

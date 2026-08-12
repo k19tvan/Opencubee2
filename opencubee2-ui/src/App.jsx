@@ -574,7 +574,14 @@ export default function App() {
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
       const key = event.key.toLowerCase();
-      if (key === 'arrowleft' || key === 'backspace') {
+      if (key === 'q') {
+        event.preventDefault();
+        setDresMode((previousMode) => {
+          const nextMode = previousMode === 'QA' ? 'KIS' : 'QA';
+          toast.success(`DRES ${nextMode} Mode: ON`);
+          return nextMode;
+        });
+      } else if (key === 'arrowleft' || key === 'backspace') {
         event.preventDefault();
         const store = readWorkspaceHistory();
         const currentIndex = store.entries.findIndex((entry) => entry.id === store.currentId);

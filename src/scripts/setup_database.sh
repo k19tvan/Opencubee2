@@ -10,7 +10,7 @@ export QDRANT__STORAGE__ALLOW_NFS=true
 
 # ==================== Qdrant ====================
 QDRANT_NAME="opencubee2_qdrant"
-QDRANT_DATA="$ROOT/database/qdrant/storage"
+QDRANT_DATA="$ROOT/database_2/qdrant/storage"
 QDRANT_DIR="$LBASE_DIR/qdrant/$QDRANT_NAME"
 
 lbase stop "$QDRANT_NAME" 2>/dev/null || true
@@ -45,7 +45,7 @@ lbase start "$QDRANT_NAME"
 
 # ================= Meilisearch ==================
 MEILI_NAME="opencubee2_meilisearch"
-MEILI_DATA="$ROOT/database/meilisearch/storage/data.ms"
+MEILI_DATA="$ROOT/database_2/meilisearch/storage/data.ms"
 MEILI_DIR="$LBASE_DIR/meilisearch/$MEILI_NAME"
 MEILI_VERSION="1.33.1"
 
