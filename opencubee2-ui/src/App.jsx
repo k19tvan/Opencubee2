@@ -181,6 +181,7 @@ export default function App() {
 
   const [stages, setStages] = useState([createEmptyStage()]);
   const [searchModel, setSearchModel] = useState(DEFAULT_SEARCH_MODEL);
+  const [metaClipOnly, setMetaClipOnly] = useState(false);
   const [stageFocusRequest, setStageFocusRequest] = useState(null);
 
   const [searchResults, setSearchResults] = useState([]);
@@ -1117,9 +1118,10 @@ export default function App() {
       return;
     }
 
-    const requestedSearchModel = pageNumber === 1
+    const selectedSearchModel = pageNumber === 1
       ? normalizeSearchModel(searchModel)
       : submittedSearchModelRef.current || normalizeSearchModel(searchModel);
+    const requestedSearchModel = metaClipOnly ? ['metaclip2'] : selectedSearchModel;
 
     if (!requestedSearchModel) {
       toast.error('Choose search model(s).');
@@ -1391,7 +1393,10 @@ export default function App() {
 
     const toastId = toast.loading('Agent is searching in the background…');
     const sessionId = `search-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const modelPayload = buildSearchModelPayload(searchModel);
+    const agentSearchModel = stage?.queryType === 'image' && stage.tempImageName
+      ? ['bge']
+      : (metaClipOnly ? ['metaclip2'] : searchModel);
+    const modelPayload = buildSearchModelPayload(agentSearchModel);
     setBackgroundAgentJob({ sessionId, message, status: 'running', events: [] });
     let afterId = 0;
     const pollEvents = async () => {
@@ -1446,7 +1451,7 @@ export default function App() {
     }).finally(() => {
       window.clearInterval(pollId);
     });
-  }, [searchModel]);
+  }, [searchModel, metaClipOnly]);
 
   const handleOpenVideoPreview = (videoId, frameId) => {
     if (!videoId) return;
@@ -1475,7 +1480,7 @@ export default function App() {
     setHasMore(false);
     setLoadingMore(false);
     setContextShot(null);
-  }, [searchModel]);
+  }, [searchModel, metaClipOnly]);
 
   useEffect(() => {
     executeResetRef.current = executeReset;
@@ -1616,6 +1621,8 @@ export default function App() {
             setIsSemanticAsr={setIsSemanticAsr}
             searchModel={searchModel}
             setSearchModel={setSearchModel}
+            metaClipOnly={metaClipOnly}
+            setMetaClipOnly={setMetaClipOnly}
             autoTranslate={autoTranslate}
             setAutoTranslate={setAutoTranslate}
             dresMode={dresMode}
@@ -1717,7 +1724,7 @@ export default function App() {
 
             <div className={`${workspaceMode === 'agent' ? 'flex' : 'hidden'} flex-grow min-h-0 w-full overflow-hidden relative`}>
               <AgentWorkspace
-                searchModel={searchModel}
+                searchModel={metaClipOnly ? ['metaclip2'] : searchModel}
                 backgroundAgentJob={backgroundAgentJob}
                 onPushQueries={handlePushAgentQueries}
                 onZoom={setZoomedImage}

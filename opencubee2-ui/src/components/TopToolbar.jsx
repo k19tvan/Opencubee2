@@ -76,6 +76,8 @@ export default function TopToolbar({
   timingInfo = null,
   searchModel,
   setSearchModel,
+  metaClipOnly = false,
+  setMetaClipOnly = () => { },
   autoTranslate,
   setAutoTranslate,
   dresUsername,
@@ -290,7 +292,16 @@ export default function TopToolbar({
             : 'Run a similarity image search first to prepare a similarity list.'}
           theme={theme}
         />
-        <ToolBtn onClick={() => onOpenModal('filter')} icon="fas fa-shapes" label="Filters" theme={theme} />
+        <ToolBtn
+          onClick={() => setMetaClipOnly((previous) => !previous)}
+          icon="fas fa-bolt"
+          label="MetaCLIP only"
+          active={metaClipOnly}
+          title={metaClipOnly
+            ? 'MetaCLIP only: ON. Click to restore the selected models.'
+            : 'Use MetaCLIP only for text search. Image search still uses BGE.'}
+          theme={theme}
+        />
         <ToolBtn onClick={() => setIsClustered(!isClustered)} icon="fas fa-object-group" label="Cluster" active={isClustered} theme={theme} />
         <ToolBtn onClick={() => setIsAmbiguous(!isAmbiguous)} icon="fas fa-random" label="Ambiguous" active={isAmbiguous} theme={theme} />
 
