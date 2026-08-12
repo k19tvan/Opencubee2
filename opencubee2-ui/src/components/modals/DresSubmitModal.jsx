@@ -10,14 +10,25 @@ export default function DresSubmitModal({
 }) {
   const [qaAnswer, setQaAnswer] = useState('');
   const [loading, setLoading] = useState(false);
+  // Open immediately when QA is triggered from a selected frame so the user
+  // can start typing without an extra click.
+  const [isOpen, setIsOpen] = useState(true);
   const inputRef = useRef(null);
 
-  // Focus input automatically
   useEffect(() => {
-    if (inputRef.current) {
+    if (isOpen && inputRef.current) {
       inputRef.current.focus();
     }
-  }, []);
+  }, [isOpen]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -76,46 +87,62 @@ export default function DresSubmitModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/85 z-[3000] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] w-full max-w-[420px] rounded-lg shadow-[var(--shadow-heavy)] overflow-hidden flex flex-col backdrop-blur-md animate-scaleIn relative">
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 w-6 h-6 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] transition-colors z-10"
-        >
-          <i className="fas fa-times"></i>
-        </button>
-        <div className="px-6 py-5 border-b border-[var(--border-color)] bg-[var(--glass-bg)] flex flex-col items-center gap-2">
-          <div className="text-3xl text-blue-500 mb-1">
-            <i className="fas fa-comment-dots"></i>
-          </div>
-          <h2 className="text-base font-bold text-center text-[var(--text-primary)]">QA Submit to DRES</h2>
-        </div>
-        
-        <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-5">
-          <div className="bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg p-3 text-xs text-[var(--text-secondary)]">
-            <div className="flex flex-col gap-2">
-              <p className="font-semibold text-[var(--text-primary)]">Q&A Submission</p>
-              <input
-                ref={inputRef}
-                type="text"
-                className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border-color)] text-[var(--text-primary)] rounded text-xs focus:outline-none focus:border-[var(--accent-primary)]"
-                placeholder="Enter your answer..."
-                value={qaAnswer}
-                onChange={(e) => setQaAnswer(e.target.value)}
-                required
-              />
-              <p>Submitted exactly as typed.</p>
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[3000] flex justify-end px-4 sm:px-6">
+      <div className="pointer-events-auto flex flex-col items-end gap-2">
+        <div className={`w-[min(360px,calc(100vw-2rem))] origin-bottom-right overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)] shadow-[var(--shadow-heavy)] backdrop-blur-md transition-all duration-300 ${isOpen ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-8 opacity-0'}`}>
+          <div className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--glass-bg)] px-3 py-2">
+            <div className="flex items-center gap-2">
+              <i className="fas fa-comment-dots text-blue-500" />
+              <span className="text-xs font-bold text-[var(--text-primary)]">QA Submit to DRES</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]"
+              aria-label="Minimize QA submission"
+            >
+              <i className="fas fa-chevron-down text-[10px]" />
+            </button>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading || !qaAnswer.trim()}
-            className="w-full bg-blue-500 text-white font-semibold text-xs py-3 rounded-lg hover:bg-blue-600 hover:shadow-glow hover:-translate-y-0.5 active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? <i className="fas fa-spinner fa-spin"></i> : 'Confirm QA Submit'}
-          </button>
-        </form>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3 p-3">
+            <label className="text-[11px] text-[var(--text-secondary)]" htmlFor="dres-qa-answer">
+              Enter your answer
+            </label>
+            <input
+              id="dres-qa-answer"
+              ref={inputRef}
+              type="text"
+              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:outline-none"
+              placeholder="Answer..."
+              value={qaAnswer}
+              onChange={(e) => setQaAnswer(e.target.value)}
+              required
+            />
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] text-[var(--text-secondary)]">Submitted exactly as typed.</span>
+              <button
+                type="submit"
+                disabled={loading || !qaAnswer.trim()}
+                className="rounded-lg bg-blue-500 px-3 py-2 text-[11px] font-semibold text-white transition-all hover:bg-blue-600 hover:shadow-glow active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? <i className="fas fa-spinner fa-spin" /> : 'Submit'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsOpen((previous) => !previous)}
+          className={`flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold shadow-lg transition-all hover:-translate-y-0.5 ${isOpen ? 'border-blue-400/50 bg-blue-500 text-white' : 'border-[var(--border-color)] bg-[var(--card-bg)] text-[var(--text-primary)] hover:border-blue-400/50'}`}
+          aria-expanded={isOpen}
+          aria-controls="dres-qa-answer"
+        >
+          <i className="fas fa-comment-dots" />
+          <span>QA Answer</span>
+          <i className={`fas fa-chevron-up text-[9px] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
       </div>
     </div>
   );
