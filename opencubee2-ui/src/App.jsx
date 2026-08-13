@@ -753,7 +753,6 @@ export default function App() {
           if (incomingKey && prev.some(s => getShotKey(s) === incomingKey)) return prev;
           return [...prev, mappedShot];
         });
-        setShowTrake(true);
       } else if (type === 'trake_remove') {
         const frameKey = data.frame_key || data.filepath;
         setTrakeFrames(prev => prev.filter(s => getShotKey(s) !== frameKey));
@@ -869,6 +868,19 @@ export default function App() {
       data: { shot, user: { name: username, color: userColor } },
     });
   }, [username, userColor, addTeamworkFrameLocal, sendRealtimeMessage]);
+
+  const handleReplaceTrakeFrame = useCallback((newShot) => {
+    if (!trakePreviewShot) return;
+    setTrakeFrames(prev => {
+      const index = prev.findIndex(s => s.frame_name === trakePreviewShot.frame_name);
+      if (index === -1) return prev;
+      const next = [...prev];
+      next[index] = { ...newShot, url: getImageUrl(newShot.url || newShot.frame_name) || newShot.url };
+      // Sync the new state directly if needed, for now just update locally.
+      return next;
+    });
+    setTrakePreviewShot(newShot);
+  }, [trakePreviewShot]);
 
   const handleReorderTrake = useCallback((orderedFrames) => {
     setTrakeFrames(orderedFrames);
@@ -1155,11 +1167,7 @@ export default function App() {
         ? await enhanceStagesForSearch(sourceStages, requestedSearchModel)
         : submittedStagesRef.current || sourceStages;
 
-      const activeSearchModel = activeStages.some(
-        (stage) => stage.queryType === 'image' && stage.tempImageName
-      )
-        ? ['bge']
-        : requestedSearchModel;
+      const activeSearchModel = options.forceModel || requestedSearchModel;
       const modelPayload = buildSearchModelPayload(activeSearchModel);
       const hasScopeOverride = Object.prototype.hasOwnProperty.call(options, 'similarityScope');
       const requestedSimilarityScope = hasScopeOverride
@@ -1376,6 +1384,7 @@ export default function App() {
         similarityScope: null,
         activateSimilarityScope: true,
         similaritySourceFrameName: shot.frame_name || null,
+        forceModel: ['beit3']
       });
 
     } catch (err) {
@@ -1471,7 +1480,6 @@ export default function App() {
 
   const executeResetRef = useRef(null);
 
-  // Sửa lỗi 3: Reset sẽ hủy chế độ Semantic ASR và xóa query ASR
   const executeReset = useCallback(() => {
     const nextStages = [createEmptyStage()];
     const currentSearchModel = normalizeSearchModel(latestWorkspaceRef.current?.searchModel || searchModel, DEFAULT_SEARCH_MODEL);
@@ -1480,8 +1488,8 @@ export default function App() {
     submittedSimilarityScopeRef.current = null;
     setSimilarityScope(null);
     setStages(nextStages);
-    setIsSemanticAsr(false);         // <--- Hủy chế độ Semantic ASR
-    setSemanticAsrQuery('');        // <--- Xóa truy vấn Semantic ASR
+    setIsSemanticAsr(false);
+    setSemanticAsrQuery('');
     setSearchResults([]);
     setLastFinalQueries([]);
     setResultIsAmbiguous(false);
@@ -1727,7 +1735,7 @@ export default function App() {
                 <TrakeFramePreviewSidebar
                   shot={trakePreviewShot}
                   onClose={() => setTrakePreviewShot(null)}
-                  onZoom={setZoomedImage}
+                  onReplace={handleReplaceTrakeFrame}
                 />
               )}
             </div>
@@ -1805,6 +1813,8 @@ export default function App() {
               onSubmitDres={handleInstantDresSubmit}
               onContext={setContextShot}
               onQuickSearch={handleQuickImageSearch}
+              wrongFrames={wrongFrames}
+              correctSubmission={correctSubmission}
             />
           )}
 
@@ -1822,7 +1832,7 @@ export default function App() {
               <img
                 src={zoomedImage}
                 alt="Zoomed Result"
-                className="max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-[var(--shadow-heavy)] border border-[var(--border-color)] animate-scaleIn"
+                className="w-full h-full max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-[var(--shadow-heavy)] border border-[var(--border-color)] animate-scaleIn"
               />
             </div>
           )}

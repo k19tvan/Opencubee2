@@ -29,7 +29,21 @@ function buildTimelineSlots(frames, words) {
   });
 }
 
-export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onSubmitDres, onContext, onQuickSearch }) {
+const isSameShot = (first, second) => {
+  if (!first || !second) return false;
+  return (
+    (first.filepath && second.filepath && first.filepath === second.filepath)
+    || (first.frame_name && second.frame_name && first.frame_name === second.frame_name)
+    || (
+      first.video_id && second.video_id
+      && first.video_id === second.video_id
+      && first.frame_id != null && second.frame_id != null
+      && String(first.frame_id) === String(second.frame_id)
+    )
+  );
+};
+
+export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onSubmitDres, onContext, onQuickSearch, wrongFrames = [], correctSubmission = null }) {
   const [neighbors, setNeighbors] = useState([]);
   const [timelineWords, setTimelineWords] = useState([]);
   const [timelineFps, setTimelineFps] = useState(null);
@@ -140,6 +154,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     const handleKeyDown = (e) => {
       if (e.repeat) return;
       if (e.key === 'Escape') {
+        if (document.getElementById('video-preview-modal')) return;
         onClose();
         return;
       }
@@ -285,6 +300,10 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                 const labelText = isVideoTimeline
                   ? `#${shot.frame_id}`
                   : (offset > 0 ? `+${offset}` : `${offset}`);
+                const isCorrect = isSameShot(shot, correctSubmission);
+                const isWrong = !isCorrect && wrongFrames.some((wrongFrame) => isSameShot(shot, wrongFrame));
+                const hasSubmissionStatus = isCorrect || isWrong;
+                const statusColor = isCorrect ? 'var(--accent-primary)' : '#ff1744';
 
                 return (
                   <div
@@ -309,28 +328,32 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                     )}
                     <div
                       data-center-frame={isCenter ? 'true' : 'false'}
-                      className={`relative bg-[var(--card-bg)] rounded-xl overflow-hidden border aspect-video cursor-zoom-in hover:scale-[1.03] transition-all duration-200 group ${
+                      className={`relative bg-[var(--card-bg)] rounded-xl overflow-hidden aspect-video cursor-zoom-in hover:scale-[1.03] transition-all duration-200 group ${
                         isVideoTimeline ? 'mx-auto mt-auto w-[230px]' : ''
                       } ${
                         isCenter
                           ? 'border-[6px] ring-[6px] ring-slate-100'
+                          : hasSubmissionStatus
+                            ? 'border-0 z-20'
                           : 'border-[var(--border-color)] hover:border-[var(--accent-primary)]'
                       }`}
-                      style={isCenter ? {
+                      style={hasSubmissionStatus ? {
+                        boxShadow: `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`,
+                      } : isCenter ? {
                         borderColor: '#d1d5db',
                         boxShadow: '0 0 12px #f8fafc, 0 0 28px #e5e7eb, 0 0 46px #94a3b8',
                       } : undefined}
                       onClick={(e) => {
-                      if (suppressClickRef.current) {
-                        e.preventDefault();
-                        return;
-                      }
-                      if ((e.ctrlKey || e.metaKey) && e.altKey && onContext) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setHoveredShot(null);
-                        onContext({ ...shot, contextView: 'video-timeline' });
-                      } else if (e.ctrlKey && e.shiftKey && onQuickSearch) {
+                        if (suppressClickRef.current) {
+                          e.preventDefault();
+                          return;
+                        }
+                        if ((e.ctrlKey || e.metaKey) && e.altKey && onContext) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setHoveredShot(null);
+                          onContext({ ...shot, contextView: 'video-timeline' });
+                        } else if (e.ctrlKey && e.shiftKey && onQuickSearch) {
                         onQuickSearch(shot);
                         onClose();
                       } else if ((e.ctrlKey || e.metaKey) && onContext) {
@@ -351,11 +374,23 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                     >
                       <img loading="lazy" draggable="false" src={getImageUrl(shot.url || shot.frame_name || shot.filepath)} className="w-full h-full object-cover pointer-events-none" alt="Context result" onError={(e) => { e.target.onerror = null; e.target.src = '/fallback-image.png'; }} />
                     
-                      <div className={`absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider z-10 ${
-                      isCenter ? 'bg-black text-white flex items-center justify-center w-fit shadow' : 'bg-black/80 text-white'
-                    }`}>
-                      {isCenter ? 'ORIGINAL' : labelText}
-                    </div>
+                      <div className="absolute top-2 left-2 flex flex-col gap-1 z-10 pointer-events-none">
+                        <div className={`px-2 py-0.5 rounded-full border text-[9px] font-extrabold tracking-widest shadow-lg w-fit ${
+                          isCenter ? 'bg-[var(--accent-secondary)] text-white border-white/50 shadow-[0_0_10px_var(--accent-secondary)]' : 'bg-black/80 border-white/20 text-white'
+                        }`}>
+                          {isCenter ? 'ORIGINAL' : labelText}
+                        </div>
+                        {isWrong && (
+                          <div className="px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center justify-center w-fit shadow-[0_0_8px_rgba(225,29,72,0.8)] border border-rose-400" title="Wrong Submission">
+                            <span className="text-[9px] font-extrabold tracking-widest text-white">WRONG</span>
+                          </div>
+                        )}
+                        {isCorrect && (
+                          <div className="px-2 py-0.5 rounded-full bg-[var(--accent-primary)] text-[var(--bg-primary)] flex items-center justify-center w-fit shadow-[0_0_10px_var(--accent-primary)] border border-white/50" title="Correct Submission">
+                            <span className="text-[9px] font-extrabold tracking-widest text-[var(--bg-primary)]">CORRECT</span>
+                          </div>
+                        )}
+                      </div>
 
                       <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20">
                       {onSubmitDres && (

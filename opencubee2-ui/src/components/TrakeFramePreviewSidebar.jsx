@@ -5,28 +5,9 @@ import { getDresFrameNumber } from '../utils/frameNumber';
 const CONTEXT_STEPS = 15;
 const STEP_SECONDS = 0.2;
 
-export default function TrakeFramePreviewSidebar({ shot, onClose, onZoom }) {
+export default function TrakeFramePreviewSidebar({ shot, onClose, onReplace }) {
   const [videoInfo, setVideoInfo] = useState(null);
   const [error, setError] = useState('');
-  const [width, setWidth] = useState(340);
-  const [resizeStart, setResizeStart] = useState(null);
-
-  useEffect(() => {
-    if (!resizeStart) return undefined;
-
-    const handlePointerMove = (event) => {
-      const nextWidth = resizeStart.width + resizeStart.x - event.clientX;
-      setWidth(Math.min(Math.max(nextWidth, 280), Math.max(280, window.innerWidth - 240)));
-    };
-    const stopResizing = () => setResizeStart(null);
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', stopResizing);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', stopResizing);
-    };
-  }, [resizeStart]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,24 +46,14 @@ export default function TrakeFramePreviewSidebar({ shot, onClose, onZoom }) {
         isOriginal: offset === 0,
         label: offset === 0 ? 'ORIGINAL' : `${offset > 0 ? '+' : ''}${(offset * STEP_SECONDS).toFixed(1)}s`,
         url: getVideoThumbnailUrl(shot.video_id, frame, 360),
+        fullUrl: getVideoThumbnailUrl(shot.video_id, frame, 1920),
       };
     });
   }, [shot, videoInfo]);
 
   return (
-    <aside
-      className="relative flex h-full flex-shrink-0 flex-col border-l border-[var(--border-color)] bg-[var(--bg-primary)] shadow-[-10px_0_30px_rgba(0,0,0,0.25)] animate-fadeIn"
-      style={{ width }}
-    >
-      <div
-        className="absolute inset-y-0 left-0 z-20 w-2 -translate-x-1/2 cursor-col-resize transition-colors hover:bg-[var(--accent-primary)]/70"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          setResizeStart({ x: event.clientX, width });
-        }}
-        title="Drag to resize"
-      />
-      <header className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--glass-bg)] px-5 py-4">
+    <aside className="relative flex h-full flex-shrink-0 flex-col border-l w-[240px] border-[var(--border-color)] bg-[var(--bg-primary)] shadow-[-10px_0_30px_rgba(0,0,0,0.25)] animate-fadeIn">
+      <header className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--glass-bg)] px-4 py-3">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[var(--accent-primary)]">
             <i className="fas fa-film"></i> Trake frame preview
@@ -115,7 +86,17 @@ export default function TrakeFramePreviewSidebar({ shot, onClose, onZoom }) {
               <button
                 type="button"
                 key={frame.offset}
-                onClick={() => onZoom?.(frame.url)}
+                onClick={() => {
+                  if (onReplace) {
+                    onReplace({
+                      ...shot,
+                      frame_id: frame.frame,
+                      frame_name: `${shot.video_id}_${String(frame.frame).padStart(6, '0')}.webp`,
+                      filepath: `dynamic-frame-${shot.video_id}-${frame.frame}`,
+                      url: frame.fullUrl,
+                    });
+                  }
+                }}
                 className={`group relative aspect-video overflow-hidden rounded-lg border bg-[var(--card-bg)] text-left transition-all hover:scale-[1.02] ${
                   frame.isOriginal
                     ? 'border-[6px] ring-[6px] ring-slate-100'

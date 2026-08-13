@@ -37,16 +37,16 @@ router = APIRouter()
 IMAGE_SEARCH_MODEL = "bge"
 
 
-def image_search_models(image_name: Optional[str], requested_models: list[str]) -> list[str]:
+def image_search_models(image_name: Optional[str], image_text: Optional[str], requested_models: list[str]) -> list[str]:
     """Return the only valid model set for an image-mode query.
 
     Enforcing this in the API is intentional: the UI model picker is only a
     convenience and must not be able to make an image vector incompatible with
     the BGE Qdrant collection.
     """
-    # `image_search_text` is feedback for an already supplied image.  On its
+    # `image_text` is feedback for an already supplied image. On its
     # own it is a plain text query and must retain the selected text models.
-    if image_name:
+    if image_name and image_text:
         return [IMAGE_SEARCH_MODEL]
     return [model for model in requested_models if model in MODEL_CONFIGS]
 
@@ -106,6 +106,7 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
 
     models_to_use = image_search_models(
         image_name,
+        search_model.image_search_text or search_model.query_text,
         search_model.models or ["beit3"],
     )
     if not models_to_use: models_to_use = ["beit3"]
@@ -263,6 +264,7 @@ async def _temporal_search_legacy(request_data: TemporalSearchRequest):
                 return []
             stage_models = image_search_models(
                 stg.query_image_name,
+                stg.image_search_text or stg.query,
                 models_to_use,
             ) or ["beit3"]
             stage_weights = ({IMAGE_SEARCH_MODEL: 1.0}
@@ -423,6 +425,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
                 return []
             stage_models = image_search_models(
                 stage.query_image_name,
+                stage.image_search_text or stage.query,
                 models_to_use,
             ) or ["beit3"]
             stage_weights = ({IMAGE_SEARCH_MODEL: 1.0}
