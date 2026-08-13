@@ -9,7 +9,7 @@ import {
 } from '../api';
 import { getImageUrl } from '../utils/imageUrl';
 
-const TOP_K_OPTIONS = [5, 10, 15, 20, 25, 30];
+const TOP_K_OPTIONS = [30, 60, 90, 120];
 const sleep = (duration) => new Promise((resolve) => window.setTimeout(resolve, duration));
 const createSessionId = () => globalThis.crypto?.randomUUID?.()
   || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -78,164 +78,137 @@ function QueryBlock({ queries = {}, onPush }) {
   );
 }
 
-const STEP_LABELS = {
-  request: 'Request',
-  research: 'Gemini research',
-  option: 'Research option',
-  query_planner: 'Query planner',
-  search: 'Frame search',
-  image_search: 'Image search',
-  compose_image_retrieval: 'Compose image retrieval',
-  canvas: 'Critic canvas',
-  critic: 'Visual critic',
-  refine: 'Query refinement',
-  feedback: 'User feedback',
-  finalize: 'Final selection',
-  error: 'Error',
-};
-
-const formatDetailLabel = (key) => key
-  .replaceAll('_', ' ')
-  .replace(/\b\w/g, (character) => character.toUpperCase());
-
-function QueryDetails({ value }) {
-  const rows = [
-    ['Text', value?.text_query],
-    ['OCR', value?.ocr_query],
-    ['ASR', value?.asr_query],
-  ];
+function KeptFrameStrip({ frames = [], frameActions }) {
+  if (!frames.length) return null;
   return (
-    <div className="grid gap-1.5">
-      {rows.map(([label, query]) => (
-        <div key={label} className="grid grid-cols-[42px_1fr] gap-2 rounded-md bg-black/10 px-2 py-1.5">
-          <span className="font-semibold text-[var(--accent-primary)]">{label}</span>
-          <span className={query ? 'break-words text-[var(--text-primary)]' : 'italic text-[var(--text-secondary)]'}>{query || 'Not used'}</span>
-        </div>
+    <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
+      {frames.map((frame, index) => (
+        <AgentFrameCard
+          key={frame.frame_name || frame.url || index}
+          frame={frame}
+          rank={index + 1}
+          {...frameActions}
+        />
       ))}
     </div>
   );
 }
 
-function DetailValue({ name, value }) {
-  if (name.includes('queries') && value && typeof value === 'object' && !Array.isArray(value)) {
-    return <QueryDetails value={value} />;
-  }
-  if (typeof value === 'boolean') return <span>{value ? 'Yes' : 'No'}</span>;
-  if (value && typeof value === 'object') {
-    return (
-      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-md bg-black/15 p-2 text-[9px] leading-4 text-[var(--text-primary)]">
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    );
-  }
-  return <span className="whitespace-pre-wrap break-words text-[var(--text-primary)]">{String(value ?? '') || '—'}</span>;
-}
-
-function KeptFrameStrip({ frames = [] }) {
-  if (!frames.length) return null;
-  return (
-    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-      {frames.map((frame) => {
-        const imageUrl = getImageUrl(frame.url || frame.frame_name || frame.filepath);
-        return (
-          <a
-            key={frame.frame_name || imageUrl}
-            href={imageUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="group overflow-hidden rounded-lg border border-emerald-500/30 bg-[var(--bg-primary)]"
-            title={`Open ${frame.frame_name}`}
-          >
-            <img src={imageUrl} alt={frame.frame_name || 'Critic-selected frame'} className="aspect-video w-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
-            <span className="block truncate px-1.5 py-1 font-mono text-[8px] text-emerald-300">{frame.frame_name}</span>
-          </a>
-        );
-      })}
-    </div>
-  );
-}
-
-function EventRow({ event }) {
-  const [expanded, setExpanded] = useState(false);
-  const details = Object.entries(event.details || {}).filter(([, value]) => value !== undefined && value !== null);
-  const selectedFrames = Array.isArray(event.details?.selected_frames) ? event.details.selected_frames : [];
-  const hasDetails = details.length > 0;
-  const statusIcon = event.status === 'failed'
-    ? 'fa-circle-xmark text-rose-400'
-    : event.status === 'completed'
-      ? 'fa-circle-check text-emerald-400'
-      : 'fa-ellipsis text-amber-400';
+function PipelineLog({ message, frameActions }) {
+  const [expandedRounds, setExpandedRounds] = useState({});
+  const events = message.events || [];
+  const rounds = [];
+  let activeRound = 1;
+  events.forEach((event) => {
+    const explicitRound = event.details?.round || event.details?.next_round;
+    if (explicitRound) activeRound = Number(explicitRound);
+    let round = rounds.find((item) => item.round === activeRound);
+    if (!round) {
+      round = { round: activeRound, events: [], keptFrames: [], canvasImages: [], queries: {} };
+      rounds.push(round);
+    }
+    round.events.push(event);
+    if (event.details?.queries && typeof event.details.queries === 'object') {
+      round.queries = event.details.queries;
+    }
+    const selectedFrames = event.details?.selected_frames;
+    if (event.step === 'critic' && event.status === 'completed' && Array.isArray(selectedFrames)) {
+      round.keptFrames = selectedFrames;
+    }
+    if (event.step === 'canvas' && event.status === 'completed' && Array.isArray(event.details?.canvas_images)) {
+      round.canvasImages = event.details.canvas_images;
+    }
+  });
 
   return (
-    <div className="relative border-b border-[var(--border-color)]/50 last:border-b-0">
-      <button
-        type="button"
-        disabled={!hasDetails}
-        onClick={() => setExpanded((current) => !current)}
-        aria-expanded={hasDetails ? expanded : undefined}
-        className={`flex w-full items-start gap-3 rounded-lg px-2 py-2.5 text-left transition-colors ${hasDetails ? 'cursor-pointer hover:bg-[var(--glass-bg)]' : 'cursor-default'}`}
-      >
-        <span className="relative mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]">
-          <i className={`fas ${statusIcon} text-[9px]`} />
-        </span>
-        <span className="min-w-0 flex-grow">
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[10px] font-bold text-[var(--text-primary)]">{STEP_LABELS[event.step] || formatDetailLabel(event.step)}</span>
-            <span className="font-mono text-[8px] text-[var(--text-secondary)]">{new Date(event.timestamp * 1000).toLocaleTimeString([], { hour12: false })}</span>
-          </span>
-          <span className={`mt-0.5 block text-[10px] leading-4 ${event.status === 'failed' ? 'text-rose-400' : 'text-[var(--text-secondary)]'}`}>{event.message}</span>
-        </span>
-        <i className={`fas fa-chevron-right mt-2 text-[8px] text-[var(--text-secondary)] transition-transform ${expanded ? 'rotate-90' : ''} ${hasDetails ? 'opacity-100' : 'opacity-0'}`} />
-      </button>
-      {selectedFrames.length > 0 && (
-        <div className="mx-11 mb-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5">
-          <div className="text-[9px] font-semibold text-emerald-300"><i className="fas fa-bookmark mr-1.5" /> Critic kept {selectedFrames.length} frame(s) in this round</div>
-          <KeptFrameStrip frames={selectedFrames} />
-        </div>
-      )}
-      {hasDetails && expanded && (
-        <div className="mb-3 ml-11 mr-2 grid gap-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/65 p-3 text-[10px] shadow-inner">
-          {details.map(([name, value]) => (
-            <div key={name} className="grid gap-1">
-              <span className="text-[9px] font-bold uppercase tracking-wide text-[var(--text-secondary)]">{formatDetailLabel(name)}</span>
-              <DetailValue name={name} value={value} />
+    <div className="mr-auto w-full max-w-5xl">
+      <div className="grid gap-4" aria-live="polite">
+        {rounds.length ? rounds.map((round, roundIndex) => {
+          const currentEvent = round.events[round.events.length - 1];
+          const isActive = !message.complete && roundIndex === rounds.length - 1;
+          const statusIcon = currentEvent?.status === 'failed'
+            ? 'fa-circle-xmark text-rose-400'
+            : isActive
+              ? 'fa-circle-notch fa-spin text-[var(--accent-primary)]'
+              : 'fa-circle-check text-emerald-400';
+          const isExpanded = Boolean(expandedRounds[round.round]);
+          return (
+            <div key={round.round}>
+              <div className="flex items-start gap-3 py-1">
+                <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-violet-500/25 bg-violet-500/10 text-violet-400">
+                  <i className={`fas ${statusIcon} text-xs`} />
+                </span>
+                <div className="min-w-0 flex-1 text-xs leading-5">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedRounds((previous) => ({ ...previous, [round.round]: !previous[round.round] }))}
+                    className="flex w-full items-start gap-2 text-left"
+                    aria-expanded={isExpanded}
+                  >
+                    <i className={isExpanded ? 'fas fa-chevron-right mt-1 rotate-90 text-[9px] text-[var(--text-secondary)]' : 'fas fa-chevron-right mt-1 text-[9px] text-[var(--text-secondary)]'} />
+                    <span className="min-w-0">
+                      <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-[var(--accent-primary)]">Round {round.round}</span>
+                      <span className="mr-2 font-semibold text-[var(--text-primary)]">{currentEvent?.message}</span>
+                      {currentEvent?.step && <span className="text-[9px] uppercase tracking-wider text-[var(--text-secondary)]">{currentEvent.step.replaceAll('_', ' ')}</span>}
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    <div className="mt-2 grid gap-1.5 border-l border-[var(--border-color)] pl-4">
+                      {round.events.map((event) => (
+                        <div key={event.id} className="flex items-start gap-2 text-[10px] leading-4">
+                          <i className="fas fa-circle-check mt-1 text-[8px] text-emerald-400" />
+                          <span className="min-w-0">
+                            <span className="mr-1.5 font-semibold text-[var(--text-primary)]">{event.step?.replaceAll('_', ' ')}</span>
+                            <span className="text-[var(--text-secondary)]">{event.message}</span>
+                          </span>
+                        </div>
+                      ))}
+                      {round.canvasImages.length > 0 && (
+                        <div className="mt-2 grid gap-2">
+                          <div className="text-[9px] font-semibold uppercase tracking-wider text-cyan-300">
+                            <i className="fas fa-table-cells-large mr-1.5" />Critic canvases
+                          </div>
+                          <div className="grid gap-3 xl:grid-cols-2">
+                            {round.canvasImages.map((canvasImage, canvasIndex) => (
+                              <div key={canvasImage} className="overflow-hidden rounded-xl border border-cyan-500/20 bg-white p-1.5">
+                                <div className="mb-1 px-1 text-[9px] font-semibold text-slate-600">Canvas {canvasIndex + 1}</div>
+                                <img src={canvasImage} alt="Critic canvas" className="w-full rounded-lg object-contain" loading="lazy" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {Object.keys(round.queries).length > 0 && (
+                        <div className="mt-2 grid gap-1.5">
+                          <div className="text-[9px] font-semibold uppercase tracking-wider text-violet-300">
+                            <i className="fas fa-sliders mr-1.5" />Queries used
+                          </div>
+                          {[
+                            ['Text', round.queries.text_query],
+                            ['OCR', round.queries.ocr_query],
+                            ['ASR', round.queries.asr_query],
+                          ].map(([label, query]) => (
+                            <div key={label} className="grid grid-cols-[42px_1fr] gap-2 rounded-md bg-black/10 px-2 py-1.5 text-[10px]">
+                              <span className="font-semibold text-violet-300">{label}</span>
+                              <span className={query ? 'break-words text-[var(--text-primary)]' : 'italic text-[var(--text-secondary)]'}>{query || 'Not used'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {round.keptFrames.length > 0 && (
+                <div className="ml-11 mt-2">
+                  <div className="mb-1.5 text-[10px] font-semibold text-emerald-300"><i className="fas fa-bookmark mr-1.5" />Frames kept</div>
+                  <KeptFrameStrip frames={round.keptFrames} frameActions={frameActions} />
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PipelineLog({ message }) {
-  const completedEvents = message.events?.filter((event) => event.status === 'completed').length || 0;
-  const eventCount = message.events?.length || 0;
-  return (
-    <div className="mr-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] shadow-[var(--shadow-heavy)]">
-      <div className="border-b border-[var(--border-color)] bg-[var(--glass-bg)] px-4 py-3.5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${message.complete ? 'bg-emerald-500/12 text-emerald-400' : 'bg-violet-500/12 text-violet-400'}`}>
-              <i className={`fas ${message.complete ? 'fa-check' : 'fa-circle-notch fa-spin'}`} />
-            </span>
-            <div>
-              <div className="text-xs font-semibold text-[var(--text-primary)]">Agent workflow</div>
-              <div className="mt-0.5 text-[9px] text-[var(--text-secondary)]">{message.complete ? 'Execution completed' : (message.label || 'Working through the retrieval graph…')}</div>
-            </div>
-          </div>
-          <span className={`rounded-full border px-2.5 py-1 text-[9px] font-semibold ${message.complete ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-400'}`}>
-            {message.complete ? `${completedEvents} steps done` : `${eventCount} events`}
-          </span>
-        </div>
-        <div className="mt-3 h-1 overflow-hidden rounded-full bg-[var(--bg-primary)]">
-          <div className={`h-full rounded-full bg-[image:var(--accent-gradient)] transition-all duration-500 ${message.complete ? 'w-full' : 'w-2/3 animate-pulse'}`} />
-        </div>
-      </div>
-      <div className="max-h-96 overflow-y-auto px-3 py-2">
-        {message.events?.length ? message.events.map((event) => (
-          <EventRow key={event.id} event={event} />
-        )) : (
-          <div className="flex items-center gap-2 py-2 text-[10px] text-[var(--text-secondary)]">
+          );
+        }) : (
+          <div className="flex items-center gap-3 py-1 text-xs text-[var(--text-secondary)]">
             <i className="fas fa-circle-notch fa-spin text-[var(--accent-primary)]" />
             {message.label || 'Waiting for the backend agent…'}
           </div>
@@ -294,10 +267,12 @@ function AgentFrameCard({
       </div>
 
       <div className="absolute inset-0 bg-black/10 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-        <div className="absolute right-2 top-2 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/45 p-1 backdrop-blur-md">
+        {onVote && (
+          <div className="absolute right-2 top-2 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/45 p-1 backdrop-blur-md">
           <button type="button" onClick={(event) => { event.stopPropagation(); onVote(frame, 'positive'); }} className={`${frameActionClass} w-8 ${vote === 'positive' ? 'bg-emerald-500 text-white' : 'text-emerald-400 hover:bg-emerald-500 hover:text-white'}`} title="Mark as relevant"><i className="fas fa-thumbs-up" /></button>
           <button type="button" onClick={(event) => { event.stopPropagation(); onVote(frame, 'negative'); }} className={`${frameActionClass} w-8 ${vote === 'negative' ? 'bg-rose-500 text-white' : 'text-rose-400 hover:bg-rose-500 hover:text-white'}`} title="Mark as irrelevant"><i className="fas fa-thumbs-down" /></button>
-        </div>
+          </div>
+        )}
 
         <div className="absolute inset-x-2 bottom-10 grid grid-cols-6 gap-1 rounded-xl border border-white/10 bg-black/45 p-1 backdrop-blur-md">
           <button type="button" onClick={(event) => { event.stopPropagation(); onPreview(frame.video_id, frame.frame_id); }} className={`${frameActionClass} hover:bg-violet-500`} title="Open video"><i className="fas fa-play" /></button>
@@ -316,8 +291,17 @@ function ResultMessage({ message, votes, onVote, onPushQueries, frameActions }) 
   const [showCanvas, setShowCanvas] = useState(false);
   const successfulRound = message.rounds?.find((round) => round.satisfied);
   return (
-    <div className="w-full overflow-hidden rounded-3xl border border-[var(--border-color)] bg-[var(--card-bg)] shadow-[var(--shadow-heavy)]">
-      <div className="border-b border-[var(--border-color)] bg-[var(--glass-bg)] px-5 py-5 md:px-6">
+    <div className="mr-auto w-full max-w-5xl">
+      <div className="flex items-start gap-3 py-1">
+        <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-violet-500/25 bg-violet-500/10 text-violet-400">
+          <i className="fas fa-sparkles text-xs" />
+        </span>
+        <div className="min-w-0 text-xs leading-5">
+          <div className="font-semibold text-[var(--text-primary)]">Critic-selected results</div>
+          <p className="mt-0.5 whitespace-pre-wrap text-[var(--text-secondary)]">{message.text}</p>
+        </div>
+      </div>
+      <div className="hidden">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 items-start gap-3.5">
             <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/25"><i className="fas fa-sparkles" /></div>
@@ -342,16 +326,16 @@ function ResultMessage({ message, votes, onVote, onPushQueries, frameActions }) 
             </div>
             <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/55 px-3 py-2.5 text-center">
               <div className="text-base font-semibold text-[var(--text-primary)]">{message.topK}</div>
-              <div className="text-[8px] uppercase tracking-wider text-[var(--text-secondary)]">Top K</div>
+              <div className="text-[8px] uppercase tracking-wider text-[var(--text-secondary)]">Num results</div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="p-4 md:p-6">
+      <div className="mt-4">
         <div className="min-w-0">
           {message.rounds?.length > 0 && (
-            <div className="grid gap-2.5">
+            <div className="hidden grid gap-2.5">
               <div className="flex flex-wrap gap-2">
                 {message.rounds.map((round) => (
                   <span key={round.round} title={round.analysis} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[9px] font-medium ${round.satisfied ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-[var(--border-color)] bg-[var(--bg-primary)]/40 text-[var(--text-secondary)]'}`}>
@@ -382,7 +366,9 @@ function ResultMessage({ message, votes, onVote, onPushQueries, frameActions }) 
               )}
             </div>
           )}
-          <QueryBlock queries={message.queries} onPush={onPushQueries} />
+          <div className="hidden">
+            <QueryBlock queries={message.queries} onPush={onPushQueries} />
+          </div>
         </div>
 
       {message.canvasImage && (
@@ -398,9 +384,9 @@ function ResultMessage({ message, votes, onVote, onPushQueries, frameActions }) 
         </div>
       )}
 
-      <div className="mt-7 flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border-color)] pb-3">
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border-color)] pb-3">
         <div>
-          <h3 className="text-xs font-semibold text-[var(--text-primary)]">Critic-selected results</h3>
+          <h3 className="text-xs font-semibold text-[var(--text-primary)]">Selected frames</h3>
           <p className="mt-1 text-[9px] text-[var(--text-secondary)]">Only frames explicitly kept by the critic across all rounds · hover a frame for actions</p>
         </div>
         <span className="rounded-full border border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-3 py-1 font-mono text-[9px] text-[var(--text-secondary)]">{message.frames?.length || 0} of {message.topK}</span>
@@ -418,7 +404,7 @@ function ResultMessage({ message, votes, onVote, onPushQueries, frameActions }) 
 function TopKSelector({ value, onChange, disabled }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="hidden whitespace-nowrap text-[9px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] sm:block">Canvas size</span>
+      <span className="hidden whitespace-nowrap text-[9px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] sm:block">Num results</span>
       <div className="flex min-w-0 overflow-x-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-1">
         {TOP_K_OPTIONS.map((option) => (
           <button
@@ -536,7 +522,7 @@ export default function AgentWorkspace({
   const [sessionId, setSessionId] = useState(null);
   const [prompt, setPrompt] = useState('');
   const [research, setResearch] = useState(false);
-  const [topK, setTopK] = useState(20);
+  const [topK, setTopK] = useState(30);
   const [loading, setLoading] = useState(false);
   const [awaitingOption, setAwaitingOption] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -793,7 +779,7 @@ export default function AgentWorkspace({
       <div className="flex-grow overflow-y-auto px-3 py-5 md:px-6 md:py-7">
         <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
           {backgroundAgentJob?.status === 'running' && (
-            <PipelineLog message={{
+            <PipelineLog frameActions={frameActions} message={{
               id: `background-agent-${backgroundAgentJob.sessionId}`,
               label: 'Background search from Search mode is running…',
               events: backgroundAgentJob.events || [],
@@ -812,7 +798,7 @@ export default function AgentWorkspace({
             message.type === 'result' ? (
               <ResultMessage key={message.id} message={message} votes={votes} onVote={handleVote} onPushQueries={onPushQueries} frameActions={frameActions} />
             ) : message.type === 'pipeline' ? (
-              <PipelineLog key={message.id} message={message} />
+              <PipelineLog key={message.id} message={message} frameActions={frameActions} />
             ) : message.type === 'options' ? (
               <ResearchOptions key={message.id} message={message} loading={loading} onSelect={handleSelectOption} />
             ) : message.type === 'welcome' ? (

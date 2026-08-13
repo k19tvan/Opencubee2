@@ -32,7 +32,8 @@ from backend.services.search import (
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 MAX_AGENT_ROUNDS = 3
-MAX_AGENT_FRAMES = 30
+MAX_AGENT_FRAMES = 120
+AGENT_CANVAS_SIZE = 30
 MAX_RESEARCH_OPTIONS = 5
 
 
@@ -42,7 +43,7 @@ class AgentMessageRequest(BaseModel):
     use_research: bool = False
     models: list[str] = Field(default_factory=lambda: ["beit3"])
     model_weights: dict[str, float] = Field(default_factory=lambda: {"beit3": 1.0})
-    top_k: int = Field(default=20, ge=1, le=MAX_AGENT_FRAMES)
+    top_k: int = Field(default=30, ge=1, le=MAX_AGENT_FRAMES)
 
 
 class AgentOptionRequest(BaseModel):
@@ -50,7 +51,7 @@ class AgentOptionRequest(BaseModel):
     option_index: Optional[int] = None
     models: list[str] = Field(default_factory=lambda: ["beit3"])
     model_weights: dict[str, float] = Field(default_factory=lambda: {"beit3": 1.0})
-    top_k: int = Field(default=20, ge=1, le=MAX_AGENT_FRAMES)
+    top_k: int = Field(default=30, ge=1, le=MAX_AGENT_FRAMES)
 
 
 class AgentFeedbackRequest(BaseModel):
@@ -60,7 +61,7 @@ class AgentFeedbackRequest(BaseModel):
     negative_frame_names: list[str] = Field(default_factory=list)
     models: list[str] = Field(default_factory=lambda: ["beit3"])
     model_weights: dict[str, float] = Field(default_factory=lambda: {"beit3": 1.0})
-    top_k: int = Field(default=20, ge=1, le=MAX_AGENT_FRAMES)
+    top_k: int = Field(default=30, ge=1, le=MAX_AGENT_FRAMES)
 
 
 @dataclass
@@ -173,6 +174,40 @@ async def _get_or_create_session(session_id: Optional[str]) -> AgentSession:
         return session
 
 
+def _escape_json_control_chars(text: str) -> str:
+    """Repair literal control characters accidentally emitted inside JSON strings."""
+    repaired = []
+    in_string = False
+    escaped = False
+    for character in text:
+        if escaped:
+            repaired.append(character)
+            escaped = False
+            continue
+        if character == chr(92) and in_string:
+            repaired.append(character)
+            escaped = True
+            continue
+        if character == chr(34):
+            in_string = not in_string
+            repaired.append(character)
+            continue
+        if in_string:
+            replacements = {
+                chr(10): chr(92) + "n",
+                chr(13): chr(92) + "r",
+                chr(9): chr(92) + "t",
+            }
+            if character in replacements:
+                repaired.append(replacements[character])
+                continue
+            if ord(character) < 0x20:
+                repaired.append(chr(92) + "u%04x" % ord(character))
+                continue
+        repaired.append(character)
+    return "".join(repaired)
+
+
 def _extract_json(content: Any) -> dict[str, Any]:
     if isinstance(content, dict):
         return content
@@ -185,6 +220,10 @@ def _extract_json(content: Any) -> dict[str, Any]:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
+        try:
+            return json.loads(_escape_json_control_chars(text))
+        except json.JSONDecodeError:
+            pass
         decoder = json.JSONDecoder()
         for match in re.finditer(r"\{", text):
             try:
@@ -198,7 +237,14 @@ def _extract_json(content: Any) -> dict[str, Any]:
 
 async def _invoke_json(messages: list[Any]) -> dict[str, Any]:
     response = await _get_agent_llm().ainvoke(messages)
-    return _extract_json(response.content)
+    raw_content = response.content
+    print("[agent:model-response] Raw response:", flush=True)
+    print(raw_content if isinstance(raw_content, str) else repr(raw_content), flush=True)
+    try:
+        return _extract_json(raw_content)
+    except ValueError:
+        print("[agent:model-response] JSON parsing failed for the response above.", flush=True)
+        raise
 
 
 def _clean_query(value: Any) -> str:
@@ -536,7 +582,7 @@ async def critic_node(
             "the ORIGINAL request: exact matches first, then partial matches by how many original constraints they "
             "satisfy, and retrieval score only as a tie-breaker. If the original request describes events or actions "
             "in a sequence, order matching frames by that described event sequence before relevance within each "
-            f"phase. Both arrays use unique 1-based integers and have maximum {session.top_k} items. If results "
+            f"phase. Both arrays use unique 1-based integers and have maximum {len(frames)} items for this canvas. If results "
             "are weak, the returned queries are the NEXT retrieval plan and MUST materially differ from the current "
             "queries. Change the visual wording, attributes, context, or safely relax uncertain OCR/ASR constraints. "
             "Never repeat a query already attempted. text_query must remain English; OCR/ASR must be literal likely "
@@ -796,22 +842,33 @@ async def _run_retrieval_graph(
             round_result["next_queries"] = dict(session.queries)
             continue
 
+        canvas_chunks = [
+            frames[index:index + AGENT_CANVAS_SIZE]
+            for index in range(0, len(frames), AGENT_CANVAS_SIZE)
+        ]
         _log_step(
             session,
             "canvas",
-            f"Building a white contact sheet from {len(frames)} frame(s).",
+            f"Building {len(canvas_chunks)} canvas(es) with up to {AGENT_CANVAS_SIZE} frame(s) each.",
             round=round_number,
+            canvas_count=len(canvas_chunks),
+            frame_count=len(frames),
         )
-        canvas = await asyncio.to_thread(canvas_node, frames)
-        session.canvas_image = f"data:image/jpeg;base64,{canvas}"
+        canvases = await asyncio.gather(*[
+            asyncio.to_thread(canvas_node, chunk)
+            for chunk in canvas_chunks
+        ])
+        session.canvas_image = f"data:image/jpeg;base64,{canvases[0]}"
         _log_step(
             session,
             "canvas",
-            f"Contact sheet with {len(frames)} frame(s) is ready for the visual critic.",
+            f"{len(canvases)} contact sheet(s) with {len(frames)} frame(s) are ready for the visual critic.",
             "completed",
             round=round_number,
+            canvas_count=len(canvases),
             frame_count=len(frames),
             frame_names=[item.get("frame_name") for item in frames],
+            canvas_images=[f"data:image/jpeg;base64,{canvas}" for canvas in canvases],
         )
         _log_step(
             session,
@@ -822,7 +879,30 @@ async def _run_retrieval_graph(
             queries=round_queries,
             candidate_count=len(frames),
         )
-        final_critique = await critic_node(session, frames, canvas, round_number)
+        critiques = await asyncio.gather(*[
+            critic_node(session, chunk, canvas, round_number)
+            for chunk, canvas in zip(canvas_chunks, canvases)
+        ])
+        selected_numbers = []
+        ranked_numbers = []
+        analyses = []
+        for chunk_index, critique in enumerate(critiques):
+            offset = chunk_index * AGENT_CANVAS_SIZE
+            selected_numbers.extend(
+                number + offset for number in critique["selected_frame_numbers"]
+            )
+            ranked_numbers.extend(
+                number + offset for number in critique["ranked_frame_numbers"]
+            )
+            if critique.get("analysis"):
+                analyses.append(f"Canvas {chunk_index + 1}: {critique['analysis']}")
+        final_critique = {
+            **critiques[0],
+            "satisfied": any(item.get("satisfied") for item in critiques),
+            "analysis": " ".join(analyses),
+            "selected_frame_numbers": selected_numbers[:session.top_k],
+            "ranked_frame_numbers": ranked_numbers[:session.top_k],
+        }
         best_frames = frames
         best_critique = final_critique
         selected_frames = [
