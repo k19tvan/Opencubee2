@@ -197,6 +197,13 @@ async def get_embedding(
         if image_name:
             if image_name.startswith("_frame_:"):
                 frame_filename = image_name.replace("_frame_:", "")
+                if not image_text:
+                    config = MODEL_CONFIGS.get(model_name)
+                    if config:
+                        stored_vector = await get_stored_vector(frame_filename, config["collection"])
+                        if stored_vector:
+                            return stored_vector
+                
                 from backend.api.media import IMAGE_BASE_PATH
                 from pathlib import Path
                 image_base_dir = Path(IMAGE_BASE_PATH)
@@ -258,13 +265,16 @@ async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Op
     if not runtime.qdrant_client or not frame_name or q_models is None:
         return None
     try:
+        base_name = os.path.splitext(frame_name)[0]
+        possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
+        
         points, _ = await asyncio.to_thread(
             runtime.qdrant_client.scroll,
             collection_name=collection_name,
             scroll_filter=q_models.Filter(
                 must=[q_models.FieldCondition(
                     key="frame_name",
-                    match=q_models.MatchValue(value=frame_name),
+                    match=q_models.MatchAny(any=possible_names),
                 )]
             ),
             with_vectors=True,
@@ -670,77 +680,62 @@ async def find_similar_frames(
 
     return classified_frames
 
-def find_keyframes_for_chunk(video_id: str, start_id: int, end_id: int) -> List[Dict[str, Any]]:
-    """Lấy danh sách keyframe cho 1 chunk: Ưu tiên RAM Cache O(1), fallback quét đĩa nếu thiếu."""
-    
-    # 1. Tra cứu siêu tốc O(1) theo chunk_key chính xác
-    chunk_key = f"{video_id}_{start_id}_{end_id}"
-    if runtime.asr_chunk_frames_map and chunk_key in runtime.asr_chunk_frames_map:
-        return runtime.asr_chunk_frames_map[chunk_key]
+def keyframes_from_scene(
+    video_id: str,
+    frame_inside: Any,
+    candidate_frame_names: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Convert the exact frame filenames stored in a semantic scene to shots."""
+    if not isinstance(frame_inside, list):
+        return []
 
-    # 2. Lọc siêu tốc từ RAM theo video_id
-    if runtime.video_keyframes_map and video_id in runtime.video_keyframes_map:
-        video_shots = runtime.video_keyframes_map[video_id]
-        return [
-            shot for shot in video_shots
-            if start_id <= shot["frame_id"] <= end_id
-        ]
-
-    # 3. Fallback quét đĩa (chỉ chạy khi cả 2 bước RAM ở trên không tìm thấy)
-    import glob
-    from pathlib import Path
-
-    candidate_dirs = [
-        Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"),
-        Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/ocr_vlm_keyframes_full"),
-        Path("/mlcv1/Datasets/HCMAI25/keyframes"),
-        Path("/mlcv1/Datasets/HCMAI25/frames"),
-    ]
-
-    matched_files = []
-    prefix = video_id.split('_')[0] if '_' in video_id else video_id
-
-    for cdir in candidate_dirs:
-        if not cdir.is_dir():
+    allowed = set(candidate_frame_names or [])
+    shots = []
+    for frame_name in frame_inside:
+        if not isinstance(frame_name, str) or not frame_name.endswith(".webp"):
             continue
-        matched_files.extend(glob.glob(str(cdir / f"{video_id}_*")))
-        matched_files.extend(glob.glob(str(cdir / prefix / f"{video_id}_*")))
+        if allowed and frame_name not in allowed:
+            continue
 
-    unique_files = sorted(list(set(matched_files)))
-    found_shots = []
-
-    for fpath in unique_files:
-        fname = os.path.basename(fpath)
-        stem = os.path.splitext(fname)[0]
-        parts = stem.split('_')
+        stem = os.path.splitext(os.path.basename(frame_name))[0]
+        parts = stem.split("_")
         try:
             frame_id = int(parts[-1])
-            if start_id <= frame_id <= end_id:
-                shot_id = parts[-2] if len(parts) >= 4 else "1"
-                found_shots.append({
-                    "frame_name": fname,
-                    "filepath": fpath,
-                    "video_id": video_id,
-                    "frame_id": frame_id,
-                    "shot_id": str(shot_id),
-                    "url": f"/keyframes/{fname}"
-                })
         except (ValueError, IndexError):
             continue
+        frame_video_id = "_".join(parts[:2]) if len(parts) >= 3 else ""
+        if frame_video_id != video_id:
+            continue
 
-    found_shots.sort(key=lambda x: x["frame_id"])
-    return found_shots
+        shot_id = parts[-2] if len(parts) >= 4 else "1"
+        shots.append({
+            "frame_name": frame_name,
+            "filepath": f"/keyframes/{frame_name}",
+            "video_id": video_id,
+            "frame_id": frame_id,
+            "shot_id": str(shot_id),
+            "url": f"/keyframes/{frame_name}",
+        })
+
+    shots.sort(key=lambda shot: (shot["frame_id"], shot["frame_name"]))
+    return shots
 
 
 async def search_semantic_asr_qdrant(
     query_vector: list,
     limit: int = 50,
+    offset: int = 0,
     video_ids: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
-    """Retrieve ASR chunks từ collection 'qwen' trong Qdrant."""
+    candidate_frame_names: Optional[List[str]] = None,
+) -> tuple[List[Dict[str, Any]], int]:
+    """Retrieve semantic ASR scenes and their exact mapped keyframes."""
     if not runtime.qdrant_client:
-        return []
+        return [], 0
     try:
+        if not runtime.scene_frame_mapping:
+            print("Semantic ASR scene mapping is not loaded")
+            return [], 0
+
         must_conditions = []
         if video_ids:
             must_conditions.append(
@@ -749,39 +744,75 @@ async def search_semantic_asr_qdrant(
                     match=q_models.MatchAny(any=video_ids),
                 )
             )
+        if candidate_frame_names is not None:
+            scene_ids = sorted({
+                scene_id
+                for frame_name in candidate_frame_names
+                for scene_id in runtime.frame_scene_ids_map.get(frame_name, [])
+            })
+            if not scene_ids:
+                return [], 0
+            must_conditions.append(
+                q_models.FieldCondition(
+                    key="scene_id",
+                    match=q_models.MatchAny(any=scene_ids),
+                )
+            )
         query_filter = q_models.Filter(must=must_conditions) if must_conditions else None
+        collection_name = MODEL_CONFIGS["qwen"]["collection"]
 
-        response = await asyncio.to_thread(
-            runtime.qdrant_client.query_points,
-            collection_name="qwen",
-            query=query_vector,
-            query_filter=query_filter,
-            limit=limit,
-            with_payload=["video_id", "start_id", "end_id", "summary"],
-            timeout=60,
+        response, count_response = await asyncio.gather(
+            asyncio.to_thread(
+                runtime.qdrant_client.query_points,
+                collection_name=collection_name,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+                offset=offset,
+                with_payload=["scene_id", "video_id"],
+                timeout=60,
+            ),
+            asyncio.to_thread(
+                runtime.qdrant_client.count,
+                collection_name=collection_name,
+                count_filter=query_filter,
+                exact=True,
+            ),
         )
 
         results = []
         for hit in response.points:
             payload = hit.payload or {}
-            video_id = payload.get("video_id")
-            start_id = payload.get("start_id", 0)
-            end_id = payload.get("end_id", 0)
-            summary = payload.get("summary", "")
-            if not video_id:
+            scene_id = payload.get("scene_id")
+            scene = runtime.scene_frame_mapping.get(scene_id)
+            if not isinstance(scene, dict):
+                continue
+            video_id = scene.get("video_id")
+            start_id = scene.get("start_id", 0)
+            end_id = scene.get("end_id", 0)
+            summary = scene.get("summary", "")
+            if not isinstance(video_id, str):
                 continue
 
-            shots = find_keyframes_for_chunk(video_id, start_id, end_id)
+            shots = keyframes_from_scene(
+                video_id,
+                scene.get("frame_inside", []),
+                candidate_frame_names=candidate_frame_names,
+            )
+            if candidate_frame_names and not shots:
+                continue
             results.append({
-                "chunk_id": str(hit.id),
+                "chunk_id": scene_id,
+                "scene_id": scene_id,
                 "score": hit.score,
                 "video_id": video_id,
                 "start_id": start_id,
                 "end_id": end_id,
                 "summary": summary,
+                "frame_inside": [shot["frame_name"] for shot in shots],
                 "shots": shots,
             })
-        return results
+        return results, count_response.count
     except Exception as e:
-        print(f"Error searching Qdrant collection 'qwen': {e}")
-        return []
+        print(f"Error searching semantic ASR collection: {e}")
+        return [], 0

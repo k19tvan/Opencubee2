@@ -187,16 +187,11 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
     seekToFrame(currentFrame + seconds * fps);
   };
 
-  const handlePushFrame = () => {
+  const createCurrentShot = () => {
     const video = videoRef.current;
-    if (!video) return;
-    const socket = socketRef?.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      toast.error('Teamwork connection is not ready.');
-      return;
-    }
-
+    if (!video) return null;
     const frame = clamp(Math.round(video.currentTime * fps), 0, maxFrame);
+
     let url;
     try {
       const canvas = document.createElement('canvas');
@@ -209,41 +204,40 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       url = canvas.toDataURL('image/jpeg', 0.8);
     } catch (error) {
-      console.error('Failed to capture video frame:', error);
-      toast.error('Could not capture the current video frame.');
-      return;
+      console.warn('Failed to capture video frame for shot:', error);
+      url = getVideoThumbnailUrl(videoId, frame, 1920);
     }
-
-    const frameName = `${videoId}_${String(frame).padStart(6, '0')}.webp`;
-
-    sendRealtimeMessage({
-      type: 'new_frame',
-      data: {
-        shot: {
-          video_id: videoId,
-          frame_id: frame,
-          url,
-          filepath: `dynamic-frame-${videoId}-${frame}`,
-          frame_name: frameName,
-        },
-        user: { name: username, color: userColor },
-      },
-    });
-    toast.success('Frame sent to Teamwork Panel!');
-  };
-
-  const createCurrentShot = () => {
-    const video = videoRef.current;
-    if (!video) return null;
-    const frame = clamp(Math.round(video.currentTime * fps), 0, maxFrame);
 
     return {
       video_id: videoId,
       frame_id: frame,
       frame_name: `${videoId}_${String(frame).padStart(6, '0')}.webp`,
       filepath: `dynamic-frame-${videoId}-${frame}`,
-      url: getVideoThumbnailUrl(videoId, frame, 480)
+      url: url
     };
+  };
+
+  const handlePushFrame = () => {
+    const socket = socketRef?.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      toast.error('Teamwork connection is not ready.');
+      return;
+    }
+
+    const mockShot = createCurrentShot();
+    if (!mockShot) {
+      toast.error('Could not capture the current video frame.');
+      return;
+    }
+
+    sendRealtimeMessage({
+      type: 'new_frame',
+      data: {
+        shot: mockShot,
+        user: { name: username, color: userColor },
+      },
+    });
+    toast.success('Frame sent to Teamwork Panel!');
   };
 
   const handleSubmitFrame = () => {
@@ -294,7 +288,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
   const stripTranslate = timelineWidth / 2 - stripPosition - THUMB_WIDTH / 2;
 
   return (
-    <div className="fixed inset-0 bg-black/95 z-[2100] flex items-center justify-center p-3 backdrop-blur-sm">
+    <div id="video-preview-modal" className="fixed inset-0 bg-black/95 z-[2100] flex items-center justify-center p-3 backdrop-blur-sm">
       <button
         type="button"
         className="absolute top-4 right-6 text-white text-2xl hover:text-red-500 hover:rotate-90 duration-200 cursor-pointer z-[2102] bg-black/50 rounded-full w-10 h-10 flex items-center justify-center"
@@ -310,7 +304,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
           <video
             ref={videoRef}
             src={videoSrc}
-            className="max-h-[64vh] max-w-full rounded-xl shadow-2xl border border-white/15 bg-black cursor-pointer"
+            className="w-full h-[64vh] max-w-full rounded-xl shadow-2xl border border-white/15 bg-black cursor-pointer object-contain"
             crossOrigin="anonymous"
             playsInline
             fetchPriority="high"

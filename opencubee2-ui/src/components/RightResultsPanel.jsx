@@ -1,6 +1,121 @@
-// src/components/RightResultsPanel.jsx
 import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { getImageUrl } from '../utils/imageUrl';
+import { getSimilarFrames } from '../api';
+
+const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext, setHoveredFrame, onMouseEnterPopoverItem, parentShot }) => {
+  const [neighbors, setNeighbors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    const handleGlobalInteraction = (e) => {
+      // Ignore right clicks for context menu (which shouldn't automatically close the panel)
+      if (e.type === 'mousedown' && e.button === 2) return;
+
+      // Close if clicking outside the popover
+      if (e.type === 'mousedown' && popoverRef.current && !popoverRef.current.contains(e.target)) {
+        // Only close if we are not clicking inside another modal (e.g. video preview)
+        // Modals in this app usually use Tailwind fixed classes with high z-index
+        const isClickingInsideModal = e.target.closest('.fixed');
+        if (!isClickingInsideModal) {
+          onClose();
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleGlobalInteraction);
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalInteraction);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
+    const fetchNeighbors = async () => {
+      setLoading(true);
+      try {
+        const frameNameOrPath = shotData.frame_name || shotData.filepath;
+        if (!frameNameOrPath) return;
+        const response = await getSimilarFrames(frameNameOrPath);
+        const results = response.results || [];
+        // Map and extract match_type
+        const mapped = results.map(shot => ({
+          ...shot,
+          url: getImageUrl(shot.url || shot.frame_name || shot.filepath)
+        }));
+        setNeighbors(mapped);
+      } catch (err) {
+        console.error("Error fetching similar frames:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchNeighbors();
+  }, [shotData]);
+
+  return (
+    <div 
+      ref={popoverRef}
+      className="absolute top-[110%] left-0 w-[240px] bg-[#22102f] border border-white/20 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-[9999] overflow-hidden flex flex-col cursor-default animate-scaleIn origin-top-left pointer-events-auto"
+      onClick={(e) => e.stopPropagation()}
+      onMouseMove={(e) => e.stopPropagation()}
+    >
+      {loading ? (
+        <div className="p-6 text-center text-xs text-[var(--accent-primary)] animate-pulse">
+          <i className="fas fa-circle-notch fa-spin mr-2"></i> Loading frames...
+        </div>
+      ) : neighbors.length === 0 ? (
+        <div className="p-4 text-center text-xs text-gray-400 italic">No similar frames</div>
+      ) : (
+        <div className="max-h-[450px] overflow-y-auto p-3 flex flex-col gap-3 custom-scrollbar">
+          {neighbors.map((shot, idx) => {
+            const hasDup = shot.match_type === 'DUP';
+            return (
+              <div 
+                key={idx} 
+                className="relative flex-shrink-0 aspect-video rounded-lg overflow-hidden border-2 border-[#412e4f] hover:border-orange-500 hover:scale-[1.02] transition-all cursor-pointer shadow-md group"
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+                  if (isCtrlOrCmd && onContext) {
+                    onContext(shot);
+                  } else {
+                    onZoom(shot.url); 
+                  }
+                }}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onPreview(shot.video_id, shot.frame_id); }}
+                onMouseEnter={(e) => {
+                  e.stopPropagation();
+                  setHoveredFrame?.(shot);
+                  if (onMouseEnterPopoverItem) onMouseEnterPopoverItem(shot);
+                }}
+                onMouseMove={(e) => {
+                  e.stopPropagation();
+                  setHoveredFrame?.(shot);
+                  if (onMouseEnterPopoverItem) onMouseEnterPopoverItem(shot);
+                }}
+                onMouseLeave={(e) => {
+                  e.stopPropagation();
+                  setHoveredFrame?.(parentShot || null);
+                  if (onMouseEnterPopoverItem) onMouseEnterPopoverItem(parentShot || null);
+                }}
+              >
+                <img src={shot.url} className="w-full h-full object-cover opacity-90 group-hover:opacity-100" />
+                <div className="absolute top-1.5 left-1.5 bg-black/80 px-2 py-0.5 rounded text-[10px] font-extrabold text-white">
+                  {hasDup ? 'DUP' : 'REPEAT'}
+                </div>
+                <div className="absolute bottom-1.5 left-1.5 bg-black/70 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-sm">
+                  {shot.video_id}
+                </div>
+                <div className="absolute bottom-1.5 right-1.5 bg-black/70 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-sm">
+                  {shot.frame_id}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Component cho mỗi item ảnh
 const ResultItem = React.memo(({
@@ -12,6 +127,9 @@ const ResultItem = React.memo(({
   onMouseLeave,
   onPushToTeam,
   onPushToTrake,
+  onZoom,
+  onPreview,
+  onContext,
   isLocked = false,
   dresMode,
   setHoveredFrame,
@@ -20,6 +138,7 @@ const ResultItem = React.memo(({
   isCorrect = false,
 }) => {
   const [loaded, setLoaded] = useState(false);
+  const [showSimilarPopover, setShowSimilarPopover] = useState(false);
 
   const handleError = useCallback((e) => {
     e.target.onerror = null;
@@ -34,21 +153,12 @@ const ResultItem = React.memo(({
   const [isHovering, setIsHovering] = useState(false);
 
   useEffect(() => {
-    if (!isHovering) return;
-    const handleKeyDown = (e) => {
-      if (e.repeat) return;
-      if (e.ctrlKey && !e.shiftKey && e.code === 'Space') {
-        e.preventDefault();
-        e.stopPropagation();
-        onPushToTeam(shot);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isHovering, shot, onPushToTeam]);
+    // We removed the individual listener here because RightResultsPanel 
+    // handles shortcuts globally based on hoveredShotRef, preventing duplicate fires.
+  }, []);
 
   const hasSubmissionStatus = isCorrect || isWrong;
-  const statusColor = isCorrect ? '#39ff14' : '#ff1744';
+  const statusColor = isCorrect ? 'var(--accent-primary)' : '#ff1744';
   const similarityLabels = shot.similarity_labels || [];
   const hasIntro = similarityLabels.includes('INTRO');
   const hasDuplicate = similarityLabels.includes('DUP');
@@ -58,10 +168,9 @@ const ResultItem = React.memo(({
     <div
       draggable={true}
       onDragStart={(e) => onDragStart(e, shot)}
-      className={`relative bg-[var(--card-bg)] rounded-lg ${hasSubmissionStatus ? 'border-[5px]' : 'border'} ${isCorrect ? 'ring-[5px] ring-lime-300' : isWrong ? 'ring-[5px] ring-rose-500' : 'border-[var(--border-color)]'} aspect-video cursor-pointer ${hasSubmissionStatus ? '' : 'hover:border-[var(--border-hover)] hover:ring-1 hover:ring-white/20'} shadow-[var(--shadow-heavy)] group`}
+      className={`relative bg-[var(--card-bg)] rounded-lg aspect-video cursor-pointer ${hasSubmissionStatus ? 'border-0 z-20' : 'border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:ring-1 hover:ring-white/20'} shadow-[var(--shadow-heavy)] group ${showSimilarPopover ? 'z-[55]' : ''}`}
       style={hasSubmissionStatus ? {
-        borderColor: statusColor,
-        boxShadow: `0 0 10px ${statusColor}, 0 0 24px ${statusColor}, 0 0 36px ${statusColor}`,
+        boxShadow: `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`,
       } : undefined}
       onClick={(e) => onClick(e, shot)}
       onContextMenu={(e) => {
@@ -72,6 +181,10 @@ const ResultItem = React.memo(({
         onMouseEnter(shot);
         setHoveredFrame?.(shot);
         setIsHovering(true);
+      }}
+      onMouseMove={() => {
+        onMouseEnter(shot);
+        setHoveredFrame?.(shot);
       }}
       onMouseLeave={() => {
         onMouseLeave(shot);
@@ -125,28 +238,42 @@ const ResultItem = React.memo(({
       )}
       <div className="absolute top-1.5 left-1.5 flex flex-col gap-1 z-30 pointer-events-none">
         {hasIntro && (
-          <div className="px-1.5 py-0.5 rounded bg-[#0000ff]/90 flex items-center justify-center w-fit shadow">
-            <span className="text-[10px] font-bold tracking-wider text-white">INTRO</span>
+          <div className="px-2 py-0.5 rounded-full bg-blue-600 text-white flex items-center justify-center w-fit shadow-[0_0_8px_rgba(37,99,235,0.8)] border border-blue-400">
+            <span className="text-[9px] font-extrabold tracking-widest text-white">INTRO</span>
           </div>
         )}
-        {hasReuse && (
-          <div className="px-1.5 py-0.5 rounded bg-[#08a045]/90 flex items-center justify-center w-fit shadow">
-            <span className="text-[10px] font-bold tracking-wider text-white">REPEAT</span>
-          </div>
-        )}
-        {hasDuplicate && (
-          <div className="px-1.5 py-0.5 rounded bg-[#ff4500]/90 flex items-center justify-center w-fit shadow">
-            <span className="text-[10px] font-bold tracking-wider text-white">DUP</span>
+        {(hasReuse || hasDuplicate) && (
+          <div className="relative">
+            <div 
+              className={`px-2 py-0.5 rounded-md text-white flex items-center justify-center w-fit shadow-lg cursor-pointer pointer-events-auto hover:scale-105 transition-transform ${hasDuplicate ? 'bg-[#e86c1f] border border-[#ff8b45]' : 'bg-emerald-600 border border-emerald-400'}`}
+              onClick={(e) => { e.stopPropagation(); setShowSimilarPopover(!showSimilarPopover); }}
+              title="View Similar Frames"
+            >
+              <i className="far fa-clone text-[9px] mr-1.5"></i>
+              <span className="text-[10px] font-extrabold tracking-wider text-white">{hasDuplicate ? 'DUP' : 'REPEAT'}</span>
+            </div>
+            {showSimilarPopover && (
+              <SimilarFramesPopover 
+                shotData={shot} 
+                onClose={() => setShowSimilarPopover(false)}
+                onZoom={onZoom}
+                onPreview={onPreview}
+                onContext={onContext}
+                setHoveredFrame={setHoveredFrame}
+                onMouseEnterPopoverItem={onMouseEnter}
+                parentShot={shot}
+              />
+            )}
           </div>
         )}
         {isWrong && (
-          <div className="px-1.5 py-0.5 rounded bg-red-600/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity w-fit pointer-events-auto shadow" title="Wrong Submission">
-            <span className="text-[10px] font-bold tracking-wider text-white">WRONG</span>
+          <div className="px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity w-fit pointer-events-auto shadow-[0_0_8px_rgba(225,29,72,0.8)] border border-rose-400" title="Wrong Submission">
+            <span className="text-[9px] font-extrabold tracking-widest text-white">WRONG</span>
           </div>
         )}
         {isCorrect && (
-          <div className="px-1.5 py-0.5 rounded bg-lime-500/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity w-fit pointer-events-auto shadow" title="Correct Submission">
-            <span className="text-[10px] font-bold tracking-wider text-slate-950">CORRECT</span>
+          <div className="px-2 py-0.5 rounded-full bg-[var(--accent-primary)] text-[var(--bg-primary)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity w-fit pointer-events-auto shadow-[0_0_10px_var(--accent-primary)] border border-white/50" title="Correct Submission">
+            <span className="text-[9px] font-extrabold tracking-widest text-[var(--bg-primary)]">CORRECT</span>
           </div>
         )}
       </div>
@@ -182,7 +309,7 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
         const isCorrect = isSameShot(frame.shot, correctSubmission);
         const isWrong = !isCorrect && wrongFrames.some((shot) => isSameShot(frame.shot, shot));
         const statusColor = isCorrect
-          ? '#39ff14'
+          ? 'var(--accent-primary)'
           : isWrong
             ? '#ff1744'
             : (frame.user?.color || 'var(--accent-primary)');
@@ -193,13 +320,12 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
           key={`teamwork-${idx}-${frame.shot?.url}`}
           draggable={true}
           onDragStart={(e) => onDragStart(e, frame.shot)}
-          className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden ${hasSubmissionStatus ? 'border-[6px]' : 'border-2'} hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${
-            isCorrect ? 'ring-[6px] ring-lime-300' : isWrong ? 'ring-[6px] ring-rose-500' : ''
+          className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border-0 hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${
+            hasSubmissionStatus ? 'z-20' : '!border-2 !border-[var(--border-color)]'
           }`}
           style={{
-            borderColor: statusColor,
             boxShadow: hasSubmissionStatus
-              ? `0 0 12px ${statusColor}, 0 0 28px ${statusColor}, 0 0 46px ${statusColor}`
+              ? `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`
               : `0 4px 15px ${statusColor}26`
           }}
           onClick={(e) => onItemClick(e, frame.shot)}
@@ -207,7 +333,8 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
             e.preventDefault();
             onContextMenu(frame.shot);
           }}
-          onMouseEnter={() => onMouseEnter(frame.shot)}
+          onMouseEnter={() => onMouseEnter(frame.shot, idx)}
+          onMouseMove={() => onMouseEnter(frame.shot, idx)}
           onMouseLeave={() => onMouseLeave(frame.shot)}
         >
           <img
@@ -272,10 +399,13 @@ export default function RightResultsPanel({
   const prevFirstResult = useRef(null);
   const hoveredShotRef = useRef(null);
   const hoveredTeamShotRef = useRef(null);
+  const hoveredTeamIndexRef = useRef(null);
   const hoveredTrakeShotRef = useRef(null);
   const hoveredTrakeIndexRef = useRef(null);
+  const teamworkFramesRef = useRef(teamworkFrames);
   const trakeFramesRef = useRef(trakeFrames);
   const trakeDragIndexRef = useRef(null);
+  teamworkFramesRef.current = teamworkFrames;
   trakeFramesRef.current = trakeFrames;
 
   const pushToTeam = useCallback((shot) => {
@@ -288,6 +418,20 @@ export default function RightResultsPanel({
 
   const removeFromTeam = useCallback((shot) => {
     if (!shot) return;
+    
+    const currentFrames = teamworkFramesRef.current;
+    const frameKey = shot?.filepath || shot?.frame_name || shot?.url;
+    const index = currentFrames.findIndex((frame) => (
+      (frame.shot?.filepath || frame.shot?.frame_name || frame.shot?.url) === frameKey
+    ));
+    const nextFrame = index >= 0 ? currentFrames[index + 1] : null;
+    hoveredTeamIndexRef.current = nextFrame ? index : null;
+    hoveredTeamShotRef.current = nextFrame ? nextFrame.shot : null;
+    
+    teamworkFramesRef.current = index >= 0
+      ? currentFrames.filter((_, frameIndex) => frameIndex !== index)
+      : currentFrames;
+
     onTeamworkRemoveLocal(shot);
     sendRealtimeMessage({
       type: 'remove_frame',
@@ -326,14 +470,18 @@ export default function RightResultsPanel({
       const hoveredTrakeShot = hoveredTrakeIndexRef.current != null
         ? trakeFramesRef.current[hoveredTrakeIndexRef.current]
         : hoveredTrakeShotRef.current;
+
+      const hoveredTeamShot = hoveredTeamIndexRef.current != null
+        ? (teamworkFramesRef.current[hoveredTeamIndexRef.current]?.shot || null)
+        : hoveredTeamShotRef.current;
+
       if (event.ctrlKey && event.code === 'Space' && !event.shiftKey) {
         event.preventDefault();
 
         if (hoveredTrakeShot) {
           pushToTeam(hoveredTrakeShot);
-        } else if (hoveredTeamShotRef.current) {
-          removeFromTeam(hoveredTeamShotRef.current);
-          hoveredTeamShotRef.current = null;
+        } else if (hoveredTeamShot) {
+          removeFromTeam(hoveredTeamShot);
         } else if (hoveredShotRef.current) {
           pushToTeam(hoveredShotRef.current);
         }
@@ -342,8 +490,8 @@ export default function RightResultsPanel({
 
         if (hoveredTrakeShot) {
           removeFromTrake(hoveredTrakeShot);
-        } else if (hoveredTeamShotRef.current) {
-          pushToTrake(hoveredTeamShotRef.current);
+        } else if (hoveredTeamShot) {
+          pushToTrake(hoveredTeamShot);
         } else if (hoveredShotRef.current) {
           pushToTrake(hoveredShotRef.current);
         }
@@ -380,8 +528,9 @@ export default function RightResultsPanel({
     if (hoveredShotRef.current === shot) hoveredShotRef.current = null;
   }, []);
 
-  const handleTeamMouseEnter = useCallback((shot) => {
+  const handleTeamMouseEnter = useCallback((shot, index) => {
     hoveredTeamShotRef.current = shot || null;
+    hoveredTeamIndexRef.current = index ?? null;
     hoveredShotRef.current = null;
     hoveredTrakeShotRef.current = null;
     hoveredTrakeIndexRef.current = null;
@@ -437,18 +586,23 @@ export default function RightResultsPanel({
   }, [pushToTrake]);
 
   const handleItemClick = useCallback((e, shot) => {
+    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+    if (isCtrlOrCmd && e.altKey) {
+      e.preventDefault();
+      onContext({ ...shot, contextView: 'video-timeline' });
+      return;
+    }
     if (e.altKey) {
       e.preventDefault();
       onToggleLock(shot);
       return;
     }
-    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
     if (isCtrlOrCmd && e.shiftKey) {
       e.preventDefault();
       onQuickSearch(shot);
     } else if (isCtrlOrCmd) {
       e.preventDefault();
-      onContext(shot);
+      onContext({ ...shot, contextView: 'neighbors' });
     } else {
       onZoom(getImageUrl(shot.url || shot.frame_name || shot.filepath));
     }
@@ -500,6 +654,9 @@ export default function RightResultsPanel({
         onMouseLeave={handleResultMouseLeave}
         onPushToTeam={pushToTeam}
         onPushToTrake={pushToTrake}
+        onZoom={onZoom}
+        onPreview={onPreview}
+        onContext={onContext}
         isLocked={lockedVideoIds.includes(shot.video_id)}
         dresMode={dresMode}
         setHoveredFrame={setHoveredFrame}
@@ -713,6 +870,11 @@ export default function RightResultsPanel({
                       <span className="px-2.5 py-0.5 rounded-md bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] font-mono text-xs font-bold border border-[var(--accent-primary)]/30">
                         <i className="fas fa-video mr-1.5"></i>{chunk.video_id}
                       </span>
+                      {chunk.scene_id && (
+                        <span className="text-[11px] font-mono text-[var(--text-secondary)] bg-[var(--glass-bg)] px-2 py-0.5 rounded border border-[var(--border-color)]">
+                          Scene: {chunk.scene_id}
+                        </span>
+                      )}
                       <span className="text-[11px] font-mono text-[var(--text-secondary)] bg-[var(--glass-bg)] px-2 py-0.5 rounded border border-[var(--border-color)]">
                         Frame Range: {chunk.start_id} → {chunk.end_id}
                       </span>
@@ -741,7 +903,7 @@ export default function RightResultsPanel({
                     ))
                   ) : (
                     <p className="text-xs text-[var(--text-secondary)] italic py-4 px-2">
-                      No keyframe files found in frame range [{chunk.start_id} - {chunk.end_id}].
+                      No keyframes are mapped to this semantic scene.
                     </p>
                   )}
                 </div>

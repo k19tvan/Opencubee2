@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -127,8 +128,9 @@ wrong_frames_state = []
 frame_context_cache = {}
 similar_frames_map = {}
 frame_similarity_labels = {}
-asr_chunk_frames_map = {}
-video_keyframes_map = {}
+video_frame_mapping = {}
+scene_frame_mapping = {}
+frame_scene_ids_map = {}
 
 def load_similar_frames_json():
     global similar_frames_map
@@ -174,20 +176,55 @@ def load_frame_context_json():
             print(f"Error loading frame context JSON: {e}")
 
 
-def load_asr_chunk_frames_json():
-    global asr_chunk_frames_map, video_keyframes_map
-    json_path = "./storage/asr_chunk_frames.json"
-    if os.path.exists(json_path):
+def load_video_frame_mapping_json():
+    """Load the dedicated video-to-keyframe mapping used by the full timeline."""
+    global video_frame_mapping
+    json_path = Path(__file__).resolve().parents[2] / "storage/video_frame_mapping.json"
+    try:
         import json
-        try:
-            print("--- Loading ASR chunk frames JSON into RAM (Background)... ---")
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                asr_chunk_frames_map = data.get("chunks", {})
-                video_keyframes_map = data.get("videos", {})
-            print(f"--- ASR chunk frames JSON loaded! ({len(asr_chunk_frames_map)} chunks, {len(video_keyframes_map)} videos) ---")
-        except Exception as e:
-            print(f"Error loading ASR chunk frames JSON: {e}")
+
+        with open(json_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        if not isinstance(data, dict):
+            raise ValueError("root value must be a JSON object")
+        video_frame_mapping = data
+        print(f"--- Video frame mapping loaded! ({len(data)} videos) ---")
+    except Exception as e:
+        video_frame_mapping = {}
+        print(f"Error loading video frame mapping {json_path}: {e}")
+
+
+def load_scene_frame_mapping_json():
+    """Load semantic scenes and build a frame-to-scene lookup in RAM."""
+    global scene_frame_mapping, frame_scene_ids_map
+    json_path = Path(__file__).resolve().parents[2] / "storage/scene_frame_mapping.json"
+    try:
+        import json
+
+        print("--- Loading semantic ASR scene mapping into RAM... ---")
+        with open(json_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        if not isinstance(data, dict):
+            raise ValueError("root value must be a JSON object")
+
+        reverse_mapping = {}
+        for scene_id, scene in data.items():
+            if not isinstance(scene_id, str) or not isinstance(scene, dict):
+                continue
+            for frame_name in scene.get("frame_inside", []):
+                if isinstance(frame_name, str):
+                    reverse_mapping.setdefault(frame_name, []).append(scene_id)
+
+        scene_frame_mapping = data
+        frame_scene_ids_map = reverse_mapping
+        print(
+            "--- Semantic ASR scene mapping loaded! "
+            f"({len(data)} scenes, {len(reverse_mapping)} frames) ---"
+        )
+    except Exception as e:
+        scene_frame_mapping = {}
+        frame_scene_ids_map = {}
+        print(f"Error loading semantic ASR scene mapping {json_path}: {e}")
             
 def startup_runtime():
     global qdrant_client, meili_client, http_client
@@ -201,7 +238,11 @@ def startup_runtime():
     threading.Thread(target=load_frame_context_json, daemon=True).start()
     threading.Thread(target=load_similar_frames_json, daemon=True).start()
     threading.Thread(target=load_frame_similarity_labels_json, daemon=True).start()
-    threading.Thread(target=load_asr_chunk_frames_json, daemon=True).start()
+    # This small dedicated mapping must be ready before the first timeline request.
+    load_video_frame_mapping_json()
+    # Semantic search needs this mapping immediately to turn scene IDs into
+    # exact keyframes, so load it synchronously and avoid a startup race.
+    load_scene_frame_mapping_json()
 
 
     try:
