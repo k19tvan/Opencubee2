@@ -74,13 +74,14 @@ export const SEARCH_MODEL_OPTIONS = [
   { value: 'bge', label: 'BGE-VL', icon: 'fas fa-language' },
   { value: 'jina_v5_omni', label: 'Jina v5', icon: 'fas fa-globe' },
   { value: 'metaclip2', label: 'MetaCLIP 2', icon: 'fas fa-bolt' },
+  { value: 'fgclip2', label: 'FG-CLIP 2', icon: 'fas fa-image' },
 ];
 export const DEFAULT_SEARCH_MODEL = ['beit3'];
 
 const normalizeSearchModel = (values, fallback = []) => {
   if (!Array.isArray(values)) {
     const valStr = String(values);
-    if (valStr === 'all') return ['bge', 'beit3', 'jina_v5_omni', 'metaclip2'];
+    if (valStr === 'all') return ['bge', 'beit3', 'jina_v5_omni', 'metaclip2', 'fgclip2'];
     if (valStr === 'both') return ['bge', 'beit3'];
     if (SEARCH_MODEL_OPTIONS.some((o) => o.value === valStr)) return [valStr];
     return fallback;

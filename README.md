@@ -41,6 +41,7 @@ flowchart LR
 | BEiT-3 worker | BEiT-3 text/image embeddings | `2002` |
 | MetaCLIP worker | MetaCLIP embeddings | `2003` |
 | Jina worker | Jina multimodal embeddings | `2004` |
+| FG-CLIP 2 worker | FG-CLIP 2 text/image embeddings | `2005` |
 | Qwen worker | ASR/text embeddings | `2006` |
 | Qdrant | Vector search | `6333` |
 | Meilisearch | OCR/ASR lexical search | `7700` |
@@ -84,6 +85,14 @@ conda activate beit3_env
 pip install -r requirements_beit3.txt
 ```
 
+FG-CLIP 2 also uses a dedicated environment:
+
+```bash
+conda create -n fgclip2 python=3.10 -y
+conda activate fgclip2
+pip install -r requirements_fgclip2.txt
+```
+
 > Install the PyTorch build appropriate for your CUDA driver before starting GPU workers. Use the official PyTorch installation selector rather than assuming one CUDA build works on every host.
 
 ### 2. Configure the application
@@ -99,7 +108,7 @@ Review these configuration groups in `.env`:
 | Group | Important variables |
 | --- | --- |
 | Search databases | `QDRANT_HOST`, `MEILISEARCH_HOST`, `OCR_ASR_INDEX_NAME` |
-| Embedding workers | `BGE_WORKER_URL`, `BEIT3_WORKER_URL`, `METACLIP2_WORKER_URL`, `JINA_V5_OMNI_WORKER_URL` |
+| Embedding workers | `BGE_WORKER_URL`, `BEIT3_WORKER_URL`, `METACLIP2_WORKER_URL`, `JINA_V5_OMNI_WORKER_URL`, `FGCLIP2_WORKER_URL` |
 | LLM services | `GROQ_API_KEY`, `TAVILY_API_KEY`, `AGENT_MODEL_BASE_URL`, `AGENT_MODEL_API_KEY` |
 | Translation | `TRANSLATE_PROVIDER` and text-processing limits |
 | Agent research | `GEMINI_SESSION_POOL_SIZE`, `GEMINI_SESSION_ROOT`, `GEMINI_HEADLESS`, `GEMINI_TIMEOUT_SECONDS` |
@@ -157,6 +166,9 @@ conda run --no-capture-output -n env python -m src.host_model.host_qwen
 
 # BEiT-3 environment
 conda run --no-capture-output -n beit3_env python -m src.host_model.host_beit3
+
+# FG-CLIP 2 environment
+conda run --no-capture-output -n fgclip2 python -m src.host_model.host_fgclip2
 ```
 
 Run workers in separate terminals or manage them through your preferred process supervisor.
@@ -228,7 +240,8 @@ OpenCubee2/
 ├── storage/                 # runtime mappings and cached metadata
 ├── gunicorn.conf.py
 ├── requirements.txt
-└── requirements_beit3.txt
+├── requirements_beit3.txt
+└── requirements_fgclip2.txt
 ```
 
 ## Validation
