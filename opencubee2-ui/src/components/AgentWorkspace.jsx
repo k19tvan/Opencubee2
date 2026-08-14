@@ -264,9 +264,10 @@ function AgentFrameCard({
   const imageUrl = getImageUrl(frame.url || frame.frame_name || frame.filepath);
   const handleClick = (event) => {
     const ctrl = event.ctrlKey || event.metaKey;
+    if (ctrl && event.altKey) return onContext({ ...frame, contextView: 'video-timeline' });
     if (event.altKey) return onToggleLock(frame);
     if (ctrl && event.shiftKey) return onQuickSearch(frame);
-    if (ctrl) return onContext(frame);
+    if (ctrl) return onContext({ ...frame, contextView: 'neighbors' });
     onZoom(imageUrl);
   };
 

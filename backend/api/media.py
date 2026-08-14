@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from functools import lru_cache
+import math
 import mimetypes
 import shutil
 import uuid
@@ -21,12 +23,81 @@ class TemporalFrameRequest(BaseModel):
 
 IMAGE_BASE_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"
 CONTEXT_FRAME_RADIUS = 20
+PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25")
+WORD_LEVEL_DIR = PROJECT_ROOT / "results/asr/transcription/word_level"
+FPS_MAPPING_PATH = PROJECT_ROOT / "repo/Enn/Opencubee2/storage/fps_mapping.json"
+VIDEO_FRAME_MAPPING_PATH = PROJECT_ROOT / "repo/Enn/Opencubee2/storage/video_frame_mapping.json"
 
 from backend.core import runtime
 from backend.core.config import MODEL_CONFIGS, OCR_ASR_INDEX_NAME, TEMP_UPLOAD_DIR
 from backend.services.media import probe_video_info, render_video_thumbnail, resolve_video_path, resolve_keyframe_path_sync
 
 router = APIRouter()
+
+
+@lru_cache(maxsize=1)
+def load_fps_mapping() -> dict[str, float]:
+    with FPS_MAPPING_PATH.open("r", encoding="utf-8") as file:
+        data = json.load(file)
+    return {
+        video_id: float(fps)
+        for video_id, fps in data.items()
+        if isinstance(video_id, str)
+        and isinstance(fps, (int, float))
+        and math.isfinite(float(fps))
+        and float(fps) > 0
+    }
+
+
+@lru_cache(maxsize=1)
+def load_video_frame_mapping() -> dict[str, list[str]]:
+    with VIDEO_FRAME_MAPPING_PATH.open("r", encoding="utf-8") as file:
+        data = json.load(file)
+    if not isinstance(data, dict):
+        raise ValueError("Video frame mapping must be a JSON object")
+    return data
+
+
+@lru_cache(maxsize=4)
+def load_word_timeline(video_id: str) -> tuple[float, list[dict]]:
+    fps = load_fps_mapping().get(video_id)
+    if fps is None:
+        raise ValueError(f"Missing FPS for video {video_id}")
+
+    transcription_path = WORD_LEVEL_DIR / f"{video_id}.json"
+    with transcription_path.open("r", encoding="utf-8") as file:
+        data = json.load(file)
+    if not isinstance(data, list):
+        raise ValueError("Word-level transcription must be a JSON array")
+
+    words = []
+    for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("word"), str):
+            continue
+        try:
+            start = float(item["start"])
+            end = float(item["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end < start:
+            continue
+        words.append({
+            "word": item["word"],
+            "start": start,
+            "end": end,
+            "start_frame_id": int(start * fps + 0.5),
+            "end_frame_id": int(end * fps + 0.5),
+        })
+    return fps, words
+
+
+def validate_video_id(video_id: str) -> None:
+    safe_video_id = os.path.basename(video_id)
+    if safe_video_id != video_id or not all(
+        character.isalnum() or character in {"_", "-"}
+        for character in video_id
+    ):
+        raise HTTPException(status_code=400, detail="Invalid video ID")
 
 
 def select_surrounding_keyframes(candidates, target_frame: int):
@@ -225,6 +296,52 @@ async def check_temporal_frames(request: TemporalFrameRequest):
         return select_surrounding_keyframes(candidates, target_frame)
             
     return [base_name]
+
+
+@router.get("/video_keyframes/{video_id}")
+async def get_video_keyframes(video_id: str):
+    """Return every extracted keyframe in a video, ordered by frame ID."""
+    validate_video_id(video_id)
+
+    frame_names = runtime.video_frame_mapping.get(video_id)
+    if frame_names is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No keyframe mapping found for video {video_id}",
+        )
+    return frame_names
+
+
+@router.get("/video_timeline/{video_id}")
+async def get_video_timeline(video_id: str):
+    """Return full-video keyframes and word timestamps mapped to frame IDs."""
+    validate_video_id(video_id)
+    frame_names = runtime.video_frame_mapping.get(video_id)
+    if frame_names is None:
+        frame_mapping = await asyncio.to_thread(load_video_frame_mapping)
+        frame_names = frame_mapping.get(video_id)
+    if frame_names is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No keyframe mapping found for video {video_id}",
+        )
+
+    try:
+        fps, words = await asyncio.to_thread(load_word_timeline, video_id)
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No word-level transcription found for video {video_id}",
+        ) from error
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    return {
+        "video_id": video_id,
+        "fps": fps,
+        "frames": frame_names,
+        "words": words,
+    }
 
 @router.post("/upload_image")
 async def upload_image(image: UploadFile = File(...)):

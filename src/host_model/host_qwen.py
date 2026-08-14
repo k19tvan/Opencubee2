@@ -13,7 +13,7 @@ app = FastAPI(default_response_class=JSONResponse)
 
 # Qwen3-Embedding requires transformers >= 4.51.0.
 MODEL_PATH = Path(
-    "./models/Qwen3-Embedding-0.6B"
+    "/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/Opencubee2/models/Qwen3-Embedding-0.6B"
 )
 DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 if DEVICE.startswith("cuda"):

@@ -437,18 +437,23 @@ export default function RightResultsPanel({
   }, [pushToTrake]);
 
   const handleItemClick = useCallback((e, shot) => {
+    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+    if (isCtrlOrCmd && e.altKey) {
+      e.preventDefault();
+      onContext({ ...shot, contextView: 'video-timeline' });
+      return;
+    }
     if (e.altKey) {
       e.preventDefault();
       onToggleLock(shot);
       return;
     }
-    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
     if (isCtrlOrCmd && e.shiftKey) {
       e.preventDefault();
       onQuickSearch(shot);
     } else if (isCtrlOrCmd) {
       e.preventDefault();
-      onContext(shot);
+      onContext({ ...shot, contextView: 'neighbors' });
     } else {
       onZoom(getImageUrl(shot.url || shot.frame_name || shot.filepath));
     }
@@ -713,6 +718,11 @@ export default function RightResultsPanel({
                       <span className="px-2.5 py-0.5 rounded-md bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] font-mono text-xs font-bold border border-[var(--accent-primary)]/30">
                         <i className="fas fa-video mr-1.5"></i>{chunk.video_id}
                       </span>
+                      {chunk.scene_id && (
+                        <span className="text-[11px] font-mono text-[var(--text-secondary)] bg-[var(--glass-bg)] px-2 py-0.5 rounded border border-[var(--border-color)]">
+                          Scene: {chunk.scene_id}
+                        </span>
+                      )}
                       <span className="text-[11px] font-mono text-[var(--text-secondary)] bg-[var(--glass-bg)] px-2 py-0.5 rounded border border-[var(--border-color)]">
                         Frame Range: {chunk.start_id} → {chunk.end_id}
                       </span>
@@ -741,7 +751,7 @@ export default function RightResultsPanel({
                     ))
                   ) : (
                     <p className="text-xs text-[var(--text-secondary)] italic py-4 px-2">
-                      No keyframe files found in frame range [{chunk.start_id} - {chunk.end_id}].
+                      No keyframes are mapped to this semantic scene.
                     </p>
                   )}
                 </div>
