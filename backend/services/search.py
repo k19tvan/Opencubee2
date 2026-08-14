@@ -197,6 +197,13 @@ async def get_embedding(
         if image_name:
             if image_name.startswith("_frame_:"):
                 frame_filename = image_name.replace("_frame_:", "")
+                if not image_text:
+                    config = MODEL_CONFIGS.get(model_name)
+                    if config:
+                        stored_vector = await get_stored_vector(frame_filename, config["collection"])
+                        if stored_vector:
+                            return stored_vector
+                
                 from backend.api.media import IMAGE_BASE_PATH
                 from pathlib import Path
                 image_base_dir = Path(IMAGE_BASE_PATH)
@@ -258,13 +265,16 @@ async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Op
     if not runtime.qdrant_client or not frame_name or q_models is None:
         return None
     try:
+        base_name = os.path.splitext(frame_name)[0]
+        possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
+        
         points, _ = await asyncio.to_thread(
             runtime.qdrant_client.scroll,
             collection_name=collection_name,
             scroll_filter=q_models.Filter(
                 must=[q_models.FieldCondition(
                     key="frame_name",
-                    match=q_models.MatchValue(value=frame_name),
+                    match=q_models.MatchAny(any=possible_names),
                 )]
             ),
             with_vectors=True,
