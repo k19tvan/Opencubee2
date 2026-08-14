@@ -41,7 +41,7 @@ ssh -L 21081:localhost:2108 nguyenmv@192.168.20.156
    ```bash
    docker compose up --build
    ```
-3. Xong! Mở trình duyệt Chrome lên và truy cập **`http://localhost:21080`**.
+3. Xong! Mở trình duyệt Chrome lên và truy cập **`http://localhost:2408`**.
 
 > **💡 Tại sao lại dùng Docker Nginx?** Thư mục `public/keyframes` chứa hàng trăm ngàn tấm ảnh sẽ làm sập NodeJS (Vite) nếu chạy bằng `npm run dev` thông thường. Docker đã được tối ưu để bỏ qua thư mục này lúc build và dùng Volume để Nginx load trực tiếp, giúp web chạy ở tốc độ cao nhất!
 
@@ -54,7 +54,7 @@ Nếu bạn muốn build bản Production và chạy UI trực tiếp trên Serv
 ```bash
 npm install
 npm run build
-npx serve -s dist -l 2208
+npx serve -s dist -l 2408
 ```
 Và đảm bảo Backend FastAPI đang chạy (từ thư mục gốc `Opencubee2`):
 ```bash
