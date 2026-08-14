@@ -1802,7 +1802,6 @@ export default function App() {
 
           {contextShot && (
             <FrameContextModal
-              key={`${contextShot.frame_name || contextShot.filepath || contextShot.frame_id}:${contextShot.contextView || 'neighbors'}`}
               shotData={contextShot}
               onClose={() => setContextShot(null)}
               onZoom={setZoomedImage}
@@ -1820,7 +1819,7 @@ export default function App() {
 
           {zoomedImage && (
             <div
-              className="fixed inset-0 bg-black/90 z-[2500] flex items-center justify-center cursor-default animate-fadeIn p-4 backdrop-blur-sm"
+              className="fixed inset-0 bg-black/90 z-[2500] flex items-center justify-center cursor-default p-4"
               onClick={() => setZoomedImage(null)}
             >
               <span
@@ -1832,7 +1831,7 @@ export default function App() {
               <img
                 src={zoomedImage}
                 alt="Zoomed Result"
-                className="w-full h-full max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-[var(--shadow-heavy)] border border-[var(--border-color)] animate-scaleIn"
+                className="w-full h-full max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-[var(--shadow-heavy)] border border-[var(--border-color)]"
               />
             </div>
           )}
