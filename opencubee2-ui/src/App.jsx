@@ -1442,7 +1442,7 @@ export default function App() {
       session_id: sessionId,
       message,
       use_research: false,
-      top_k: 20,
+      top_k: 30,
       ...modelPayload,
     }).then((response) => {
       setBackgroundAgentJob({
