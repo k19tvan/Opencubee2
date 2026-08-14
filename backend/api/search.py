@@ -718,19 +718,21 @@ async def search_semantic_asr_endpoint(request_data: SemanticAsrSearchRequest):
         )
 
     # 2. Search trên Qdrant collection 'qwen'
-    results = await search_semantic_asr_qdrant(
+    offset = (request_data.page - 1) * request_data.page_size
+    results, total_results = await search_semantic_asr_qdrant(
         query_vector=embedding,
         limit=request_data.page_size,
+        offset=offset,
         video_ids=request_data.video_ids,
+        candidate_frame_names=request_data.candidate_frame_names,
     )
-
-    start_idx = (request_data.page - 1) * request_data.page_size
-    paginated = results[start_idx:start_idx + request_data.page_size]
 
     timings["total_request_s"] = time.time() - start_time
     return {
-        "results": paginated,
-        "total_results": len(results),
+        "results": results,
+        "total_results": total_results,
+        "page": request_data.page,
+        "page_size": request_data.page_size,
         "is_semantic_asr": True,
         "timing_info": timings,
     }

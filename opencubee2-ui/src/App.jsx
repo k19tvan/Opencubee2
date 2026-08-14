@@ -1794,6 +1794,7 @@ export default function App() {
 
           {contextShot && (
             <FrameContextModal
+              key={`${contextShot.frame_name || contextShot.filepath || contextShot.frame_id}:${contextShot.contextView || 'neighbors'}`}
               shotData={contextShot}
               onClose={() => setContextShot(null)}
               onZoom={setZoomedImage}
