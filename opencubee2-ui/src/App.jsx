@@ -81,7 +81,7 @@ export const DEFAULT_SEARCH_MODEL = ['beit3'];
 const normalizeSearchModel = (values, fallback = []) => {
   if (!Array.isArray(values)) {
     const valStr = String(values);
-    if (valStr === 'all') return ['bge', 'beit3', 'jina_v5_omni', 'metaclip2'];
+    if (valStr === 'all') return ['bge', 'beit3', 'jina_v5_omni', 'metaclip2', 'fgclip2'];
     if (valStr === 'both') return ['bge', 'beit3'];
     if (SEARCH_MODEL_OPTIONS.some((o) => o.value === valStr)) return [valStr];
     return fallback;

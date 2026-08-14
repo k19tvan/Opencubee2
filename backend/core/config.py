@@ -31,7 +31,7 @@ MODEL_CONFIGS = {
         "collection": "beit3",
     },
     "metaclip2": {
-        "worker_url": os.getenv("METACLIP2_WORKER_URL", 'http://127.0.0.1:2003/embed'),
+        "worker_url": os.getenv("METACLIP2_WORKER_URL", 'http://127.0.0.1:2208/embed'),
         "collection": "metaclip2",
     },
     "fgclip2": {

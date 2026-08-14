@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--state-dir",
         type=Path,
-        default=Path(os.getenv("FGCLIP2_STATE_DIR", "/root/fgclip2-state")),
+        default=Path(os.getenv("FGCLIP2_STATE_DIR", "./storage/fgclip2/state")),
         help="Fast local state directory for the manifest and completed chunks.",
     )
     parser.add_argument(

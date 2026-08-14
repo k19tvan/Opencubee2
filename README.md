@@ -34,6 +34,20 @@ conda activate beit3_env
 pip install -r requirements_beit3.txt
 ```
 
+## Specify environment for host_fgclip2
+```
+conda create -n fgclip2 python=3.10
+conda activate fgclip2
+pip install -r requirements_fgclip2.txt
+```
+Install a CUDA torch build that matches the machine, then host the worker
+(port 2005). From this pad checkout, set `FGCLIP2_MODEL_PATH` to the shared
+`Opencubee2/models/fg-clip2-large` directory.
+
+```
+conda run --no-capture-output -n fgclip2 python -m src.host_model.host_fgclip2
+```
+
 # STEP 3. Download Models, Databases, Storage 
 ```
 ./src/scripts/download_database.sh

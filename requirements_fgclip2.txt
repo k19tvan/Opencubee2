@@ -1,0 +1,8 @@
+# FG-CLIP 2 worker and indexer. Install in a dedicated env, not the backend env.
+fastapi
+uvicorn
+python-multipart
+transformers>=4.51.0
+numpy
+pillow
+qdrant_client

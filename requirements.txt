@@ -12,8 +12,6 @@ meilisearch
 # BGE-VL composed image + text retrieval requires Sentence Transformers 5.4+.
 sentence-transformers[image]>=5.4.0
 huggingface
-transformers>=4.51.0
-numpy
  
 # Download database
 kaggle

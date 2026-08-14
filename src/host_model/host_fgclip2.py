@@ -33,9 +33,10 @@ async def embed(
     text_query: str | None = Form(default=None),
     image_file: UploadFile | None = File(default=None),
 ) -> dict[str, list[list[float]]]:
+    text = (text_query or "").strip() or None
     if embedder is None:
         raise HTTPException(status_code=503, detail="FG-CLIP 2 model is not ready.")
-    if bool(text_query and text_query.strip()) == bool(image_file):
+    if bool(text) == bool(image_file):
         raise HTTPException(
             status_code=400,
             detail="Provide exactly one of text_query or image_file.",
@@ -46,7 +47,7 @@ async def embed(
             image = Image.open(io.BytesIO(await image_file.read()))
             embedding = embedder.embed_image(image)
         else:
-            embedding = embedder.embed_text(text_query or "")
+            embedding = embedder.embed_text(text or "")
     except (UnidentifiedImageError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
