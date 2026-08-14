@@ -308,28 +308,13 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                 return (
                   <div
                     key={shot.frame_name || `${shot.video_id}-${shot.frame_id}-${idx}`}
-                    className={isVideoTimeline ? 'min-w-0 flex-none flex flex-col gap-3' : 'contents'}
+                    className={isVideoTimeline ? 'min-w-0 flex-none flex flex-col gap-1' : 'contents'}
                     style={isVideoTimeline ? { width: `${width}px` } : undefined}
                   >
-                    {isVideoTimeline && (
-                      <div className="min-h-20 w-full min-w-0 flex flex-wrap content-end items-center justify-evenly gap-x-3 gap-y-1 px-3 pb-2 text-center text-sm font-medium leading-6 text-[var(--text-primary)]">
-                        {words.length > 0 ? words.map((word, wordIndex) => (
-                          <span
-                            key={`${word.start_frame_id}-${word.end_frame_id}-${wordIndex}`}
-                            className="shrink-0 whitespace-nowrap tracking-wide hover:text-[var(--accent-primary)]"
-                            title={`${word.start.toFixed(2)}s–${word.end.toFixed(2)}s · frame ${word.start_frame_id}–${word.end_frame_id}`}
-                          >
-                            {word.word.trim()}
-                          </span>
-                        )) : (
-                          <span aria-hidden="true">&nbsp;</span>
-                        )}
-                      </div>
-                    )}
                     <div
                       data-center-frame={isCenter ? 'true' : 'false'}
                       className={`relative bg-[var(--card-bg)] rounded-xl overflow-hidden aspect-video cursor-zoom-in hover:scale-[1.03] transition-all duration-200 group ${
-                        isVideoTimeline ? 'mx-auto mt-auto w-[230px]' : ''
+                        isVideoTimeline ? 'self-start w-[230px]' : ''
                       } ${
                         isCenter
                           ? 'border-[6px] ring-[6px] ring-slate-100'
@@ -418,6 +403,21 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                       </button>
                       </div>
                     </div>
+                    {isVideoTimeline && (
+                      <div className="min-h-12 w-full min-w-0 px-2 pt-1 text-left text-sm font-medium leading-6 text-[var(--text-primary)]">
+                        {words.length > 0 ? words.map((word, wordIndex) => (
+                          <span
+                            key={`${word.start_frame_id}-${word.end_frame_id}-${wordIndex}`}
+                            className="hover:text-[var(--accent-primary)]"
+                            title={`${word.start.toFixed(2)}s–${word.end.toFixed(2)}s · frame ${word.start_frame_id}–${word.end_frame_id}`}
+                          >
+                            {word.word.trim()}{' '}
+                          </span>
+                        )) : (
+                          <span aria-hidden="true">&nbsp;</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
