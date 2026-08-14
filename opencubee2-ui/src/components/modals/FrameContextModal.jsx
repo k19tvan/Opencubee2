@@ -109,7 +109,6 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
       moved: false,
     };
     suppressClickRef.current = false;
-    rail.setPointerCapture?.(event.pointerId);
   }, []);
 
   const handleRailPointerMove = useCallback((event) => {
@@ -117,9 +116,10 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     const drag = dragRef.current;
     if (!rail || !drag.active) return;
     const deltaX = event.clientX - drag.startX;
-    if (Math.abs(deltaX) > 10) {
+    if (!drag.moved && Math.abs(deltaX) > 10) {
       drag.moved = true;
       suppressClickRef.current = true;
+      rail.setPointerCapture?.(event.pointerId);
     }
     if (drag.moved) {
       event.preventDefault();
