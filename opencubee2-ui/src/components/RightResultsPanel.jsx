@@ -317,7 +317,7 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
 
         return (
           <div
-          key={`teamwork-${idx}-${frame.shot?.url}`}
+          key={`teamwork-${frame.shot?.filepath || frame.shot?.frame_name || frame.shot?.url || idx}`}
           draggable={true}
           onDragStart={(e) => onDragStart(e, frame.shot)}
           className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border-0 hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${
@@ -333,8 +333,11 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
             e.preventDefault();
             onContextMenu(frame.shot);
           }}
-          onMouseEnter={() => onMouseEnter(frame.shot, idx)}
-          onMouseMove={() => onMouseEnter(frame.shot, idx)}
+          onMouseEnter={() => onMouseEnter(frame.shot, false)}
+          onMouseMove={(event) => onMouseEnter(
+            frame.shot,
+            event.movementX !== 0 || event.movementY !== 0,
+          )}
           onMouseLeave={() => onMouseLeave(frame.shot)}
         >
           <img
@@ -397,13 +400,11 @@ export default function RightResultsPanel({
   const prevFirstResult = useRef(null);
   const hoveredShotRef = useRef(null);
   const hoveredTeamShotRef = useRef(null);
-  const hoveredTeamIndexRef = useRef(null);
   const hoveredTrakeShotRef = useRef(null);
   const hoveredTrakeIndexRef = useRef(null);
-  const teamworkFramesRef = useRef(teamworkFrames);
   const trakeFramesRef = useRef(trakeFrames);
   const trakeDragIndexRef = useRef(null);
-  teamworkFramesRef.current = teamworkFrames;
+  const suppressTeamRemovalRef = useRef(false);
   trakeFramesRef.current = trakeFrames;
 
   const pushToTeam = useCallback((shot) => {
@@ -415,6 +416,26 @@ export default function RightResultsPanel({
       data: { shot, user: { name: username, color: userColor } },
     });
   }, [sendRealtimeMessage, username, userColor]);
+
+  const removeFromTeam = useCallback((shot) => {
+    if (!shot) return;
+    const frameKey = shot.filepath || shot.frame_name || shot.url;
+    if (!frameKey) return;
+
+    // Do not let the card that slides under the pointer become an implicit
+    // second delete target. The pointer must move before another remove.
+    suppressTeamRemovalRef.current = true;
+    hoveredTeamShotRef.current = null;
+    setHoveredFrame?.(null);
+    sendRealtimeMessage({
+      type: 'remove_frame',
+      data: {
+        filepath: shot.filepath,
+        frame_name: shot.frame_name,
+        url: shot.url,
+      },
+    });
+  }, [sendRealtimeMessage, setHoveredFrame]);
 
   const pushToTrake = useCallback((shot) => {
     onPushToTrake(shot);
@@ -447,15 +468,15 @@ export default function RightResultsPanel({
         ? trakeFramesRef.current[hoveredTrakeIndexRef.current]
         : hoveredTrakeShotRef.current;
 
-      const hoveredTeamShot = hoveredTeamIndexRef.current != null
-        ? (teamworkFramesRef.current[hoveredTeamIndexRef.current]?.shot || null)
-        : hoveredTeamShotRef.current;
+      const hoveredTeamShot = hoveredTeamShotRef.current;
 
       if (event.ctrlKey && event.code === 'Space' && !event.shiftKey) {
         event.preventDefault();
 
         if (hoveredTrakeShot) {
           pushToTeam(hoveredTrakeShot);
+        } else if (hoveredTeamShot && !suppressTeamRemovalRef.current) {
+          removeFromTeam(hoveredTeamShot);
         } else if (hoveredShotRef.current) {
           pushToTeam(hoveredShotRef.current);
         }
@@ -476,7 +497,7 @@ export default function RightResultsPanel({
     return () => {
       window.removeEventListener('keydown', handleShortcut);
     };
-  }, [pushToTeam, pushToTrake, removeFromTrake]);
+  }, [pushToTeam, removeFromTeam, pushToTrake, removeFromTrake]);
 
   useEffect(() => {
     const hoveredShot = hoveredTrakeShotRef.current;
@@ -502,9 +523,10 @@ export default function RightResultsPanel({
     if (hoveredShotRef.current === shot) hoveredShotRef.current = null;
   }, []);
 
-  const handleTeamMouseEnter = useCallback((shot, index) => {
+  const handleTeamMouseEnter = useCallback((shot, pointerMoved = false) => {
+    if (suppressTeamRemovalRef.current && !pointerMoved) return;
+    if (pointerMoved) suppressTeamRemovalRef.current = false;
     hoveredTeamShotRef.current = shot || null;
-    hoveredTeamIndexRef.current = index ?? null;
     hoveredShotRef.current = null;
     hoveredTrakeShotRef.current = null;
     hoveredTrakeIndexRef.current = null;
