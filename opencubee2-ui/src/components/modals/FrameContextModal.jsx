@@ -230,8 +230,17 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
           isOriginalFrame: true,
         } : null;
         const displayedFrames = originalFrame ? [originalFrame, ...mapped] : mapped;
-        if (isVideoTimeline && originalFrame) {
-          displayedFrames.sort((first, second) => first.frame_id - second.frame_id);
+        if (originalFrame) {
+          // Video-preview frames are dynamic and are not part of the mapped
+          // keyframe list.  Keep the original in chronological position for
+          // both the neighbors grid and the full timeline; prepending it
+          // makes the context appear out of order (and always puts ORIGINAL
+          // in the top-left corner).
+          displayedFrames.sort((first, second) => {
+            const firstFrame = Number.isFinite(first.frame_id) ? first.frame_id : Number.POSITIVE_INFINITY;
+            const secondFrame = Number.isFinite(second.frame_id) ? second.frame_id : Number.POSITIVE_INFINITY;
+            return firstFrame - secondFrame;
+          });
         }
         setNeighbors(displayedFrames);
       } catch (e) {
