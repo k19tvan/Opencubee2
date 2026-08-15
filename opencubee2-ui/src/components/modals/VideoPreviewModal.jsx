@@ -288,7 +288,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
   const stripTranslate = timelineWidth / 2 - stripPosition - THUMB_WIDTH / 2;
 
   return (
-    <div id="video-preview-modal" className="fixed inset-0 bg-black/95 z-[2100] flex items-center justify-center p-3 backdrop-blur-sm">
+    <div id="video-preview-modal" data-shortcut-scope="modal" className="fixed inset-0 bg-black/95 z-[2100] flex items-center justify-center p-3 backdrop-blur-sm">
       <button
         type="button"
         className="absolute top-4 right-6 text-white text-2xl hover:text-red-500 hover:rotate-90 duration-200 cursor-pointer z-[2102] bg-black/50 rounded-full w-10 h-10 flex items-center justify-center"

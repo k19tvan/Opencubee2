@@ -864,16 +864,6 @@ export default function App() {
     };
   }, [username]);
 
-  const addTeamworkFrameLocal = useCallback((shot) => {
-    if (!shot) return;
-    const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
-    const incomingKey = getShotKey(shotWithUrl);
-    setTeamworkFrames((prev) => {
-      if (incomingKey && prev.some((frame) => getShotKey(frame.shot) === incomingKey)) return prev;
-      return [{ shot: shotWithUrl, user: { name: username, color: userColor } }, ...prev];
-    });
-  }, [username, userColor]);
-
   const handlePushToTrake = (shot) => {
     if (!shot) return;
     const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url };
@@ -889,12 +879,11 @@ export default function App() {
   };
 
   const handleAgentPushToTeam = useCallback((shot) => {
-    addTeamworkFrameLocal(shot);
     sendRealtimeMessage({
       type: 'new_frame',
       data: { shot, user: { name: username, color: userColor } },
     });
-  }, [username, userColor, addTeamworkFrameLocal, sendRealtimeMessage]);
+  }, [username, userColor, sendRealtimeMessage]);
 
   const handleReplaceTrakeFrame = useCallback((newShot) => {
     if (!trakePreviewShot) return;
@@ -923,20 +912,6 @@ export default function App() {
     setTrakeFrames((previous) => previous.filter((frame) => getShotKey(frame) !== frameKey));
     sendRealtimeMessage({ type: 'trake_remove', data: { frame_key: frameKey } });
   }, [sendRealtimeMessage]);
-
-  const removeTeamworkFrameLocal = (shotToRemove) => {
-    if (!shotToRemove) return;
-    const removeKey = getShotKey(shotToRemove);
-    setTeamworkFrames((prev) => prev.filter((frame) => {
-      const shot = frame.shot || {};
-      return !(
-        (removeKey && getShotKey(shot) === removeKey) ||
-        (shotToRemove.filepath && shot.filepath === shotToRemove.filepath) ||
-        (shotToRemove.frame_name && shot.frame_name === shotToRemove.frame_name) ||
-        (shotToRemove.url && shot.url === shotToRemove.url)
-      );
-    }));
-  };
 
   const handleLogoutDres = () => {
     setDresSessionId(null);
@@ -1091,6 +1066,7 @@ export default function App() {
 
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
+      if (document.querySelector('[data-shortcut-scope="modal"]')) return;
       const isTypingInField = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
 
       // Allow DRES submission while a query field is focused.
@@ -1739,8 +1715,6 @@ export default function App() {
                 sendRealtimeMessage={sendRealtimeMessage}
                 username={username}
                 userColor={userColor}
-                onTeamworkAddLocal={addTeamworkFrameLocal}
-                onTeamworkRemoveLocal={removeTeamworkFrameLocal}
                 onPushToTrake={handlePushToTrake}
                 onReorderTrake={handleReorderTrake}
                 onRemoveFromTrake={handleRemoveFromTrake}

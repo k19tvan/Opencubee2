@@ -375,8 +375,6 @@ export default function RightResultsPanel({
   sendRealtimeMessage = () => false,
   username = '',
   userColor = '',
-  onTeamworkAddLocal = () => { },
-  onTeamworkRemoveLocal = () => { },
   onPushToTrake = () => { },
   onReorderTrake = () => { },
   onRemoveFromTrake = () => { },
@@ -409,39 +407,14 @@ export default function RightResultsPanel({
   trakeFramesRef.current = trakeFrames;
 
   const pushToTeam = useCallback((shot) => {
-    onTeamworkAddLocal(shot);
+    if (!shot) return;
+    // Wait for the server echo/snapshot instead of creating local-only state
+    // when the socket is unavailable.
     sendRealtimeMessage({
       type: 'new_frame',
       data: { shot, user: { name: username, color: userColor } },
     });
-  }, [sendRealtimeMessage, username, userColor, onTeamworkAddLocal]);
-
-  const removeFromTeam = useCallback((shot) => {
-    if (!shot) return;
-    
-    const currentFrames = teamworkFramesRef.current;
-    const frameKey = shot?.filepath || shot?.frame_name || shot?.url;
-    const index = currentFrames.findIndex((frame) => (
-      (frame.shot?.filepath || frame.shot?.frame_name || frame.shot?.url) === frameKey
-    ));
-    const nextFrame = index >= 0 ? currentFrames[index + 1] : null;
-    hoveredTeamIndexRef.current = nextFrame ? index : null;
-    hoveredTeamShotRef.current = nextFrame ? nextFrame.shot : null;
-    
-    teamworkFramesRef.current = index >= 0
-      ? currentFrames.filter((_, frameIndex) => frameIndex !== index)
-      : currentFrames;
-
-    onTeamworkRemoveLocal(shot);
-    sendRealtimeMessage({
-      type: 'remove_frame',
-      data: {
-        filepath: shot.filepath,
-        frame_name: shot.frame_name,
-        url: shot.url,
-      },
-    });
-  }, [sendRealtimeMessage, onTeamworkRemoveLocal]);
+  }, [sendRealtimeMessage, username, userColor]);
 
   const pushToTrake = useCallback((shot) => {
     onPushToTrake(shot);
@@ -467,6 +440,9 @@ export default function RightResultsPanel({
   useEffect(() => {
     const handleShortcut = (event) => {
       if (event.repeat) return;
+      // A modal owns its keyboard shortcuts while open. The results panel is
+      // still mounted underneath it and must not perform a second action.
+      if (document.querySelector('[data-shortcut-scope="modal"]')) return;
       const hoveredTrakeShot = hoveredTrakeIndexRef.current != null
         ? trakeFramesRef.current[hoveredTrakeIndexRef.current]
         : hoveredTrakeShotRef.current;
@@ -480,8 +456,6 @@ export default function RightResultsPanel({
 
         if (hoveredTrakeShot) {
           pushToTeam(hoveredTrakeShot);
-        } else if (hoveredTeamShot) {
-          removeFromTeam(hoveredTeamShot);
         } else if (hoveredShotRef.current) {
           pushToTeam(hoveredShotRef.current);
         }
@@ -502,7 +476,7 @@ export default function RightResultsPanel({
     return () => {
       window.removeEventListener('keydown', handleShortcut);
     };
-  }, [pushToTeam, removeFromTeam, pushToTrake, removeFromTrake]);
+  }, [pushToTeam, pushToTrake, removeFromTrake]);
 
   useEffect(() => {
     const hoveredShot = hoveredTrakeShotRef.current;

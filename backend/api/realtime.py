@@ -82,9 +82,12 @@ async def websocket_endpoint(websocket: WebSocket):
     LOGGER.info("WebSocket connected; active=%d", runtime.manager.connection_count)
 
     try:
-        synced = await send_event(websocket, "team_sync", runtime.teamwork_panel_state)
-        synced = synced and await send_event(websocket, "trake_sync", runtime.trake_panel_state)
-        synced = synced and await send_event(websocket, "wrong_frames_sync", runtime.wrong_frames_state)
+        # Serialize the initial snapshot with mutations. Otherwise a newly
+        # connected client can receive a newer event followed by an older sync.
+        async with runtime.realtime_state_lock:
+            synced = await send_event(websocket, "team_sync", runtime.teamwork_panel_state)
+            synced = synced and await send_event(websocket, "trake_sync", runtime.trake_panel_state)
+            synced = synced and await send_event(websocket, "wrong_frames_sync", runtime.wrong_frames_state)
         if not synced:
             return
 
@@ -119,27 +122,33 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not isinstance(shot, dict) or not key:
                     await send_error(websocket, "new_frame requires a shot with a stable key.")
                     continue
-                if not any(teamwork_frame_key(frame) == key for frame in runtime.teamwork_panel_state):
-                    runtime.teamwork_panel_state.insert(0, data)
-                    del runtime.teamwork_panel_state[MAX_TEAMWORK_FRAMES:]
-                await broadcast_event("new_frame", data)
+                async with runtime.realtime_state_lock:
+                    if not any(teamwork_frame_key(frame) == key for frame in runtime.teamwork_panel_state):
+                        runtime.teamwork_panel_state.insert(0, data)
+                        del runtime.teamwork_panel_state[MAX_TEAMWORK_FRAMES:]
+                    # Full snapshots make the server authoritative and repair
+                    # clients that missed an earlier incremental event.
+                    await broadcast_event("team_sync", runtime.teamwork_panel_state)
 
             elif msg_type == "remove_frame":
-                remove_matching_teamwork_frames(data)
-                await broadcast_event("remove_frame", data)
+                async with runtime.realtime_state_lock:
+                    remove_matching_teamwork_frames(data)
+                    await broadcast_event("team_sync", runtime.teamwork_panel_state)
 
             elif msg_type == "clear_panel":
-                runtime.teamwork_panel_state = []
-                await broadcast_event("clear_panel", {})
+                async with runtime.realtime_state_lock:
+                    runtime.teamwork_panel_state = []
+                    await broadcast_event("team_sync", runtime.teamwork_panel_state)
 
             elif msg_type == "global_correct_submission":
                 shot = data.get("shot")
                 if not isinstance(shot, dict) or not frame_key(shot):
                     await send_error(websocket, "global_correct_submission requires a valid shot.")
                     continue
-                runtime.wrong_frames_state = []
-                runtime.teamwork_panel_state = [data]
-                await broadcast_event("global_correct_submission", data)
+                async with runtime.realtime_state_lock:
+                    runtime.wrong_frames_state = []
+                    runtime.teamwork_panel_state = [data]
+                    await broadcast_event("global_correct_submission", data)
 
             elif msg_type == "global_wrong_submission":
                 shot = data.get("shot")
@@ -147,10 +156,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not isinstance(shot, dict) or not key:
                     await send_error(websocket, "global_wrong_submission requires a valid shot.")
                     continue
-                if not any(frame_key(item) == key for item in runtime.wrong_frames_state):
-                    runtime.wrong_frames_state.insert(0, shot)
-                    del runtime.wrong_frames_state[MAX_WRONG_FRAMES:]
-                await broadcast_event("global_wrong_submission", data)
+                async with runtime.realtime_state_lock:
+                    if not any(frame_key(item) == key for item in runtime.wrong_frames_state):
+                        runtime.wrong_frames_state.insert(0, shot)
+                        del runtime.wrong_frames_state[MAX_WRONG_FRAMES:]
+                    await broadcast_event("global_wrong_submission", data)
 
             elif msg_type == "trake_add":
                 shot = data.get("shot")
@@ -158,39 +168,42 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not isinstance(shot, dict) or not key:
                     await send_error(websocket, "trake_add requires a valid shot.")
                     continue
-                if not any(frame_key(item) == key for item in runtime.trake_panel_state):
-                    runtime.trake_panel_state.append(shot)
-                    del runtime.trake_panel_state[MAX_TRAKE_FRAMES:]
-                await broadcast_event("trake_add", {"shot": shot})
+                async with runtime.realtime_state_lock:
+                    if not any(frame_key(item) == key for item in runtime.trake_panel_state):
+                        runtime.trake_panel_state.append(shot)
+                        del runtime.trake_panel_state[MAX_TRAKE_FRAMES:]
+                    await broadcast_event("trake_sync", runtime.trake_panel_state)
 
             elif msg_type == "trake_remove":
                 key = str(data.get("frame_key") or data.get("filepath") or "")
                 if not key:
                     await send_error(websocket, "trake_remove requires frame_key.")
                     continue
-                runtime.trake_panel_state = [
-                    item for item in runtime.trake_panel_state if frame_key(item) != key
-                ]
-                await broadcast_event("trake_remove", {"frame_key": key})
+                async with runtime.realtime_state_lock:
+                    runtime.trake_panel_state = [
+                        item for item in runtime.trake_panel_state if frame_key(item) != key
+                    ]
+                    await broadcast_event("trake_sync", runtime.trake_panel_state)
 
             elif msg_type == "trake_reorder":
                 ordered_keys = data.get("frame_keys")
                 if not isinstance(ordered_keys, list):
                     await send_error(websocket, "trake_reorder requires frame_keys as a list.")
                     continue
-                frames_by_key = {
-                    frame_key(frame): frame
-                    for frame in runtime.trake_panel_state
-                    if frame_key(frame)
-                }
-                reordered = [
-                    frames_by_key.pop(str(key))
-                    for key in ordered_keys
-                    if str(key) in frames_by_key
-                ]
-                reordered.extend(frames_by_key.values())
-                runtime.trake_panel_state = reordered
-                await broadcast_event("trake_sync", reordered)
+                async with runtime.realtime_state_lock:
+                    frames_by_key = {
+                        frame_key(frame): frame
+                        for frame in runtime.trake_panel_state
+                        if frame_key(frame)
+                    }
+                    reordered = [
+                        frames_by_key.pop(str(key))
+                        for key in ordered_keys
+                        if str(key) in frames_by_key
+                    ]
+                    reordered.extend(frames_by_key.values())
+                    runtime.trake_panel_state = reordered
+                    await broadcast_event("trake_sync", reordered)
 
             else:
                 await send_error(websocket, f"Unsupported message type: {msg_type!r}.")

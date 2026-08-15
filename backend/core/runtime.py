@@ -122,6 +122,9 @@ qdrant_client = None
 meili_client = None
 http_client: Optional[httpx.AsyncClient] = None
 manager = ConnectionManager()
+# WebSocket handlers run concurrently. Keep shared-panel mutations and their
+# broadcasts in one order so every connected client observes the same state.
+realtime_state_lock = asyncio.Lock()
 teamwork_panel_state = []
 trake_panel_state = []
 wrong_frames_state = []

@@ -256,7 +256,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
   }, [isVideoTimeline, shotData]);
 
   return (
-    <div className="fixed inset-0 bg-black/90 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+    <div data-shortcut-scope="modal" className="fixed inset-0 bg-black/90 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
       <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg w-[95vw] max-h-[90vh] flex flex-col overflow-hidden shadow-[var(--shadow-heavy)]">
         
         <div className="px-6 py-4 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--glass-bg)]">
