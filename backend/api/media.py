@@ -101,7 +101,13 @@ def validate_video_id(video_id: str) -> None:
 
 
 def select_surrounding_keyframes(candidates, target_frame: int):
-    """Return up to 20 keyframes before and 20 after a dynamic video frame."""
+    """Return up to 20 keyframes before and 20 after a dynamic video frame.
+
+    This is retained as a legacy fallback for deployments without the
+    video-frame mapping.  Normal context requests use
+    ``select_surrounding_shots`` below so a long shot cannot fill the panel
+    with near-identical keyframes.
+    """
     ordered = sorted(candidates, key=lambda candidate: candidate[0])
     before = [candidate for candidate in ordered if candidate[0] < target_frame][-CONTEXT_FRAME_RADIUS:]
     after = [candidate for candidate in ordered if candidate[0] >= target_frame][:CONTEXT_FRAME_RADIUS]
@@ -116,6 +122,120 @@ def select_surrounding_keyframes(candidates, target_frame: int):
         selected.extend(sorted(remaining, key=lambda candidate: abs(candidate[0] - target_frame))[:target_count - len(selected)])
 
     return [name for _, name in sorted(selected, key=lambda candidate: candidate[0])]
+
+
+def parse_mapped_keyframe(frame_name: str):
+    """Return ``(frame_id, shot_id, frame_name)`` for a mapped keyframe.
+
+    Keyframes follow ``<collection>_<video>_<shot>_<frame>.webp``.  The shot
+    portion is intentionally kept as part of the ID: if a visually similar
+    scene returns later in the video it has a new shot ID and must remain in
+    the storyboard.
+    """
+    name = os.path.basename(frame_name)
+    stem = os.path.splitext(name)[0]
+    parts = stem.split("_")
+    if len(parts) < 4:
+        return None
+    try:
+        frame_id = int(parts[-1])
+    except ValueError:
+        return None
+    return frame_id, "_".join(parts[:-1]), name
+
+
+def select_surrounding_shots(frame_names, base_name: str, target_frame: int):
+    """Build a chronological, shot-level storyboard around a target frame.
+
+    First take the normal local window (up to 20 keyframes before and 20 from
+    the target onwards).  Only then collapse consecutive keyframes in the
+    same shot.  If that leaves fewer than 40 cards, expand with the nearest
+    adjacent shots until the panel is full.  This preserves every scene in the
+    initial local window without filling the remaining space with duplicates.
+    """
+    parsed_frames = [parsed for name in frame_names if (parsed := parse_mapped_keyframe(name))]
+    if not parsed_frames:
+        return None
+
+    parsed_frames.sort(key=lambda item: item[0])
+    local_frame_names = set(select_surrounding_keyframes(
+        [(frame_id, frame_name) for frame_id, _, frame_name in parsed_frames],
+        target_frame,
+    ))
+    shots = []
+    for frame_id, shot_id, frame_name in parsed_frames:
+        if not shots or shots[-1]["shot_id"] != shot_id:
+            shots.append({"shot_id": shot_id, "frames": []})
+        shots[-1]["frames"].append((frame_id, frame_name))
+
+    normalized_base_name = os.path.basename(base_name)
+    center_index = next(
+        (
+            index
+            for index, shot in enumerate(shots)
+            if any(frame_name == normalized_base_name for _, frame_name in shot["frames"])
+        ),
+        None,
+    )
+    if center_index is None:
+        # Video-preview frames are dynamic and have no keyframe entry.  Pick
+        # the shot containing their timestamp, or the closest end shot.
+        center_index = next(
+            (
+                index
+                for index, shot in enumerate(shots)
+                if target_frame <= shot["frames"][-1][0]
+            ),
+            len(shots) - 1,
+        )
+
+    local_shot_indices = [
+        index
+        for index, shot in enumerate(shots)
+        if any(frame_name in local_frame_names for _, frame_name in shot["frames"])
+    ]
+    if not local_shot_indices:
+        return None
+
+    # Keep every shot seen in the 40-keyframe local window, then extend its
+    # contiguous range with whichever adjacent shot is temporally closer to
+    # the target.  A returned scene remains a separate shot and is retained.
+    start = min(local_shot_indices)
+    end = max(local_shot_indices) + 1
+    target_count = min(CONTEXT_FRAME_RADIUS * 2, len(shots))
+    while end - start < target_count and (start > 0 or end < len(shots)):
+        left_distance = (
+            target_frame - shots[start - 1]["frames"][-1][0]
+            if start > 0
+            else math.inf
+        )
+        right_distance = (
+            shots[end]["frames"][0][0] - target_frame
+            if end < len(shots)
+            else math.inf
+        )
+        if left_distance <= right_distance:
+            start -= 1
+        else:
+            end += 1
+
+    selected = []
+    for index in range(start, end):
+        shot = shots[index]
+        frames = shot["frames"]
+        if index == center_index:
+            original = next(
+                (frame_name for _, frame_name in frames if frame_name == normalized_base_name),
+                None,
+            )
+            if original:
+                selected.append(original)
+                continue
+        # The closest keyframe to the target is deterministic: the last frame
+        # for a preceding shot and the first frame for a following shot.
+        _, representative = min(frames, key=lambda item: abs(item[0] - target_frame))
+        selected.append(representative)
+    return selected
 
 @router.get("/models_status")
 async def get_models_status():
@@ -225,8 +345,24 @@ async def check_temporal_frames(request: TemporalFrameRequest):
         target_frame = int(os.path.splitext(parts[-1])[0]) if video_id else None
     except ValueError:
         target_frame = None
+
+    # Prefer the complete video timeline over the old frame_context cache.
+    # The old cache is a raw keyframe window, which can hide an intervening
+    # shot behind many nearly identical frames from its neighbours.
+    if video_id and target_frame is not None:
+        frame_names = runtime.video_frame_mapping.get(video_id)
+        if frame_names is None:
+            try:
+                frame_mapping = await asyncio.to_thread(load_video_frame_mapping)
+                frame_names = frame_mapping.get(video_id)
+            except (OSError, ValueError):
+                frame_names = None
+        if frame_names:
+            shot_context = select_surrounding_shots(frame_names, base_name, target_frame)
+            if shot_context:
+                return shot_context
+
     from backend.core.runtime import frame_context_cache
-    
     if frame_context_cache and base_name in frame_context_cache:
         return frame_context_cache[base_name]
 
