@@ -37,6 +37,22 @@ class FGClip2Embedder:
         self.model = AutoModelForCausalLM.from_pretrained(source, **options)
         self.model.to(self.device)
         self.model.eval()
+        self._repair_text_position_ids()
+
+    def _repair_text_position_ids(self) -> None:
+        """Replace the model's expand()-view position_ids buffer with a real tensor.
+
+        Fgclip2TextEmbeddings registers `torch.arange(...).expand((1, -1))` with
+        `persistent=False`. That view can dangle after init, so short-text
+        embedding lookups gather garbage indices and trip a CUDA assert.
+        """
+        embeddings = self.model.text_model.embeddings
+        length = embeddings.position_embedding_res.num_embeddings
+        embeddings.register_buffer(
+            "position_ids",
+            torch.arange(length, device=self.device).unsqueeze(0),
+            persistent=False,
+        )
 
     @staticmethod
     def _max_image_patches(image: Image.Image) -> int:
@@ -67,10 +83,16 @@ class FGClip2Embedder:
             max_length=self.text_max_length,
             truncation=True,
             return_tensors="pt",
-        ).to(self.device)
+        )
+        input_ids = tokens["input_ids"].to(self.device)
+        position_ids = torch.arange(
+            input_ids.shape[-1], device=self.device
+        ).unsqueeze(0)
         with torch.inference_mode():
             embedding = self.model.get_text_features(
-                **tokens, walk_type=self.text_walk_type
+                input_ids=input_ids,
+                position_ids=position_ids,
+                walk_type=self.text_walk_type,
             )
         return self._normalize(embedding)
 
