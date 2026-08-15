@@ -303,7 +303,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                 const isCorrect = isSameShot(shot, correctSubmission);
                 const isWrong = !isCorrect && wrongFrames.some((wrongFrame) => isSameShot(shot, wrongFrame));
                 const hasSubmissionStatus = isCorrect || isWrong;
-                const statusColor = isCorrect ? 'var(--accent-primary)' : '#ff1744';
+                const statusColor = isCorrect ? '#ccff00' : '#ff1744';
 
                 return (
                   <div
@@ -371,8 +371,8 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                           </div>
                         )}
                         {isCorrect && (
-                          <div className="px-2 py-0.5 rounded-full bg-[var(--accent-primary)] text-[var(--bg-primary)] flex items-center justify-center w-fit shadow-[0_0_10px_var(--accent-primary)] border border-white/50" title="Correct Submission">
-                            <span className="text-[9px] font-extrabold tracking-widest text-[var(--bg-primary)]">CORRECT</span>
+                          <div className="px-2 py-0.5 rounded-full bg-[#ccff00] text-slate-900 flex items-center justify-center w-fit shadow-[0_0_10px_#ccff00] border border-[#a8cc00]/50" title="Correct Submission">
+                            <span className="text-[9px] font-extrabold tracking-widest text-slate-900">CORRECT</span>
                           </div>
                         )}
                       </div>

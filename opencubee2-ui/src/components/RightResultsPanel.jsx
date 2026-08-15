@@ -158,7 +158,7 @@ const ResultItem = React.memo(({
   }, []);
 
   const hasSubmissionStatus = isCorrect || isWrong;
-  const statusColor = isCorrect ? 'var(--accent-primary)' : '#ff1744';
+  const statusColor = isCorrect ? '#ccff00' : '#ff1744'; // Use a bright neon lime instead of theme accent color
   const similarityLabels = shot.similarity_labels || [];
   const hasIntro = similarityLabels.includes('INTRO');
   const hasDuplicate = similarityLabels.includes('DUP');
@@ -309,7 +309,7 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
         const isCorrect = isSameShot(frame.shot, correctSubmission);
         const isWrong = !isCorrect && wrongFrames.some((shot) => isSameShot(frame.shot, shot));
         const statusColor = isCorrect
-          ? 'var(--accent-primary)'
+          ? '#ccff00'
           : isWrong
             ? '#ff1744'
             : (frame.user?.color || 'var(--accent-primary)');

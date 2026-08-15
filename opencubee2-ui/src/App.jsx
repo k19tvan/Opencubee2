@@ -203,6 +203,7 @@ export default function App() {
   });
   const isMutedRef = useRef(isMuted);
   const playingAudioRef = useRef(null);
+  const phonkIndexRef = useRef(0);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
@@ -730,6 +731,24 @@ export default function App() {
           if (incomingKey && prev.some((frame) => getShotKey(frame) === incomingKey)) return prev;
           return [data.shot, ...prev];
         });
+
+        try {
+          if (playingAudioRef.current) {
+            playingAudioRef.current.pause();
+          }
+          const audio = new Audio('/wrong.mp3');
+          audio.volume = 1.0;
+          audio.muted = isMutedRef.current;
+          playingAudioRef.current = audio;
+          audio.play().catch(e => console.log("Audio play failed:", e));
+          
+          setTimeout(() => {
+            if (playingAudioRef.current === audio) {
+              audio.pause();
+            }
+          }, 5000);
+        } catch (e) { }
+
       } else if (type === 'wrong_frames_sync') {
         const mappedData = (data || []).map(shot => ({
           ...shot,
@@ -769,7 +788,14 @@ export default function App() {
         setTeamworkFrames([{ shot: mappedShot, user: data.user || { name: 'SYSTEM', color: '#10b981' } }]);
 
         try {
-          const audio = new Audio('/phonk1.MP3');
+          if (playingAudioRef.current) {
+            playingAudioRef.current.pause();
+          }
+          const phonkFiles = ['/phonk1.MP3', '/phonk2.mp3', '/phonk3.mp3'];
+          const currentIndex = phonkIndexRef.current % phonkFiles.length;
+          const nextPhonk = phonkFiles[currentIndex];
+          phonkIndexRef.current = currentIndex + 1;
+          const audio = new Audio(nextPhonk);
           audio.volume = 1.0;
           audio.muted = isMutedRef.current;
           playingAudioRef.current = audio;
