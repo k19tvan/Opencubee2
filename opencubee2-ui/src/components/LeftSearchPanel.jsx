@@ -18,10 +18,19 @@ export default function LeftSearchPanel({
   semanticAsrQuery = '',
   setSemanticAsrQuery = () => { },
   onSemanticAsrSearch = () => { },
+  semanticAsrSearchMode = 'meilisearch',
+  setSemanticAsrSearchMode = () => { },
+  semanticAsrEmbeddingWeight = 0.7,
+  setSemanticAsrEmbeddingWeight = () => { },
+  semanticAsrMeilisearchWeight = 0.3,
+  setSemanticAsrMeilisearchWeight = () => { },
 }) {
   const [googleQuery, setGoogleQuery] = useState('');
   const [googleResults, setGoogleResults] = useState([]);
   const [googleLoading, setGoogleLoading] = useState(false);
+  // Keep keystrokes local. Updating App state on every character rerenders the
+  // result panel (which can contain hundreds of keyframes) and stalls typing.
+  const [semanticAsrDraft, setSemanticAsrDraft] = useState(semanticAsrQuery);
   const [reorderingStageId, setReorderingStageId] = useState(null);
   const reorderIndexRef = useRef(null);
   const panelRef = useRef(null);
@@ -37,6 +46,11 @@ export default function LeftSearchPanel({
       return () => clearTimeout(timer);
     }
   }, [isSemanticAsr]);
+
+  // App may clear or prefill the query when resetting/restoring a workspace.
+  useEffect(() => {
+    setSemanticAsrDraft(semanticAsrQuery);
+  }, [semanticAsrQuery]);
 
   const isInteractiveStageTarget = useCallback((target) => {
     return !!target?.closest?.([
@@ -209,7 +223,7 @@ export default function LeftSearchPanel({
                 <i className="fas fa-closed-captioning text-base"></i> Semantic ASR Search
               </div>
               <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                Search transcript summaries semantically via Qwen3-Embedding.
+                Search transcript summaries with Meilisearch text search, semantic embedding, or both.
               </p>
             </div>
 
@@ -220,19 +234,55 @@ export default function LeftSearchPanel({
                 className="w-full p-3 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] focus:ring-1 focus:ring-white/10 transition-all min-h-[120px] resize-y placeholder:text-[var(--text-secondary)]"
                 placeholder="Nhập nội dung thoại hoặc tóm tắt cần tìm (Ví dụ: Vụ tai nạn giao thông xe container đâm vào xe tải...)..."
                 rows="5"
-                value={semanticAsrQuery}
-                onChange={(e) => setSemanticAsrQuery(e.target.value)}
+                value={semanticAsrDraft}
+                onChange={(e) => setSemanticAsrDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    onSemanticAsrSearch();
+                    setSemanticAsrQuery(semanticAsrDraft);
+                    onSemanticAsrSearch(semanticAsrDraft);
                   }
                 }}
               />
 
+              <div className="space-y-2 rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] p-2.5">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
+                  Search method
+                </label>
+                <select
+                  value={semanticAsrSearchMode}
+                  onChange={(e) => setSemanticAsrSearchMode(e.target.value)}
+                  className="w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none"
+                >
+                  <option value="meilisearch">Meilisearch text</option>
+                  <option value="embedding">Embedding (Qwen)</option>
+                  <option value="hybrid">Hybrid (weighted)</option>
+                </select>
+
+                {semanticAsrSearchMode === 'hybrid' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] text-[var(--text-secondary)]">
+                      Embedding weight
+                      <input type="number" min="0" step="0.1" value={semanticAsrEmbeddingWeight}
+                        onChange={(e) => setSemanticAsrEmbeddingWeight(Number(e.target.value))}
+                        className="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] px-2 py-1 text-xs text-[var(--text-primary)]" />
+                    </label>
+                    <label className="text-[10px] text-[var(--text-secondary)]">
+                      Meilisearch weight
+                      <input type="number" min="0" step="0.1" value={semanticAsrMeilisearchWeight}
+                        onChange={(e) => setSemanticAsrMeilisearchWeight(Number(e.target.value))}
+                        className="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] px-2 py-1 text-xs text-[var(--text-primary)]" />
+                    </label>
+                  </div>
+                )}
+              </div>
+
               <button
                 className="w-full flex items-center justify-center gap-2 bg-[var(--text-primary)] text-[var(--bg-primary)] px-4 py-2.5 rounded-lg font-bold text-xs tracking-wide hover:bg-[var(--accent-secondary)] transition-all duration-200 cursor-pointer disabled:opacity-50 shadow-sm"
-                onClick={() => onSemanticAsrSearch()}
+                onClick={() => {
+                  setSemanticAsrQuery(semanticAsrDraft);
+                  onSemanticAsrSearch(semanticAsrDraft);
+                }}
                 disabled={loading}
               >
                 <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>

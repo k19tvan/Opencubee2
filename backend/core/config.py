@@ -50,6 +50,7 @@ MODEL_CONFIGS = {
 
 MEILISEARCH_HOST = os.getenv("MEILISEARCH_HOST", "http://opencubee2_meilisearch:7700")
 OCR_ASR_INDEX_NAME = os.getenv("OCR_ASR_INDEX_NAME", "ocr_only_beit3_096")
+SEMANTIC_ASR_INDEX_NAME = os.getenv("SEMANTIC_ASR_INDEX_NAME", "semantic_asr")
 OCR_SEARCH_FIELD = os.getenv("OCR_SEARCH_FIELD", "ocr_text")
 ASR_SEARCH_FIELD = os.getenv("ASR_SEARCH_FIELD", "asr_text")
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://192.168.20.152:2108/v1").rstrip("/")

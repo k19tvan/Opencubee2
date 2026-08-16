@@ -24,7 +24,7 @@ from backend.services.search import (
     search_ocr_asr_on_meilisearch_async,
     attach_similarity_labels,
     find_similar_frames,
-    search_semantic_asr_qdrant
+    search_semantic_asr
 )
 from backend.services.translation import google_translate_text, llm_translate_text
 
@@ -709,21 +709,31 @@ async def search_semantic_asr_endpoint(request_data: SemanticAsrSearchRequest):
     if not query_text:
         raise HTTPException(status_code=400, detail="Query text is required.")
 
-    # 1. Embed bằng Qwen worker
-    embedding = await get_embedding(
-        model_name="qwen",
-        text=query_text,
-    )
-    if not embedding:
-        raise HTTPException(
-            status_code=502,
-            detail="Failed to generate embedding from Qwen worker (Check if Qwen worker is running on port 2006)."
+    embedding = None
+    if request_data.search_mode in {"embedding", "hybrid"}:
+        embedding = await get_embedding(
+            model_name="qwen",
+            text=query_text,
         )
+        if not embedding:
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to generate embedding from Qwen worker (Check if Qwen worker is running on port 2006)."
+            )
+    if request_data.search_mode == "hybrid" and (
+        request_data.embedding_weight + request_data.meilisearch_weight <= 0
+    ):
+        raise HTTPException(status_code=422, detail="At least one search weight must be greater than zero.")
 
-    # 2. Search trên Qdrant collection 'qwen'
+    # Meilisearch handles lexical semantic-ASR retrieval; hybrid fuses its
+    # ranking score with Qwen/Qdrant similarity scores.
     offset = (request_data.page - 1) * request_data.page_size
-    results, total_results = await search_semantic_asr_qdrant(
+    results, total_results = await search_semantic_asr(
+        query_text=query_text,
         query_vector=embedding,
+        search_mode=request_data.search_mode,
+        embedding_weight=request_data.embedding_weight,
+        meilisearch_weight=request_data.meilisearch_weight,
         limit=request_data.page_size,
         offset=offset,
         video_ids=request_data.video_ids,
@@ -737,5 +747,6 @@ async def search_semantic_asr_endpoint(request_data: SemanticAsrSearchRequest):
         "page": request_data.page,
         "page_size": request_data.page_size,
         "is_semantic_asr": True,
+        "search_mode": request_data.search_mode,
         "timing_info": timings,
     }
