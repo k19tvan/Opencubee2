@@ -742,3 +742,108 @@ button {
         scroll-behavior: auto !important;
     }
 }
+
+/* Custom scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Guarantee 100% identical button sizing across ALL themes */
+[data-topbar-button="true"] {
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+    line-height: 28px !important;
+    letter-spacing: normal !important;
+    font-weight: 500 !important;
+    border-radius: 10px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+}
+
+[data-topbar-button="true"] i {
+    font-size: 11px !important;
+    line-height: 1 !important;
+}
+
+/* Tailored Active Button Colors Per Theme - Always High-Contrast White Text */
+
+/* Theme Normal: Cosmic Indigo & Cyan Accent */
+.theme-normal [data-topbar-button="true"][data-active="true"] {
+    background: #6366f1 !important;
+    border-color: #5be0d6 !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.45) !important;
+}
+
+/* Theme Dark: Crisp White Background with Dark Black Text */
+.theme-dark [data-topbar-button="true"][data-active="true"] {
+    background: #f3f1ee !important;
+    border-color: #ffffff !important;
+    color: #080808 !important;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.4) !important;
+}
+
+.theme-dark [data-topbar-button="true"][data-active="true"] i,
+.theme-dark [data-topbar-button="true"][data-active="true"] span {
+    color: #080808 !important;
+}
+
+.theme-dark [data-topbar-button="true"][data-active="true"]:hover {
+    background: #ffffff !important;
+    border-color: #ffffff !important;
+    color: #000000 !important;
+}
+
+
+/* Theme Light: Rich Purple & Magenta Accent */
+.theme-light [data-topbar-button="true"][data-active="true"] {
+    background: #9333ea !important;
+    border-color: #c084fc !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(147, 51, 234, 0.45) !important;
+}
+
+/* Theme Blue: Oceanic Cyan & Sky Blue Accent */
+.theme-blue [data-topbar-button="true"][data-active="true"] {
+    background: #0891b2 !important;
+    border-color: #38bdf8 !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(8, 145, 178, 0.45) !important;
+}
+
+/* Theme Neon: Cyber Emerald Green Glow Accent */
+.theme-neon [data-topbar-button="true"][data-active="true"] {
+    background: #059669 !important;
+    border-color: #34d399 !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(5, 150, 105, 0.45) !important;
+}
+
+/* Theme Random: Vibrant Rose & Coral Pink Accent */
+.theme-random [data-topbar-button="true"][data-active="true"] {
+    background: #e11d48 !important;
+    border-color: #fb7185 !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(225, 29, 72, 0.45) !important;
+}
+
+/* Theme Jujutsu Kaisen: Cursed Violet Glow Accent */
+.theme-jujutsu [data-topbar-button="true"][data-active="true"] {
+    background: #7c3aed !important;
+    border-color: #a78bfa !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(124, 58, 237, 0.45) !important;
+}
+

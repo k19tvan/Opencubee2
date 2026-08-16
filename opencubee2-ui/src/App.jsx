@@ -241,6 +241,13 @@ export default function App() {
   const [isHoveringTrakePanel, setIsHoveringTrakePanel] = useState(false);
   const [hoveredFrame, setHoveredFrame] = useState(null);
   const [openDresSubmit, setOpenDresSubmit] = useState(null);
+
+  useEffect(() => {
+    if (dresMode !== 'QA') {
+      setOpenDresSubmit(null);
+    }
+  }, [dresMode]);
+
   const [backgroundAgentJob, setBackgroundAgentJob] = useState(null);
 
   const socketRef = useRef(null);
@@ -1601,7 +1608,7 @@ export default function App() {
         />
       )}
 
-      {openDresSubmit && dresSessionId && (
+      {openDresSubmit && dresSessionId && dresMode === 'QA' && (
         <DresSubmitModal
           shot={openDresSubmit}
           sessionId={dresSessionId}
@@ -1674,7 +1681,7 @@ export default function App() {
             setWorkspaceMode={setWorkspaceMode}
           />
 
-          <div className={`flex flex-col flex-grow pt-[72px] h-[calc(100vh-72px)] w-full overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-transparent' : 'bg-[var(--bg-primary)]'} relative transition-colors duration-700 ease-smooth`}>
+          <div className={`flex flex-col flex-grow min-h-0 h-full w-full overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-transparent' : 'bg-[var(--bg-primary)]'} relative transition-colors duration-700 ease-smooth`}>
             <div className={`${workspaceMode === 'search' ? 'flex' : 'hidden'} flex-row flex-grow min-h-0 w-full overflow-hidden relative`}>
               {isMobileMenuOpen && (
                 <div

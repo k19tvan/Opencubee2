@@ -15,19 +15,18 @@ const THEME_META = {
 };
 
 const toolBtnBaseClasses = () =>
-  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-medium transition-all duration-200 ease-smooth cursor-pointer select-none hover:-translate-y-0.5 active:scale-95 active:translate-y-0 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:translate-y-0';
+  'shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-1 px-2 rounded-xl border text-[11px] font-medium transition-all duration-150 ease-out cursor-pointer select-none disabled:opacity-35 disabled:cursor-not-allowed';
 
-const toolBtnStateClasses = (isJJK, active) => isJJK
-  ? (active ? 'bg-[var(--accent-primary)] border-[var(--border-hover)] text-white shadow-glow' : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--glass-bg)]')
-  : (active
-    ? 'bg-[var(--text-primary)] border-[var(--text-primary)] text-[var(--bg-primary)] shadow-glow'
-    : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--glass-bg)]');
+const toolBtnStateClasses = (active) =>
+  active
+    ? 'shadow-sm font-medium'
+    : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--glass-bg)]';
 
-const ToolBtn = ({ onClick, icon, label, active = false, title = '', disabled = false, theme = '' }) => {
+const ToolBtn = ({ onClick, icon, label, active = false, title = '', disabled = false, theme = '', responsive = true }) => {
   const isJJK = theme === 'jujutsu';
 
   const baseClasses = toolBtnBaseClasses();
-  const stateClasses = toolBtnStateClasses(isJJK, active);
+  const stateClasses = toolBtnStateClasses(active);
 
   return (
     <button
@@ -35,10 +34,11 @@ const ToolBtn = ({ onClick, icon, label, active = false, title = '', disabled = 
       title={title || label}
       disabled={disabled}
       data-active={active ? 'true' : 'false'}
+      data-topbar-button="true"
       className={`${baseClasses} ${stateClasses}`}
     >
-      <i className={`${icon} ${isJJK ? 'text-[14px]' : 'text-xs'}`}></i>
-      <span className="hidden sm:inline">{label}</span>
+      <i className={`${icon} ${isJJK ? 'text-[12px]' : 'text-[11px]'}`}></i>
+      <span className={responsive ? 'hidden sm:inline' : 'inline'}>{label}</span>
     </button>
   );
 };
@@ -65,12 +65,6 @@ export default function TopToolbar({
   isSemanticAsr,
   setIsSemanticAsr,
   onOpenModal,
-  onGoBack,
-  onGoForward,
-  canGoBack,
-  canGoForward,
-  goBackDepth = 0,
-  goForwardDepth = 0,
   onReset,
   onToggleMobileMenu,
   timingInfo = null,
@@ -111,24 +105,25 @@ export default function TopToolbar({
   }, []);
 
   return (
-    <div className="fixed top-0 left-0 w-full h-[72px] px-6 flex justify-between items-center bg-[var(--card-bg)] border-b border-[var(--border-color)] backdrop-blur-xl backdrop-saturate-150 z-[100] transition-colors duration-300 animate-slideDown">
+    <div className="relative w-full min-h-[52px] shrink-0 px-3 sm:px-5 py-1.5 flex flex-row items-center justify-between bg-[var(--card-bg)] border-b border-[var(--border-color)] backdrop-blur-xl backdrop-saturate-150 z-[100] transition-all duration-300 animate-slideDown gap-2 min-w-0">
 
-      <div className="flex items-center gap-4">
+      {/* Brand & Left Navigation - Always pinned to Line 1 Top Left */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {/* Mobile menu toggle */}
         <button
           onClick={onToggleMobileMenu}
-          className="md:hidden block w-8 h-8 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] flex items-center justify-center hover:bg-[var(--glass-bg)] active:scale-95 transition-all"
+          className="md:hidden flex w-8 h-8 rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] items-center justify-center hover:bg-[var(--glass-bg)] active:scale-95 transition-all shrink-0"
         >
           <i className="fas fa-bars"></i>
         </button>
 
-        <div className="flex items-center gap-3 cursor-pointer group">
-          <div className="h-16 w-16 flex items-center justify-center flex-shrink-0 transition-all duration-300 ease-spring group-hover:scale-110 group-hover:rotate-6 drop-shadow-lg">
+        <div className="flex items-center gap-2 cursor-pointer group shrink-0">
+          <div className="h-9 w-9 sm:h-11 sm:w-11 flex items-center justify-center flex-shrink-0 transition-all duration-300 ease-spring group-hover:scale-105 group-hover:rotate-3 drop-shadow-md">
             <img src="/logo2.png" alt="Logo" className="h-full w-full object-contain" />
           </div>
-          <div className="leading-tight hidden sm:block transition-transform duration-300 group-hover:translate-x-1 ml-1">
-            <div className="text-xl font-semibold text-[var(--text-primary)] tracking-normal">OpenCubee2</div>
-            <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--text-secondary)] tracking-normal mt-0.5">
+          <div className="leading-tight hidden sm:block transition-transform duration-300 group-hover:translate-x-0.5">
+            <div className="text-lg font-bold text-[var(--text-primary)] tracking-tight">OpenCubee2</div>
+            <div className="flex items-center gap-1.5 text-[10px] font-medium text-[var(--text-secondary)] tracking-normal mt-0.5">
               <span>
                 {username
                   ? <span style={{ color: userColor }}>{username}</span>
@@ -137,10 +132,10 @@ export default function TopToolbar({
               </span>
               {timingInfo && (
                 <span
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-color)] bg-[var(--glass-bg)] px-2 py-0.5"
+                  className="inline-flex items-center gap-1 rounded-md border border-[var(--border-color)] bg-[var(--glass-bg)] px-1.5 py-0.5"
                   title="Server time"
                 >
-                  <i className="fas fa-gauge-high text-[10px] text-[var(--accent-primary)]"></i>
+                  <i className="fas fa-gauge-high text-[9px] text-[var(--accent-primary)]"></i>
                   <span className="font-mono text-[var(--text-primary)]">
                     {timingInfo.total_request_s?.toFixed(3)}s
                   </span>
@@ -149,47 +144,48 @@ export default function TopToolbar({
             </div>
           </div>
         </div>
-
-        <div className="hidden md:flex items-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-1">
-          <button
-            type="button"
-            onClick={() => setWorkspaceMode('search')}
-            className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all ${workspaceMode === 'search' ? 'bg-[var(--accent-primary)] text-[var(--bg-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-          >
-            <i className="fas fa-search mr-1.5" /> Search
-          </button>
-          <button
-            type="button"
-            onClick={() => setWorkspaceMode('agent')}
-            className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all ${workspaceMode === 'agent' ? 'bg-[var(--accent-primary)] text-[var(--bg-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-          >
-            <i className="fas fa-wand-magic-sparkles mr-1.5" /> Agent
-          </button>
-        </div>
       </div>
 
-      <div className="flex gap-1.5 items-center flex-wrap">
-        <button
-          type="button"
-          onClick={() => setWorkspaceMode(workspaceMode === 'search' ? 'agent' : 'search')}
-          className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', workspaceMode === 'agent')} md:hidden`}
-          title={`Switch to ${workspaceMode === 'search' ? 'Agent' : 'Search'}`}
-        >
-          <i className={`fas ${workspaceMode === 'search' ? 'fa-wand-magic-sparkles' : 'fa-search'}`} />
-        </button>
-        <div className="relative flex items-center group" ref={themeRef}>
+      {/* Action Buttons Toolbar - Fills Line 1 beside logo, extra buttons wrap to Line 2 on the right */}
+      <div className="flex gap-1 sm:gap-1.5 items-center flex-wrap justify-end ml-auto flex-1 min-w-0 py-0.5">
+        {/* Compact Workspace Mode Buttons: S & A */}
+        <ToolBtn
+          onClick={() => setWorkspaceMode('search')}
+          icon="fas fa-search"
+          label="S"
+          active={workspaceMode === 'search'}
+          title="Search Mode (S)"
+          theme={theme}
+          responsive={false}
+        />
+        <ToolBtn
+          onClick={() => setWorkspaceMode('agent')}
+          icon="fas fa-wand-magic-sparkles"
+          label="A"
+          active={workspaceMode === 'agent'}
+          title="Agent Mode (A)"
+          theme={theme}
+          responsive={false}
+        />
+
+        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5 hidden sm:block" />
+
+
+        {/* Theme Selector */}
+        <div className="relative flex items-center group shrink-0" ref={themeRef}>
           <button
             onClick={() => setIsThemeOpen(!isThemeOpen)}
-            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', false)} relative pr-8`}
+            data-topbar-button="true"
+            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} relative pr-7`}
             title="Change theme"
           >
-            <i className={`${activeThemeMeta.icon} ${theme === 'jujutsu' ? 'text-[14px]' : 'text-xs'}`}></i>
+            <i className={`${activeThemeMeta.icon} ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
             <span className="hidden sm:inline">{activeThemeMeta.label}</span>
-            <i className={`fas fa-chevron-down absolute right-2.5 ${theme === 'jujutsu' ? 'text-[11px]' : 'text-[9px]'} transition-transform duration-200 ${isThemeOpen ? 'rotate-180' : ''}`}></i>
+            <i className={`fas fa-chevron-down absolute right-2 ${theme === 'jujutsu' ? 'text-[10px]' : 'text-[8px]'} transition-transform duration-200 ${isThemeOpen ? 'rotate-180' : ''}`}></i>
           </button>
 
           <div
-            className={`absolute top-[calc(100%+6px)] left-0 min-w-[140px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-lg'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-left z-50 py-1 ${isThemeOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
+            className={`absolute top-[calc(100%+6px)] left-0 min-w-[140px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-xl'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-left z-50 py-1 ${isThemeOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
           >
             {THEME_ORDER.map(t => (
               <button
@@ -198,27 +194,30 @@ export default function TopToolbar({
                   setTheme(t);
                   setIsThemeOpen(false);
                 }}
-                className={`text-left px-4 py-2 text-sm transition-colors duration-150 flex items-center gap-2 ${theme === t ? (theme === 'jujutsu' ? 'bg-[#795ceb] text-white font-bold' : 'bg-[var(--glass-bg)] text-[var(--text-primary)] font-semibold') : (theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]')}`}
+                className={`text-left px-3.5 py-1.5 text-xs transition-colors duration-150 flex items-center gap-2 ${theme === t ? (theme === 'jujutsu' ? 'bg-[#795ceb] text-white font-bold' : 'bg-[var(--glass-bg)] text-[var(--text-primary)] font-semibold') : (theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]')}`}
               >
+                <i className={THEME_META[t].icon + ' text-[10px]'}></i>
                 {THEME_META[t].label}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="relative flex items-center group" ref={modelsRef}>
+        {/* Embedding Models Selector */}
+        <div className="relative flex items-center group shrink-0" ref={modelsRef}>
           <button
             onClick={() => setIsModelsOpen(!isModelsOpen)}
-            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', false)} relative pr-8`}
+            data-topbar-button="true"
+            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} relative pr-7`}
             title="Select Embedding Models"
           >
-            <i className={`fas fa-layer-group ${theme === 'jujutsu' ? 'text-[14px]' : 'text-xs'}`}></i>
+            <i className={`fas fa-layer-group ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
             <span className="hidden sm:inline">Models</span>
-            <i className={`fas fa-chevron-down absolute right-2.5 ${theme === 'jujutsu' ? 'text-[11px]' : 'text-[9px]'} transition-transform duration-200 ${isModelsOpen ? 'rotate-180' : ''}`}></i>
+            <i className={`fas fa-chevron-down absolute right-2 ${theme === 'jujutsu' ? 'text-[10px]' : 'text-[8px]'} transition-transform duration-200 ${isModelsOpen ? 'rotate-180' : ''}`}></i>
           </button>
 
           <div
-            className={`absolute top-[calc(100%+6px)] right-0 min-w-[140px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-lg'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-right z-50 py-1 ${isModelsOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
+            className={`absolute top-[calc(100%+6px)] right-0 min-w-[150px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-xl'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-right z-50 py-1 ${isModelsOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
           >
             {SEARCH_MODEL_OPTIONS.map((model) => {
               const selectedModels = Array.isArray(searchModel) ? searchModel : DEFAULT_SEARCH_MODEL;
@@ -230,17 +229,20 @@ export default function TopToolbar({
                     const nextModels = active ? selectedModels.filter(m => m !== model.value) : [...selectedModels, model.value];
                     setSearchModel?.(nextModels.length > 0 ? nextModels : DEFAULT_SEARCH_MODEL);
                   }}
-                  className={`text-left px-4 py-2 text-sm transition-colors duration-150 flex items-center gap-2 ${active ? (theme === 'jujutsu' ? 'bg-[#795ceb] text-white font-bold' : 'bg-[var(--glass-bg)] text-[var(--text-primary)] font-semibold') : (theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]')}`}
+                  className={`text-left px-3.5 py-1.5 text-xs transition-colors duration-150 flex items-center gap-2 ${active ? (theme === 'jujutsu' ? 'bg-[#795ceb] text-white font-bold' : 'bg-[var(--glass-bg)] text-[var(--text-primary)] font-semibold') : (theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]')}`}
                 >
                   <i className={`${model.icon} text-xs w-4 text-center`}></i>
                   <span className="flex-grow">{model.label}</span>
-                  {active && <i className="fas fa-check text-[10px]"></i>}
+                  {active && <i className="fas fa-check text-[10px] text-emerald-400"></i>}
                 </button>
               );
             })}
           </div>
         </div>
 
+        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5 hidden sm:block" />
+
+        {/* Shortcuts & Utilities */}
         <ToolBtn onClick={() => onOpenModal('help')} icon="fas fa-keyboard" label="Shortcuts" theme={theme} />
         <ToolBtn
           onClick={() => setAutoTranslate(!autoTranslate)}
@@ -262,22 +264,10 @@ export default function TopToolbar({
           title="Toggle Semantic ASR Search (Ctrl + Q)"
           theme={theme}
         />
-        <ToolBtn
-          onClick={onGoBack}
-          icon="fas fa-undo"
-          label={`Back ${goBackDepth ? `(${goBackDepth})` : ''}`}
-          title="Go back one search step (Ctrl + Left)"
-          active={canGoBack}
-          theme={theme}
-        />
-        <ToolBtn
-          onClick={onGoForward}
-          icon="fas fa-redo"
-          label={`Forward ${goForwardDepth ? `(${goForwardDepth})` : ''}`}
-          title="Go forward one search step (Ctrl + Right)"
-          active={canGoForward}
-          theme={theme}
-        />
+
+        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5 hidden sm:block" />
+
+        {/* Search Mode Toggles */}
         <ToolBtn onClick={() => setShowTrake(!showTrake)} icon="fas fa-stream" label="Trake" active={showTrake} theme={theme} />
         <ToolBtn
           onClick={onToggleSimilarityScope}
@@ -305,21 +295,25 @@ export default function TopToolbar({
         <ToolBtn onClick={() => setIsClustered(!isClustered)} icon="fas fa-object-group" label="Cluster" active={isClustered} theme={theme} />
         <ToolBtn onClick={() => setIsAmbiguous(!isAmbiguous)} icon="fas fa-random" label="Ambiguous" active={isAmbiguous} theme={theme} />
 
+        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5 hidden sm:block" />
+
+        {/* Integration & System */}
         {dresSessionId ? (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <div className="relative flex items-center group" ref={dresModeRef}>
               <button
                 onClick={() => setIsDresModeOpen(!isDresModeOpen)}
-                className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', false)} relative pr-8`}
+                data-topbar-button="true"
+                className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} relative pr-7`}
                 title="DRES Submit Mode (Alt + Q to switch KIS/QA)"
               >
-                <i className={`fas fa-paper-plane ${theme === 'jujutsu' ? 'text-[14px]' : 'text-xs'}`}></i>
+                <i className={`fas fa-paper-plane ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
                 <span className="hidden sm:inline">{dresMode}</span>
-                <i className={`fas fa-chevron-down absolute right-2.5 ${theme === 'jujutsu' ? 'text-[11px]' : 'text-[9px]'} transition-transform duration-200 ${isDresModeOpen ? 'rotate-180' : ''}`}></i>
+                <i className={`fas fa-chevron-down absolute right-2 ${theme === 'jujutsu' ? 'text-[10px]' : 'text-[8px]'} transition-transform duration-200 ${isDresModeOpen ? 'rotate-180' : ''}`}></i>
               </button>
 
               <div
-                className={`absolute top-[calc(100%+6px)] right-0 min-w-[120px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-lg'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-right z-50 py-1 ${isDresModeOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
+                className={`absolute top-[calc(100%+6px)] right-0 min-w-[120px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-xl'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-right z-50 py-1 ${isDresModeOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
               >
                 {['KIS', 'QA'].map((mode) => (
                   <button
@@ -328,10 +322,10 @@ export default function TopToolbar({
                       setDresMode(mode);
                       setIsDresModeOpen(false);
                     }}
-                    className={`text-left px-4 py-2 text-sm transition-colors duration-150 flex items-center gap-2 ${dresMode === mode ? (theme === 'jujutsu' ? 'bg-[#795ceb] text-white font-bold' : 'bg-[var(--glass-bg)] text-[var(--text-primary)] font-semibold') : (theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]')}`}
+                    className={`text-left px-3.5 py-1.5 text-xs transition-colors duration-150 flex items-center gap-2 ${dresMode === mode ? (theme === 'jujutsu' ? 'bg-[#795ceb] text-white font-bold' : 'bg-[var(--glass-bg)] text-[var(--text-primary)] font-semibold') : (theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]')}`}
                   >
                     <span className="flex-grow">{mode} Mode</span>
-                    {dresMode === mode && <i className="fas fa-check text-[10px]"></i>}
+                    {dresMode === mode && <i className="fas fa-check text-[10px] text-emerald-400"></i>}
                   </button>
                 ))}
               </div>
@@ -339,40 +333,45 @@ export default function TopToolbar({
 
             <button
               onClick={onOpenDresLogin}
-              className={`${toolBtnBaseClasses()} bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20`}
+              data-topbar-button="true"
+              className={`${toolBtnBaseClasses()} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20`}
               title="DRES Session Active (Click to view session/logout)"
             >
-              <i className="fas fa-plug"></i>
+              <i className="fas fa-plug text-[11px]"></i>
               <span className="hidden sm:inline">{dresUsername || 'Dres'}</span>
             </button>
           </div>
         ) : (
           <button
             onClick={onOpenDresLogin}
-            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', false)}`}
+            data-topbar-button="true"
+            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
             title="DRES Login"
           >
-            <i className="fas fa-plug"></i>
+            <i className="fas fa-plug text-[11px]"></i>
             <span className="hidden sm:inline">Dres</span>
           </button>
         )}
 
         <button
           onClick={() => setIsMuted(!isMuted)}
-          className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', false)} ${isMuted ? 'text-red-400 border-red-400/30' : ''}`}
+          data-topbar-button="true"
+          className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} ${isMuted ? 'text-red-400 border-red-400/30 bg-red-500/10' : ''}`}
           title={isMuted ? "Unmute Sound" : "Mute Sound"}
         >
-          <i className={`fas ${isMuted ? 'fa-volume-mute' : 'fa-volume-up'} text-xs`}></i>
+          <i className={`fas ${isMuted ? 'fa-volume-mute' : 'fa-volume-up'} text-[11px]`}></i>
         </button>
 
         <button
           onClick={onReset}
-          className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(theme === 'jujutsu', false)} group hover:text-red-300 hover:border-red-400/40 hover:bg-red-500/10`}
+          data-topbar-button="true"
+          className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} group hover:text-red-300 hover:border-red-400/40 hover:bg-red-500/10`}
           title="Reset search"
         >
-          <i className="fas fa-redo-alt text-xs transition-transform duration-500 group-hover:-rotate-180"></i>
+          <i className="fas fa-redo-alt text-[11px] transition-transform duration-500 group-hover:-rotate-180"></i>
           <span className="hidden sm:inline">Reset</span>
         </button>
+
       </div>
     </div>
   );
