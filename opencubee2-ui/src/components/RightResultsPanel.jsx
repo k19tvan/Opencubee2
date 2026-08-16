@@ -2,6 +2,30 @@ import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react'
 import { getImageUrl } from '../utils/imageUrl';
 import { getSimilarFrames } from '../api';
 
+const HIGHLIGHT_START = '__MEILI_HIGHLIGHT_START__';
+const HIGHLIGHT_END = '__MEILI_HIGHLIGHT_END__';
+
+const renderHighlightedSummary = (summary) => {
+  if (!summary || !summary.includes(HIGHLIGHT_START)) return summary;
+  const parts = summary.split(/(__MEILI_HIGHLIGHT_START__|__MEILI_HIGHLIGHT_END__)/);
+  let highlighted = false;
+  return parts.map((part, index) => {
+    if (part === HIGHLIGHT_START) {
+      highlighted = true;
+      return null;
+    }
+    if (part === HIGHLIGHT_END) {
+      highlighted = false;
+      return null;
+    }
+    return highlighted ? (
+      <mark key={index} className="mx-0.5 rounded bg-amber-300/25 px-0.5 font-extrabold text-amber-100 ring-1 ring-amber-300/35">
+        {part}
+      </mark>
+    ) : <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+};
+
 const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext, setHoveredFrame, onMouseEnterPopoverItem, parentShot }) => {
   const [neighbors, setNeighbors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -886,7 +910,7 @@ export default function RightResultsPanel({
                     <span className="font-bold text-[var(--accent-primary)] mr-2 inline-flex items-center gap-1">
                       <i className="fas fa-quote-left text-[10px]"></i> Summary:
                     </span>
-                    {chunk.summary || "No summary text available."}
+                    {renderHighlightedSummary(chunk.formatted_summary || chunk.summary || "No summary text available.")}
                   </div>
                 </div>
 

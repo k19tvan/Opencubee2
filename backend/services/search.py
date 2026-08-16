@@ -779,6 +779,11 @@ def search_semantic_asr_on_meilisearch_sync(
             "offset": offset,
             "showRankingScore": True,
             "attributesToSearchOn": ["summary"],
+            "attributesToHighlight": ["summary"],
+            # Deliberately use inert markers instead of HTML. The UI converts
+            # only these known markers to React <mark> elements.
+            "highlightPreTag": "__MEILI_HIGHLIGHT_START__",
+            "highlightPostTag": "__MEILI_HIGHLIGHT_END__",
             "attributesToRetrieve": [
                 "id", "scene_id", "summary", "video_id", "start_id", "end_id", "frame_inside",
             ],
@@ -803,6 +808,9 @@ def search_semantic_asr_on_meilisearch_sync(
                 source_scores={"meilisearch": float(hit.get("_rankingScore", 0.0))},
             )
             if result:
+                formatted = (hit.get("_formatted") or {}).get("summary")
+                if isinstance(formatted, str):
+                    result["formatted_summary"] = formatted
                 results.append(result)
         total = response.get("totalHits", response.get("estimatedTotalHits", len(results)))
         return results, int(total)
@@ -962,6 +970,11 @@ async def search_semantic_asr(
 
     max_meili_score = max((float(item["score"]) for item in meili_results), default=1.0) or 1.0
     by_scene: Dict[str, Dict[str, Any]] = {}
+    meili_by_scene: Dict[str, Dict[str, Any]] = {}
+    for item in meili_results:
+        scene_id = item.get("scene_id")
+        if isinstance(scene_id, str):
+            meili_by_scene[scene_id] = item
     for item in vector_results + meili_results:
         scene_id = item.get("scene_id")
         if isinstance(scene_id, str):
@@ -979,6 +992,9 @@ async def search_semantic_asr(
             "embedding": embedding_score,
             "meilisearch": meili_score,
         }
+        formatted_summary = meili_by_scene.get(scene_id, {}).get("formatted_summary")
+        if isinstance(formatted_summary, str):
+            result["formatted_summary"] = formatted_summary
         ranked.append(result)
     ranked.sort(key=lambda result: result["score"], reverse=True)
     return ranked[offset:offset + limit], len(ranked)
