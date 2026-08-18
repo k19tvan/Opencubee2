@@ -45,6 +45,7 @@ const isSameShot = (first, second) => {
 
 export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onSubmitDres, onContext, onQuickSearch, wrongFrames = [], correctSubmission = null }) {
   const [neighbors, setNeighbors] = useState([]);
+  const [contextMode, setContextMode] = useState('all');
   const [timelineWords, setTimelineWords] = useState([]);
   const [timelineFps, setTimelineFps] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -197,7 +198,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
           : await fetch(`${BASE_URL}/check_temporal_frames`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ base_frame_name: shotData.frame_name }),
+              body: JSON.stringify({ base_frame_name: shotData.frame_name, mode: contextMode }),
               signal: controller.signal,
             });
         if (!response.ok) throw new Error("Failed to load context frames");
@@ -253,18 +254,46 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     };
     fetchNeighbors();
     return () => controller.abort();
-  }, [isVideoTimeline, shotData]);
+  }, [isVideoTimeline, shotData, contextMode]);
 
   return (
     <div data-shortcut-scope="modal" className="fixed inset-0 bg-black/90 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
       <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg w-[95vw] max-h-[90vh] flex flex-col overflow-hidden shadow-[var(--shadow-heavy)]">
         
-        <div className="px-6 py-4 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--glass-bg)]">
-          <h2 className="text-sm font-bold text-[var(--accent-primary)] uppercase tracking-wider flex items-center gap-2">
-            <i className="fas fa-layer-group"></i> 
-            {isVideoTimeline ? 'Video Timeline + Word ASR' : 'Frame Context'} – Video: <span className="font-mono text-[var(--text-primary)]">{shotData.video_id}</span>, Frame: <span className="font-mono text-[var(--text-primary)]">{shotData.frame_id}</span>
-            {isVideoTimeline && timelineFps && <span className="font-mono text-[var(--text-secondary)]">({timelineFps} FPS)</span>}
-          </h2>
+        <div className="px-6 py-4 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--glass-bg)] group/header">
+          <div className="flex items-center gap-6">
+            <h2 className="text-sm font-bold text-[var(--accent-primary)] uppercase tracking-wider flex items-center gap-2">
+              <i className="fas fa-layer-group"></i> 
+              {isVideoTimeline ? 'Video Timeline + Word ASR' : 'Frame Context'} – Video: <span className="font-mono text-[var(--text-primary)]">{shotData.video_id}</span>, Frame: <span className="font-mono text-[var(--text-primary)]">{shotData.frame_id}</span>
+              {isVideoTimeline && timelineFps && <span className="font-mono text-[var(--text-secondary)]">({timelineFps} FPS)</span>}
+            </h2>
+            
+            {!isVideoTimeline && (
+              <div className="flex items-center bg-black/40 rounded-full p-1 border border-white/5 opacity-80 hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => setContextMode('all')}
+                  className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                    contextMode === 'all'
+                      ? 'bg-[var(--accent-primary)] text-white shadow-[0_0_10px_var(--accent-primary)]'
+                      : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  All Frames
+                </button>
+                <button
+                  onClick={() => setContextMode('shot')}
+                  className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                    contextMode === 'shot'
+                      ? 'bg-[var(--accent-primary)] text-white shadow-[0_0_10px_var(--accent-primary)]'
+                      : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  Shot Segments
+                </button>
+              </div>
+            )}
+          </div>
+
           <span 
             className="text-lg cursor-pointer text-[var(--text-secondary)] hover:text-red-500 hover:rotate-90 duration-200" 
             onClick={onClose}

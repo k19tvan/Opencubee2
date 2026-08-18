@@ -393,6 +393,32 @@ export default function App() {
     window.history.forward();
   };
 
+  const getWorkspaceHistoryEntries = () => {
+    return readWorkspaceHistory().entries;
+  };
+
+  const handleClearHistory = () => {
+    writeWorkspaceHistory({ entries: [], currentId: null });
+    updateHistoryDepths({ entries: [], currentId: null });
+    toast.success('Search history cleared.');
+  };
+
+  const handleRestoreHistoryId = (historyId) => {
+    const store = readWorkspaceHistory();
+    const entry = store.entries.find((item) => item.id === historyId);
+    if (!entry) {
+      toast.error('History entry not found');
+      return;
+    }
+    const updatedStore = { ...store, currentId: historyId };
+    writeWorkspaceHistory(updatedStore);
+    restoreWorkspaceSnapshot(entry.snapshot);
+    updateHistoryDepths(updatedStore);
+    const historyState = { ...(window.history.state || {}), [WORKSPACE_HISTORY_STATE_KEY]: historyId };
+    window.history.pushState(historyState, '', window.location.href);
+    toast.success('Restored previous search state.');
+  };
+
   const setStagesWithHistory = (updater) => {
     setStages(updater);
   };
@@ -625,12 +651,52 @@ export default function App() {
         focusLatestStageField(nextField);
       } else if (event.key === '+' || event.key === '=') {
         event.preventDefault();
+        const activeStage = document.activeElement?.closest('[data-stage-index]');
+        const targetIndex = activeStage ? parseInt(activeStage.dataset.stageIndex, 10) : -1;
         const nextStage = createEmptyStage();
-        setStagesWithHistory((prev) => [...prev, nextStage]);
+        setStagesWithHistory((prev) => {
+          const idx = (targetIndex >= 0 && targetIndex < prev.length) ? targetIndex : 0;
+          const next = [...prev];
+          next.splice(idx, 0, nextStage);
+          return next;
+        });
         setStageFocusRequest({ stageId: nextStage.id, field: 'query', token: Date.now() });
       } else if (event.key === '-') {
         event.preventDefault();
-        setStagesWithHistory((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
+        const activeStage = document.activeElement?.closest('[data-stage-index]');
+        const targetIndex = activeStage ? parseInt(activeStage.dataset.stageIndex, 10) : -1;
+        setStagesWithHistory((prev) => {
+          if (prev.length <= 1) return prev;
+          let idx = 0;
+          if (targetIndex > 0) idx = targetIndex - 1;
+          const next = [...prev];
+          next.splice(idx, 1);
+          return next;
+        });
+      } else if (event.key === ']') {
+        event.preventDefault();
+        const activeStage = document.activeElement?.closest('[data-stage-index]');
+        const targetIndex = activeStage ? parseInt(activeStage.dataset.stageIndex, 10) : -1;
+        const nextStage = createEmptyStage();
+        setStagesWithHistory((prev) => {
+          const idx = (targetIndex >= 0 && targetIndex < prev.length) ? targetIndex + 1 : prev.length;
+          const next = [...prev];
+          next.splice(idx, 0, nextStage);
+          return next;
+        });
+        setStageFocusRequest({ stageId: nextStage.id, field: 'query', token: Date.now() });
+      } else if (event.key === '[') {
+        event.preventDefault();
+        const activeStage = document.activeElement?.closest('[data-stage-index]');
+        const targetIndex = activeStage ? parseInt(activeStage.dataset.stageIndex, 10) : -1;
+        setStagesWithHistory((prev) => {
+          if (prev.length <= 1) return prev;
+          let idx = prev.length - 1;
+          if (targetIndex >= 0 && targetIndex < prev.length - 1) idx = targetIndex + 1;
+          const next = [...prev];
+          next.splice(idx, 1);
+          return next;
+        });
       } else if (key === 'r') {
         event.preventDefault();
         executeResetRef.current();
@@ -1396,7 +1462,7 @@ export default function App() {
         imagePreview: imageUrl,
       }];
 
-      await performSearch(1, updatedStages, false, {
+      await performSearch(1, updatedStages, true, {
         similarityScope: null,
         activateSimilarityScope: true,
         similaritySourceFrameName: shot.frame_name || null,
@@ -1672,6 +1738,9 @@ export default function App() {
             canGoForward={goForwardDepth > 0}
             goBackDepth={goBackDepth}
             goForwardDepth={goForwardDepth}
+            getHistoryEntries={getWorkspaceHistoryEntries}
+            onRestoreHistory={handleRestoreHistoryId}
+            onClearHistory={handleClearHistory}
             onReset={handleResetSearch}
             onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             timingInfo={timingInfo}

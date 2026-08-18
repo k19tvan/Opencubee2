@@ -4,7 +4,7 @@ import os
 import warnings
 
 
-bind = os.getenv("BACKEND_BIND", "0.0.0.0:2108")
+bind = os.getenv("BACKEND_BIND", "0.0.0.0:2208")
 # Realtime collaboration state currently lives in process memory. Running more
 # than one worker splits WebSocket clients and panel state between processes.
 requested_workers = int(os.getenv("GUNICORN_WORKERS", "1"))

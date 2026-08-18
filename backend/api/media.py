@@ -20,6 +20,7 @@ import requests
 
 class TemporalFrameRequest(BaseModel):
     base_frame_name: str
+    mode: str = "all"  # "all" or "shot"
 
 IMAGE_BASE_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"
 CONTEXT_FRAME_RADIUS = 20
@@ -358,9 +359,16 @@ async def check_temporal_frames(request: TemporalFrameRequest):
             except (OSError, ValueError):
                 frame_names = None
         if frame_names:
-            shot_context = select_surrounding_shots(frame_names, base_name, target_frame)
-            if shot_context:
-                return shot_context
+            if request.mode == "shot":
+                shot_context = select_surrounding_shots(frame_names, base_name, target_frame)
+                if shot_context:
+                    return shot_context
+            else:
+                parsed_frames = [parsed for name in frame_names if (parsed := parse_mapped_keyframe(name))]
+                candidates = [(f[0], f[2]) for f in parsed_frames]
+                all_context = select_surrounding_keyframes(candidates, target_frame)
+                if all_context:
+                    return all_context
 
     from backend.core.runtime import frame_context_cache
     if frame_context_cache and base_name in frame_context_cache:

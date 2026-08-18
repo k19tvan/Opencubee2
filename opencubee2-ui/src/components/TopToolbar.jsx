@@ -79,6 +79,9 @@ export default function TopToolbar({
   setIsMuted,
   workspaceMode = 'search',
   setWorkspaceMode = () => { },
+  getHistoryEntries = () => [],
+  onRestoreHistory = () => {},
+  onClearHistory = () => {},
 }) {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const themeRef = useRef(null);
@@ -86,6 +89,8 @@ export default function TopToolbar({
   const modelsRef = useRef(null);
   const [isDresModeOpen, setIsDresModeOpen] = useState(false);
   const dresModeRef = useRef(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const historyRef = useRef(null);
   const activeThemeMeta = THEME_META[theme] || THEME_META.dark;
 
   useEffect(() => {
@@ -98,6 +103,9 @@ export default function TopToolbar({
       }
       if (dresModeRef.current && !dresModeRef.current.contains(event.target)) {
         setIsDresModeOpen(false);
+      }
+      if (historyRef.current && !historyRef.current.contains(event.target)) {
+        setIsHistoryOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -147,28 +155,28 @@ export default function TopToolbar({
       </div>
 
       {/* Action Buttons Toolbar - Fills Line 1 beside logo, extra buttons wrap to Line 2 on the right */}
-      <div className="flex gap-1 sm:gap-1.5 items-center flex-wrap justify-end ml-auto flex-1 min-w-0 py-0.5">
-        {/* Compact Workspace Mode Buttons: S & A */}
+      <div className="flex gap-1 sm:gap-2 items-center flex-wrap justify-end ml-auto flex-1 min-w-0 py-0.5">
+        {/* Compact Workspace Mode Buttons */}
         <ToolBtn
           onClick={() => setWorkspaceMode('search')}
           icon="fas fa-search"
-          label="S"
+          label="Search"
           active={workspaceMode === 'search'}
-          title="Search Mode (S)"
+          title="Search Mode"
           theme={theme}
           responsive={false}
         />
         <ToolBtn
           onClick={() => setWorkspaceMode('agent')}
           icon="fas fa-wand-magic-sparkles"
-          label="A"
+          label="Agent"
           active={workspaceMode === 'agent'}
-          title="Agent Mode (A)"
+          title="Agent Mode"
           theme={theme}
           responsive={false}
         />
 
-        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5 hidden sm:block" />
+        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
 
         {/* Theme Selector */}
@@ -176,12 +184,11 @@ export default function TopToolbar({
           <button
             onClick={() => setIsThemeOpen(!isThemeOpen)}
             data-topbar-button="true"
-            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} relative pr-7`}
+            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
             title="Change theme"
           >
             <i className={`${activeThemeMeta.icon} ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
             <span className="hidden sm:inline">{activeThemeMeta.label}</span>
-            <i className={`fas fa-chevron-down absolute right-2 ${theme === 'jujutsu' ? 'text-[10px]' : 'text-[8px]'} transition-transform duration-200 ${isThemeOpen ? 'rotate-180' : ''}`}></i>
           </button>
 
           <div
@@ -208,12 +215,11 @@ export default function TopToolbar({
           <button
             onClick={() => setIsModelsOpen(!isModelsOpen)}
             data-topbar-button="true"
-            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} relative pr-7`}
+            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
             title="Select Embedding Models"
           >
             <i className={`fas fa-layer-group ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
             <span className="hidden sm:inline">Models</span>
-            <i className={`fas fa-chevron-down absolute right-2 ${theme === 'jujutsu' ? 'text-[10px]' : 'text-[8px]'} transition-transform duration-200 ${isModelsOpen ? 'rotate-180' : ''}`}></i>
           </button>
 
           <div
@@ -240,7 +246,7 @@ export default function TopToolbar({
           </div>
         </div>
 
-        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5 hidden sm:block" />
+        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
         {/* Shortcuts & Utilities */}
         <ToolBtn onClick={() => onOpenModal('help')} icon="fas fa-keyboard" label="Shortcuts" theme={theme} />
@@ -265,7 +271,7 @@ export default function TopToolbar({
           theme={theme}
         />
 
-        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5 hidden sm:block" />
+        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
         {/* Search Mode Toggles */}
         <ToolBtn onClick={() => setShowTrake(!showTrake)} icon="fas fa-stream" label="Trake" active={showTrake} theme={theme} />
@@ -293,9 +299,98 @@ export default function TopToolbar({
           theme={theme}
         />
         <ToolBtn onClick={() => setIsClustered(!isClustered)} icon="fas fa-object-group" label="Cluster" active={isClustered} theme={theme} />
+        
+        {/* History Dropdown */}
+        <div className="relative flex items-center group shrink-0" ref={historyRef}>
+          <button
+            onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+            data-topbar-button="true"
+            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
+            title="Search History"
+          >
+            <i className={`fas fa-history ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
+            <span className="hidden sm:inline">History</span>
+          </button>
+
+          <div
+            className={`absolute top-[calc(100%+6px)] right-0 w-[280px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-xl'} border border-[var(--border-color)] shadow-2xl transition-all duration-200 origin-top-right z-50 py-1 ${isHistoryOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'} max-h-[70vh] overflow-y-auto`}
+          >
+            {getHistoryEntries().length > 0 ? (
+              <>
+                {[...getHistoryEntries()].reverse().map((entry, index) => {
+                  const stages = entry.snapshot?.stages || [];
+                  const numStages = stages.length;
+                  const isMulti = numStages > 1;
+                  
+                  const previewStages = stages.slice(0, 2);
+                  const hasMorePreview = numStages > 2;
+
+                  return (
+                    <button
+                      key={entry.id}
+                      onClick={() => {
+                        onRestoreHistory(entry.id);
+                        setIsHistoryOpen(false);
+                      }}
+                      className={`text-left p-3 text-xs transition-colors duration-150 flex flex-col gap-1.5 border-b border-[var(--border-color)] ${theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]'}`}
+                      title={`Restore search ${entry.id}`}
+                    >
+                      <div className="flex items-center justify-between w-full mb-0.5">
+                        <span className={`text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5 ${isMulti ? (theme === 'jujutsu' ? 'text-blue-200' : 'text-blue-400') : 'opacity-70'}`}>
+                          <i className={`fas ${isMulti ? 'fa-layer-group' : 'fa-search'}`}></i>
+                          {isMulti ? `Temporal (${numStages})` : 'Single Stage'}
+                        </span>
+                        <span className="text-[9px] opacity-40 font-mono">{entry.id.substring(0, 6)}</span>
+                      </div>
+                      
+                      <div className={`flex flex-col gap-1.5 w-full pl-2 border-l-[1.5px] ${theme === 'jujutsu' ? 'border-white/20' : 'border-[var(--border-color)]'} opacity-90`}>
+                        {previewStages.map((s, i) => {
+                          const isImage = s.queryType === 'image';
+                          const text = isImage ? s.imageText : s.queryText;
+                          const hasImagePreview = isImage && !!s.imagePreview;
+                          return (
+                            <div key={i} className="flex items-start gap-1.5 w-full">
+                              {hasImagePreview ? (
+                                <img src={s.imagePreview} className="w-5 h-5 object-cover rounded shadow-sm shrink-0 border border-white/10" alt="Query Thumbnail" />
+                              ) : (
+                                <i className={`fas ${isImage ? 'fa-image text-emerald-400' : 'fa-font text-purple-400'} mt-[3px] text-[9px] shrink-0`}></i>
+                              )}
+                              <span className={`font-medium truncate w-full text-[11px] leading-tight ${hasImagePreview ? 'mt-0.5' : ''}`}>
+                                {text ? text : (hasImagePreview ? <span className="italic opacity-60">Similarity Image</span> : <span className="italic opacity-40">Empty query</span>)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {hasMorePreview && (
+                          <div className="text-[9px] opacity-60 italic ml-4">+ {numStages - 2} more stage(s)</div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => {
+                    onClearHistory();
+                    setIsHistoryOpen(false);
+                  }}
+                  className={`text-center p-2 text-xs transition-colors duration-150 flex items-center justify-center gap-1.5 font-semibold ${theme === 'jujutsu' ? 'text-red-300 hover:bg-red-500/20' : 'text-red-500 hover:bg-red-500/10'}`}
+                >
+                  <i className="fas fa-trash-alt text-[10px]"></i>
+                  Clear History
+                </button>
+              </>
+            ) : (
+              <div className="px-3.5 py-4 text-xs text-[var(--text-secondary)] text-center">
+                <i className="fas fa-history text-2xl mb-2 opacity-20 block"></i>
+                <span className="italic opacity-70">No history yet</span>
+              </div>
+            )}
+          </div>
+        </div>
+
         <ToolBtn onClick={() => setIsAmbiguous(!isAmbiguous)} icon="fas fa-random" label="Ambiguous" active={isAmbiguous} theme={theme} />
 
-        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5 hidden sm:block" />
+        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
         {/* Integration & System */}
         {dresSessionId ? (
@@ -304,12 +399,11 @@ export default function TopToolbar({
               <button
                 onClick={() => setIsDresModeOpen(!isDresModeOpen)}
                 data-topbar-button="true"
-                className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} relative pr-7`}
+                className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
                 title="DRES Submit Mode (Alt + Q to switch KIS/QA)"
               >
                 <i className={`fas fa-paper-plane ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
                 <span className="hidden sm:inline">{dresMode}</span>
-                <i className={`fas fa-chevron-down absolute right-2 ${theme === 'jujutsu' ? 'text-[10px]' : 'text-[8px]'} transition-transform duration-200 ${isDresModeOpen ? 'rotate-180' : ''}`}></i>
               </button>
 
               <div
