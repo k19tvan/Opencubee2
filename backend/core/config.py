@@ -58,6 +58,10 @@ VLLM_MODEL = os.getenv("VLLM_MODEL")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 TRANSLATE_PROVIDER = os.getenv("TRANSLATE_PROVIDER", "llm_translate").strip().lower()
 
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "http://gemini-web2api:8081/v1").rstrip("/")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "enn")
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-flash-lite")
+
 try:
     MAX_FRAME_LIMIT = int(os.getenv("MAX_FRAME_LIMIT", "200"))
 except ValueError:

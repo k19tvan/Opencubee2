@@ -179,3 +179,12 @@ export async function getSimilarFrames(frameName, limit = 15, threshold = 0.95) 
   });
   return handleResponse(response);
 }
+
+export async function sendChatMessage(payload) {
+  const response = await fetch(`${BASE_URL}/chatbot/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(response);
+}

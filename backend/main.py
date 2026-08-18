@@ -8,6 +8,7 @@ from backend.api.media import router as media_router
 from backend.api.agent import router as agent_router, shutdown_agent_runtime
 from backend.api.realtime import router as realtime_router
 from backend.api.search import router as search_router
+from backend.api.chatbot import router as chatbot_router 
 from backend.core.runtime import shutdown_runtime, startup_runtime
 
 
@@ -25,6 +26,7 @@ app.include_router(media_router)
 app.include_router(agent_router)
 app.include_router(search_router)
 app.include_router(realtime_router)
+app.include_router(chatbot_router)
 
 
 @app.on_event("startup")

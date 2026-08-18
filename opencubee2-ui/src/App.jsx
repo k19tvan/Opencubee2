@@ -5,6 +5,7 @@ import TopToolbar from './components/TopToolbar';
 import LeftSearchPanel from './components/LeftSearchPanel';
 import RightResultsPanel from './components/RightResultsPanel';
 import AgentWorkspace from './components/AgentWorkspace';
+import ChatbotPanel from './components/ChatbotPanel';
 import UsernameModal from './components/modals/UsernameModal';
 import ObjectFilterModal from './components/modals/ObjectFilterModal';
 import VideoPreviewModal from './components/modals/VideoPreviewModal';
@@ -164,6 +165,7 @@ export default function App() {
   const [randomTheme, setRandomTheme] = useState(() => RANDOM_THEME_OPTIONS[Math.floor(Math.random() * RANDOM_THEME_OPTIONS.length)]);
   const effectiveTheme = theme === 'random' ? randomTheme : theme;
   const [showTrake, setShowTrake] = useState(false);
+  const [showChatbot, setShowChatbot] = useState(false);
   const [isClustered, setIsClustered] = useState(false);
   const [isAmbiguous, setIsAmbiguous] = useState(false);
 
@@ -300,7 +302,6 @@ export default function App() {
 
   const restoreWorkspaceSnapshot = (snapshot) => {
     const restoredStages = snapshot.stages || [createEmptyStage()];
-    // Older workspaces may have stored either filter as disabled.
     const stagesWithDefaultOcr = restoredStages.map((stage) => {
       return { ...stage, ocrActive: true, asrActive: true };
     });
@@ -612,7 +613,10 @@ export default function App() {
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
       const key = event.key.toLowerCase();
-      if (key === 'q') {
+      if (key === 'l') {
+        event.preventDefault();
+        setShowChatbot((prev) => !prev);
+      } else if (key === 'q') {
         event.preventDefault();
         setDresMode((previousMode) => {
           const nextMode = previousMode === 'QA' ? 'KIS' : 'QA';
@@ -968,7 +972,6 @@ export default function App() {
       if (index === -1) return prev;
       const next = [...prev];
       next[index] = { ...newShot, url: getImageUrl(newShot.url || newShot.frame_name) || newShot.url };
-      // Sync the new state directly if needed, for now just update locally.
       return next;
     });
     setTrakePreviewShot(newShot);
@@ -1145,7 +1148,6 @@ export default function App() {
       if (document.querySelector('[data-shortcut-scope="modal"]')) return;
       const isTypingInField = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
 
-      // Allow DRES submission while a query field is focused.
       if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
         if (e.repeat) return;
         if (activeModal) return;
@@ -1167,7 +1169,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [handleInstantDresSubmit, hoveredFrame, isHoveringTrakePanel]);
+  }, [handleInstantDresSubmit, hoveredFrame, isHoveringTrakePanel, activeModal]);
 
   useEffect(() => {
     const handleQaCorrect = (e) => {
@@ -1515,8 +1517,7 @@ export default function App() {
             : current);
         }
       } catch {
-        // The session is created asynchronously by the POST request; retry on
-        // the next interval until the request has completed.
+        // Session created asynchronously
       }
     };
     const pollId = window.setInterval(pollEvents, 700);
@@ -1664,6 +1665,25 @@ export default function App() {
     handleQuickImageSearch(shot);
   }, [handleQuickImageSearch]);
 
+  const handleApplyChatQuery = useCallback((text) => {
+    if (!text) return;
+    setStagesWithHistory((prev) => {
+      if (!prev.length) return [createEmptyStage()];
+      const next = [...prev];
+      const latestIndex = next.length - 1;
+      next[latestIndex] = {
+        ...next[latestIndex],
+        queryText: text,
+        queryType: 'text',
+      };
+      return next;
+    });
+    const latestStage = latestWorkspaceRef.current?.stages?.at(-1);
+    if (latestStage) {
+      setStageFocusRequest({ stageId: latestStage.id, field: 'query', token: Date.now() });
+    }
+  }, []);
+
   return (
     <div className={`theme-${effectiveTheme} flex flex-col w-full h-screen overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-[#050505]' : 'bg-[var(--bg-primary)]'} text-[var(--text-primary)] transition-colors duration-1000 ease-smooth relative`}>
       {theme === 'random' && (
@@ -1710,6 +1730,8 @@ export default function App() {
             setTheme={setTheme}
             showTrake={showTrake}
             setShowTrake={setShowTrake}
+            showChatbot={showChatbot}
+            setShowChatbot={setShowChatbot}
             similarityScopeEnabled={similarityScopeEnabled}
             hasSimilarityScope={Boolean(similarityScope?.frameNames?.length)}
             onToggleSimilarityScope={handleToggleSimilarityScope}
@@ -1845,6 +1867,12 @@ export default function App() {
               />
             </div>
           </div>
+
+          <ChatbotPanel
+            isOpen={showChatbot}
+            onClose={() => setShowChatbot(false)}
+            onApplyQuery={handleApplyChatQuery}
+          />
 
           {showUserModal && <UsernameModal onJoin={handleJoinSession} />}
           {activeModal === 'filter' && <ObjectFilterModal onClose={() => setActiveModal(null)} />}
