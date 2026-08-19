@@ -26,6 +26,9 @@ app.include_router(agent_router)
 app.include_router(search_router)
 app.include_router(realtime_router)
 
+from backend.api.soloai import router as soloai_router
+app.include_router(soloai_router)
+
 
 @app.on_event("startup")
 def startup_event():

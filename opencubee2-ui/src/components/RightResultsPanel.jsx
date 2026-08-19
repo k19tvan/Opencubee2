@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { getImageUrl } from '../utils/imageUrl';
-import { getSimilarFrames } from '../api';
+import { getSimilarFrames, getVideoThumbnailUrl } from '../api';
+import QASubmitModal from './modals/QASubmitModal';
 
 const HIGHLIGHT_START = '__MEILI_HIGHLIGHT_START__';
 const HIGHLIGHT_END = '__MEILI_HIGHLIGHT_END__';
@@ -155,9 +156,7 @@ const ResultItem = React.memo(({
   onPreview,
   onContext,
   isLocked = false,
-  dresMode,
   setHoveredFrame,
-  onDresSubmit,
   isWrong = false,
   isCorrect = false,
 }) => {
@@ -236,24 +235,13 @@ const ResultItem = React.memo(({
           <i className="fas fa-users"></i>
         </button>
         <button
-          className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent cursor-pointer pointer-events-auto shadow-md"
+          className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-[#10b981] border border-[#10b981] text-white flex items-center justify-center text-xs hover:brightness-110 hover:border-transparent cursor-pointer pointer-events-auto transition-all shadow-[0_0_10px_rgba(16,185,129,0.4)] hover:scale-110"
           onClick={(e) => { e.stopPropagation(); onPushToTrake(shot); }}
-          title="Pin to Trake"
+          title="Stage for Submission"
         >
-          <i className="fas fa-thumbtack"></i>
+          <i className="fas fa-paper-plane"></i>
         </button>
-        {(dresMode === 'KIS' || dresMode === 'QA') && (
-          <button
-            className={`absolute top-1.5 right-1.5 w-9 h-9 rounded-lg border flex items-center justify-center text-xs text-white hover:border-transparent cursor-pointer pointer-events-auto ${dresMode === 'KIS'
-              ? 'bg-emerald-600/90 border-emerald-400/30 hover:bg-emerald-500'
-              : 'bg-blue-600/90 border-blue-400/30 hover:bg-blue-500'
-              }`}
-            onClick={(e) => { e.stopPropagation(); onDresSubmit?.(shot); }}
-            title={`Submit ${dresMode}`}
-          >
-            <i className={`fas ${dresMode === 'KIS' ? 'fa-paper-plane' : 'fa-comment-dots'}`}></i>
-          </button>
-        )}
+
       </div>
       {isLocked && (
         <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded bg-emerald-500/90 flex items-center justify-center z-10" title="Video locked">
@@ -414,27 +402,47 @@ export default function RightResultsPanel({
   onQuickSearch = () => { },
   onToggleLock = () => { },
   lockedVideoIds = [],
-  dresMode,
   setHoveredFrame,
   setIsHoveringTrakePanel,
-  onDresSubmit,
+  soloAIQueries = [],
+  activeSoloQueryIndex = 0,
+  setActiveSoloQueryIndex = () => { },
+  onSoloAISubmit = () => { },
+  onDeleteSoloAISubmit = () => { },
+  editTrakeRowIndex = null,
+  onEditTrakeRow,
+  onCancelEditTrakeRow,
+  onDeleteTrakeRow,
 }) {
   const containerRef = useRef(null);
   const sentinelRef = useRef(null);
   const prevFirstResult = useRef(null);
-  const hoveredShotRef = useRef(null);
-  const hoveredTeamShotRef = useRef(null);
+  const trakeDragIndexRef = useRef(null);
+  const [overFolder, setOverFolder] = useState(false);
+  const trakeFramesRef = useRef(trakeFrames);
   const hoveredTrakeShotRef = useRef(null);
   const hoveredTrakeIndexRef = useRef(null);
-  const trakeFramesRef = useRef(trakeFrames);
-  const trakeDragIndexRef = useRef(null);
+  const hoveredTeamShotRef = useRef(null);
   const suppressTeamRemovalRef = useRef(false);
+  const hoveredShotRef = useRef(null);
+  
+  const [isTrakeDropdownOpen, setIsTrakeDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsTrakeDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   trakeFramesRef.current = trakeFrames;
 
   const pushToTeam = useCallback((shot) => {
     if (!shot) return;
-    // Wait for the server echo/snapshot instead of creating local-only state
-    // when the socket is unavailable.
     sendRealtimeMessage({
       type: 'new_frame',
       data: { shot, user: { name: username, color: userColor } },
@@ -446,8 +454,6 @@ export default function RightResultsPanel({
     const frameKey = shot.filepath || shot.frame_name || shot.url;
     if (!frameKey) return;
 
-    // Do not let the card that slides under the pointer become an implicit
-    // second delete target. The pointer must move before another remove.
     suppressTeamRemovalRef.current = true;
     hoveredTeamShotRef.current = null;
     setHoveredFrame?.(null);
@@ -467,12 +473,11 @@ export default function RightResultsPanel({
 
   const removeFromTrake = useCallback((shot) => {
     const currentFrames = trakeFramesRef.current;
-    const frameKey = shot?.filepath || shot?.frame_name || shot?.url;
-    const index = currentFrames.findIndex((frame) => (
-      (frame.filepath || frame.frame_name || frame.url) === frameKey
-    ));
-    // The next card slides into the same slot without emitting mouseenter.
-    // Keep the slot index so the next shortcut resolves against new state.
+    const frameKey = shot?.filepath || shot?.frame_name || shot?.url || (shot?.video_id && shot?.frame_id ? `${shot.video_id}_${shot.frame_id}` : '');
+    const index = currentFrames.findIndex((frame) => {
+      const fKey = frame?.filepath || frame?.frame_name || frame?.url || (frame?.video_id && frame?.frame_id ? `${frame.video_id}_${frame.frame_id}` : '');
+      return fKey === frameKey;
+    });
     const nextFrame = index >= 0 ? currentFrames[index + 1] : null;
     hoveredTrakeIndexRef.current = nextFrame ? index : null;
     hoveredTrakeShotRef.current = nextFrame || null;
@@ -485,8 +490,6 @@ export default function RightResultsPanel({
   useEffect(() => {
     const handleShortcut = (event) => {
       if (event.repeat) return;
-      // A modal owns its keyboard shortcuts while open. The results panel is
-      // still mounted underneath it and must not perform a second action.
       if (document.querySelector('[data-shortcut-scope="modal"]')) return;
       const hoveredTrakeShot = hoveredTrakeIndexRef.current != null
         ? trakeFramesRef.current[hoveredTrakeIndexRef.current]
@@ -498,21 +501,27 @@ export default function RightResultsPanel({
         event.preventDefault();
 
         if (hoveredTrakeShot) {
-          pushToTeam(hoveredTrakeShot);
+          removeFromTrake?.(hoveredTrakeShot);
         } else if (hoveredTeamShot && !suppressTeamRemovalRef.current) {
           removeFromTeam(hoveredTeamShot);
         } else if (hoveredShotRef.current) {
           pushToTeam(hoveredShotRef.current);
         }
-      } else if (event.shiftKey && !event.ctrlKey && event.code === 'Space') {
+      } else if (event.ctrlKey && event.shiftKey && event.code === 'Space') {
         event.preventDefault();
-
-        if (hoveredTrakeShot) {
-          removeFromTrake(hoveredTrakeShot);
+        let targetShot = null;
+        if (hoveredShotRef.current && !hoveredTrakeShot && !hoveredTeamShot) {
+          targetShot = hoveredShotRef.current;
         } else if (hoveredTeamShot) {
-          pushToTrake(hoveredTeamShot);
-        } else if (hoveredShotRef.current) {
-          pushToTrake(hoveredShotRef.current);
+          targetShot = hoveredTeamShot;
+        }
+
+        if (targetShot) {
+          pushToTrake(targetShot);
+        } else {
+          if (onSoloAISubmit && typeof onSoloAISubmit === 'function') {
+            onSoloAISubmit(trakeFramesRef.current);
+          }
         }
       }
     };
@@ -521,15 +530,15 @@ export default function RightResultsPanel({
     return () => {
       window.removeEventListener('keydown', handleShortcut);
     };
-  }, [pushToTeam, removeFromTeam, pushToTrake, removeFromTrake]);
+  }, [pushToTeam, removeFromTeam, pushToTrake, removeFromTrake, soloAIQueries, activeSoloQueryIndex, onSoloAISubmit]);
 
   useEffect(() => {
-    const hoveredShot = hoveredTrakeShotRef.current;
+    const hovered = hoveredTrakeShotRef.current;
     if (hoveredTrakeIndexRef.current != null && hoveredTrakeIndexRef.current >= trakeFrames.length) {
       hoveredTrakeIndexRef.current = null;
     }
-    if (!hoveredShot) return;
-    const hoveredKey = hoveredShot.filepath || hoveredShot.frame_name || hoveredShot.url;
+    if (!hovered) return;
+    const hoveredKey = hovered.filepath || hovered.frame_name || hovered.url;
     const stillInTrake = trakeFrames.some((shot) => (
       (shot.filepath || shot.frame_name || shot.url) === hoveredKey
     ));
@@ -601,7 +610,6 @@ export default function RightResultsPanel({
       const shot = serializedShot ? JSON.parse(serializedShot) : null;
       if (shot) pushToTrake(shot);
     } catch {
-      // Ignore drops that were not created from one of this app's frame cards.
     }
   }, [pushToTrake]);
 
@@ -678,14 +686,12 @@ export default function RightResultsPanel({
         onPreview={onPreview}
         onContext={onContext}
         isLocked={lockedVideoIds.includes(shot.video_id)}
-        dresMode={dresMode}
         setHoveredFrame={setHoveredFrame}
-        onDresSubmit={onDresSubmit}
         isWrong={isWrong}
         isCorrect={isCorrect}
       />
     );
-  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, pushToTeam, pushToTrake, lockedVideoIds, dresMode, setHoveredFrame, onDresSubmit, wrongFrames, correctSubmission]);
+  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, pushToTeam, pushToTrake, lockedVideoIds, setHoveredFrame, wrongFrames, correctSubmission]);
 
   useEffect(() => {
     const firstResult = searchResults.length > 0 ? searchResults[0] : null;
@@ -766,18 +772,94 @@ export default function RightResultsPanel({
             setIsHoveringTrakePanel?.(false);
           }}
         >
-          <div className="flex-shrink-0">
-            <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2 px-6 mb-3">
-              <i className="fas fa-thumbtack"></i> Trake Panel
-              <span className="text-[10px] bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded-full font-mono ml-1">
-                {trakeFrames.length}
-              </span>
-              {dresMode === 'Trake' && (
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-2 py-0.5 rounded-full font-mono font-bold animate-pulse ml-2">
-                  READY TO SUBMIT (Ctrl+Shift+Space)
+          <div className="flex-shrink-0 px-6 mb-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2">
+                <i className="fas fa-file-invoice"></i> SOLOAI SUBMISSION PANEL
+                <span className="text-[10px] bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded-full font-mono ml-1 mr-2">
+                  {trakeFrames.length} Staged
                 </span>
-              )}
-            </h3>
+                
+                {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && soloAIQueries[activeSoloQueryIndex]?.submissions?.length > 0 && (
+                  <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-3">
+                    <div className="relative" ref={dropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsTrakeDropdownOpen(!isTrakeDropdownOpen)}
+                        className="flex items-center justify-between min-w-[120px] bg-[#1e1e1e] border border-white/10 rounded px-3 py-1 text-xs text-white outline-none focus:border-emerald-500 h-6 cursor-pointer hover:bg-white/5 transition-colors"
+                      >
+                        <span className="truncate mr-2 font-mono">
+                          {editTrakeRowIndex !== null ? `Row ${editTrakeRowIndex + 1}` : "+ Append New"}
+                        </span>
+                        <i className={`fas fa-chevron-down text-[10px] transition-transform ${isTrakeDropdownOpen ? 'rotate-180' : ''}`}></i>
+                      </button>
+                      
+                      {isTrakeDropdownOpen && (
+                        <div className="absolute top-full left-0 mt-1 min-w-[120px] bg-[#2a2a2a] border border-white/10 rounded-md shadow-xl z-50 overflow-hidden text-xs">
+                          {soloAIQueries[activeSoloQueryIndex].submissions.map((_, rIdx) => (
+                            <button
+                              key={`trake-row-${rIdx}`}
+                              className={`w-full text-left px-3 py-1.5 font-mono transition-colors hover:bg-emerald-500 hover:text-white ${editTrakeRowIndex === rIdx ? 'bg-emerald-500/20 text-emerald-300' : 'text-white'}`}
+                              onClick={() => {
+                                onEditTrakeRow && onEditTrakeRow(rIdx);
+                                setIsTrakeDropdownOpen(false);
+                              }}
+                            >
+                              Row {rIdx + 1}
+                            </button>
+                          ))}
+                          <div className="border-t border-white/10 my-0.5"></div>
+                          <button
+                            className={`w-full text-left px-3 py-1.5 font-mono transition-colors hover:bg-emerald-500 hover:text-white ${editTrakeRowIndex === null ? 'bg-emerald-500/20 text-emerald-300' : 'text-white/70'}`}
+                            onClick={() => {
+                              onCancelEditTrakeRow && onCancelEditTrakeRow();
+                              setIsTrakeDropdownOpen(false);
+                            }}
+                          >
+                            + Append New
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {editTrakeRowIndex !== null && (
+                      <button 
+                        onClick={() => {
+                           onDeleteTrakeRow && onDeleteTrakeRow(editTrakeRowIndex);
+                        }}
+                        className="text-[10px] text-white/40 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 px-2 flex items-center justify-center h-6 w-6 rounded transition-colors"
+                        title="Delete this row"
+                      >
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    )}
+                  </div>
+                )}
+                
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onSoloAISubmit && typeof onSoloAISubmit === 'function') {
+                      onSoloAISubmit(trakeFramesRef.current);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/30 rounded text-[11px] font-bold uppercase tracking-wider hover:bg-[#10b981] hover:text-white transition-all shadow-[0_0_8px_rgba(16,185,129,0.15)]"
+                >
+                  <i className="fas fa-paper-plane mr-0.5"></i> Submit
+                </button>
+              </h3>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-zinc-500 italic lowercase tracking-wider">
+                  /SoLoaiAIC/{soloAIQueries[activeSoloQueryIndex]?.filename?.replace('.txt', '.csv')}
+                </span>
+              </div>
+            </div>
+            
+            {soloAIQueries[activeSoloQueryIndex]?.content && (
+              <div className="text-[11px] leading-relaxed text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md p-3 mt-3 break-words whitespace-pre-wrap">
+                {soloAIQueries[activeSoloQueryIndex].content}
+              </div>
+            )}
           </div>
           <div
             id="trakeGrid"
@@ -785,18 +867,20 @@ export default function RightResultsPanel({
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleTrakePanelDrop}
           >
-            {trakeFrames.length === 0 ? (
-              <p className="text-[var(--text-secondary)] text-xs italic py-2">Drag or pin frames here to compare...</p>
-            ) : (
-              trakeFrames.map((shot, idx) => (
+            {(() => {
+              if (trakeFrames.length === 0) {
+                return <p className="text-[var(--text-secondary)] text-xs italic py-2">Drag or pin frames here to build your submission...</p>;
+              }
+              
+              const renderStaged = () => trakeFrames.map((shot, idx) => (
                 <div
-                  key={`trake-${shot?.filepath || shot?.frame_name || shot?.url || idx}`}
+                  key={`staged-${shot?.filepath || shot?.frame_name || shot?.url || idx}`}
                   draggable={true}
                   onDragStart={(e) => handleTrakeDragStart(e, shot, idx)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleTrakeDrop(e, idx)}
                   onDragEnd={() => { trakeDragIndexRef.current = null; }}
-                  className="relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-[1.03] hover:-translate-y-0.5 transition-all duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn"
+                  className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border transition-all duration-300 ease-spring will-change-transform animate-scaleIn border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-[1.03] hover:-translate-y-0.5 cursor-grab active:cursor-grabbing active:scale-100 shrink-0`}
                   onClick={(e) => handleItemClick(e, shot)}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -816,34 +900,61 @@ export default function RightResultsPanel({
                   }}
                 >
                   <img
-                    src={getImageUrl(shot.url || shot.frame_name || shot.filepath)}
-                    alt="Trake frame"
+                    src={getImageUrl(shot.url || shot.frame_name || shot.filepath || getVideoThumbnailUrl(shot.video_id, shot.frame_id))}
+                    alt={`Frame ${shot.frame_id || idx}`}
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+';
-                    }}
-                    loading="lazy"
-                    decoding="async"
+                    onError={(e) => { e.target.onerror = null; e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+'; }}
                   />
+                  {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && (
+                    <div className="absolute top-1 left-1.5 z-10 px-1.5 py-0.5 rounded bg-emerald-700/90 text-emerald-100 text-[10px] font-bold shadow-md">
+                      E{idx + 1}
+                    </div>
+                  )}
+                  {shot.qaAnswer && (
+                    <div className="absolute bottom-1 left-1 z-10 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-bold shadow-sm w-fit max-w-[85%] truncate" title={shot.qaAnswer}>
+                      {shot.qaAnswer}
+                    </div>
+                  )}
                   <button
-                    type="button"
-                    draggable={false}
-                    onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
-                      e.preventDefault();
                       e.stopPropagation();
-                      onPreviewTrakeFrame(shot);
+                      removeFromTrake(shot);
                     }}
-                    className="absolute bottom-1.5 right-1.5 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-slate-900/90 text-xs text-white shadow-md transition-all hover:scale-110 hover:border-transparent hover:bg-blue-500 cursor-pointer"
-                    title="Preview frames around this point"
-                    aria-label="Preview frames around this point"
+                    className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-[10px] text-white/70 hover:bg-rose-500 hover:text-white"
+                    title="Remove from staging"
                   >
-                    <i className="fas fa-film"></i>
+                    <i className="fas fa-times"></i>
                   </button>
+                  {shot.similarityScore !== undefined && shot.similarityScore !== null && (
+                     <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded text-[8px] bg-black/50 text-white font-mono pointer-events-none">
+                        {(shot.similarityScore).toFixed(2)}
+                     </div>
+                  )}
+                  {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && (
+                    <button
+                      type="button"
+                      draggable={false}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onPreviewTrakeFrame(shot);
+                      }}
+                      className="absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded bg-slate-900/80 text-[10px] text-white shadow-sm border border-white/20 transition-all hover:scale-110 hover:border-transparent hover:bg-rose-500 cursor-pointer"
+                      title="Preview frames around this point"
+                    >
+                      <i className="fas fa-film"></i>
+                    </button>
+                  )}
                 </div>
-              ))
-            )}
+              ));
+
+              return (
+                <React.Fragment>
+                  {renderStaged()}
+                </React.Fragment>
+              );
+            })()}
           </div>
         </div>
       )}

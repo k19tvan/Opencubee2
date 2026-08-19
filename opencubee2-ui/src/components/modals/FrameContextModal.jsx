@@ -43,7 +43,7 @@ const isSameShot = (first, second) => {
   );
 };
 
-export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onSubmitDres, onContext, onQuickSearch, wrongFrames = [], correctSubmission = null }) {
+export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onContext, onQuickSearch, wrongFrames = [], correctSubmission = null }) {
   const [neighbors, setNeighbors] = useState([]);
   const [contextMode, setContextMode] = useState('all');
   const [timelineWords, setTimelineWords] = useState([]);
@@ -159,29 +159,23 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         onClose();
         return;
       }
-      if (e.ctrlKey && e.code === 'Space') {
+      if (e.ctrlKey && !e.shiftKey && e.code === 'Space') {
         e.preventDefault();
-        if (e.shiftKey) {
-          if (hoveredShot && onSubmitDres) {
-            onSubmitDres(hoveredShot);
-          }
-        } else {
-          if (hoveredShot) {
-            pushToTeam(hoveredShot);
-            toast.success('Sent to Team!');
-          }
+        if (hoveredShot) {
+          pushToTeam(hoveredShot);
+          toast.success('Sent to Team!');
         }
-      } else if (e.shiftKey && !e.ctrlKey && e.code === 'Space') {
+      } else if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
         e.preventDefault();
         e.stopImmediatePropagation?.();
-        if (hoveredShot) {
+        if (hoveredShot && pushToTrake) {
           pushToTrake(hoveredShot);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hoveredShot, onSubmitDres, onClose, pushToTeam, pushToTrake]);
+  }, [hoveredShot, onClose, pushToTeam, pushToTrake]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -416,15 +410,6 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                       </div>
 
                       <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20">
-                      {onSubmitDres && (
-                        <button
-                          className="absolute top-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-blue-500 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
-                          onClick={(e) => { e.stopPropagation(); onSubmitDres(shot); }}
-                          title="Submit to DRES"
-                        >
-                          <i className="fas fa-paper-plane"></i>
-                        </button>
-                      )}
                       <button 
                         className="absolute bottom-1.5 left-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
                         onClick={(e) => { e.stopPropagation(); pushToTeam(shot); }} 
@@ -433,11 +418,11 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                         <i className="fas fa-users"></i>
                       </button>
                       <button 
-                        className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
+                        className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-[#10b981] border border-[#10b981] text-white flex items-center justify-center text-xs hover:brightness-110 hover:border-transparent cursor-pointer pointer-events-auto transition-all shadow-[0_0_10px_rgba(16,185,129,0.4)] hover:scale-110"
                         onClick={(e) => { e.stopPropagation(); pushToTrake(shot); }} 
-                        title="Pin to Trake"
+                        title="Stage for Submission (Ctrl+Shift+Space)"
                       >
-                        <i className="fas fa-thumbtack"></i>
+                        <i className="fas fa-paper-plane"></i>
                       </button>
                       </div>
                     </div>
@@ -464,7 +449,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         </div>
 
         <div className="px-6 py-4 border-t border-[var(--border-color)] text-center text-xs text-[var(--text-secondary)] bg-[var(--glass-bg)]">
-          Click to zoom. Ctrl+Click: neighboring frames. Ctrl+Alt+Click: horizontal timeline of the entire video. Right-click to open video preview. Hover over any frame for action options (Ctrl+Shift+Space to submit DRES, Ctrl+Space to Send to Team).
+          Click to zoom. Ctrl+Click: neighboring frames. Ctrl+Alt+Click: horizontal timeline of the entire video. Right-click to open video preview. Hover over any frame for action options (Ctrl+Shift+Space to push to Submission panel, Ctrl+Space to Send to Team).
         </div>
 
       </div>

@@ -48,11 +48,7 @@ export default function TopToolbar({
   userColor,
   theme,
   setTheme,
-  dresMode,
-  setDresMode,
-  dresSessionId,
-  onLogoutDres,
-  onOpenDresLogin,
+  onUploadSoloAIZip,
   showTrake,
   setShowTrake,
   similarityScopeEnabled,
@@ -82,16 +78,48 @@ export default function TopToolbar({
   getHistoryEntries = () => [],
   onRestoreHistory = () => {},
   onClearHistory = () => {},
+  soloAIQueries = [],
+  activeSoloQueryIndex,
+  setActiveSoloQueryIndex,
+  fetchSoloQueries,
 }) {
+  const [isNewQueryModalOpen, setIsNewQueryModalOpen] = useState(false);
+  const [newQueryName, setNewQueryName] = useState('');
+  const [isQueryDropdownOpen, setIsQueryDropdownOpen] = useState(false);
+  const queryDropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (queryDropdownRef.current && !queryDropdownRef.current.contains(event.target)) {
+        setIsQueryDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const themeRef = useRef(null);
   const [isModelsOpen, setIsModelsOpen] = useState(false);
   const modelsRef = useRef(null);
-  const [isDresModeOpen, setIsDresModeOpen] = useState(false);
-  const dresModeRef = useRef(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const historyRef = useRef(null);
   const activeThemeMeta = THEME_META[theme] || THEME_META.dark;
+  const fileInputRef = useRef(null);
+
+  const handleUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      onUploadSoloAIZip(file);
+    }
+    // reset
+    e.target.value = null;
+  };
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -100,9 +128,6 @@ export default function TopToolbar({
       }
       if (modelsRef.current && !modelsRef.current.contains(event.target)) {
         setIsModelsOpen(false);
-      }
-      if (dresModeRef.current && !dresModeRef.current.contains(event.target)) {
-        setIsDresModeOpen(false);
       }
       if (historyRef.current && !historyRef.current.contains(event.target)) {
         setIsHistoryOpen(false);
@@ -274,7 +299,7 @@ export default function TopToolbar({
         <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
         {/* Search Mode Toggles */}
-        <ToolBtn onClick={() => setShowTrake(!showTrake)} icon="fas fa-stream" label="Trake" active={showTrake} theme={theme} />
+        <ToolBtn onClick={() => setShowTrake(!showTrake)} icon="fas fa-stream" label="Submission" active={showTrake} theme={theme} />
         <ToolBtn
           onClick={onToggleSimilarityScope}
           icon="fas fa-images"
@@ -393,58 +418,167 @@ export default function TopToolbar({
         <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
         {/* Integration & System */}
-        {dresSessionId ? (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="relative flex items-center group" ref={dresModeRef}>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            accept=".zip" 
+            className="hidden" 
+          />
+          {soloAIQueries && soloAIQueries.length > 0 ? (
+            <div className="flex gap-1 items-center bg-emerald-500/10 rounded border border-emerald-500/20 px-1 py-0.5">
               <button
-                onClick={() => setIsDresModeOpen(!isDresModeOpen)}
-                data-topbar-button="true"
-                className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
-                title="DRES Submit Mode (Alt + Q to switch KIS/QA)"
+                onClick={handleUploadClick}
+                className="w-7 h-7 flex items-center justify-center rounded text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                title="Upload Queries Zip"
               >
-                <i className={`fas fa-paper-plane ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
-                <span className="hidden sm:inline">{dresMode}</span>
+                <i className="fas fa-file-archive text-[11px]"></i>
               </button>
-
-              <div
-                className={`absolute top-[calc(100%+6px)] right-0 min-w-[120px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-xl'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-right z-50 py-1 ${isDresModeOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
+              
+              <button
+                onClick={() => setIsNewQueryModalOpen(true)}
+                className="w-7 h-7 flex items-center justify-center rounded text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                title="Create New Query"
               >
-                {['KIS', 'QA'].map((mode) => (
+                <i className="fas fa-plus text-[11px]"></i>
+              </button>
+              
+              <div className="w-[1px] h-4 bg-emerald-500/20 opacity-40 shrink-0 mx-0.5" />
+              
+              <div className="relative" ref={queryDropdownRef}>
+                <button
+                  onClick={() => setIsQueryDropdownOpen(!isQueryDropdownOpen)}
+                  className="h-7 px-3 min-w-[120px] max-w-[180px] sm:max-w-[220px] bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 text-xs rounded border border-emerald-500/20 flex items-center justify-between font-bold"
+                >
+                  <span className="truncate">{soloAIQueries[activeSoloQueryIndex]?.filename || 'Select Query'}</span>
+                  <i className="fas fa-chevron-down ml-2 text-[9px] opacity-70"></i>
+                </button>
+                
+                {isQueryDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-64 max-h-64 overflow-y-auto bg-slate-900 border border-emerald-500/30 rounded shadow-xl z-50 animate-popIn scrollbar-thin scrollbar-thumb-emerald-500/50 scrollbar-track-transparent">
+                    {soloAIQueries.map((q, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setActiveSoloQueryIndex(idx);
+                          setIsQueryDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-emerald-500/20 ${activeSoloQueryIndex === idx ? 'bg-emerald-500/30 text-emerald-300 font-bold' : 'text-emerald-400/80'} border-b border-white/5 last:border-b-0`}
+                      >
+                        {q.filename}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <div className="w-[1px] h-4 bg-emerald-500/20 opacity-40 shrink-0 mx-0.5" />
+              
+              <button
+                onClick={async () => {
+                  const query = soloAIQueries[activeSoloQueryIndex];
+                  if (query && window.confirm(`Delete query ${query.filename}?`)) {
+                    const { deleteSoloAIQuery } = await import('../api');
+                    await deleteSoloAIQuery(query.filename);
+                    if (activeSoloQueryIndex >= soloAIQueries.length - 1) {
+                      setActiveSoloQueryIndex(Math.max(0, soloAIQueries.length - 2));
+                    }
+                    fetchSoloQueries?.();
+                  }
+                }}
+                className="w-7 h-7 flex items-center justify-center rounded text-rose-400 hover:bg-rose-500/20 transition-colors"
+                title="Delete Selected Query"
+              >
+                <i className="fas fa-trash text-[11px]"></i>
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-1">
+              <button
+                onClick={handleUploadClick}
+                data-topbar-button="true"
+                className={`${toolBtnBaseClasses()} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20`}
+                title="Upload Soloai Query Zip"
+              >
+                <i className="fas fa-file-archive text-[11px]"></i>
+                <span className="hidden sm:inline">Upload Queries</span>
+              </button>
+              <button
+                onClick={() => setIsNewQueryModalOpen(true)}
+                data-topbar-button="true"
+                className={`${toolBtnBaseClasses()} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20`}
+                title="Create New Query"
+              >
+                <i className="fas fa-plus text-[11px]"></i>
+                <span className="hidden sm:inline">Add</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {isNewQueryModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn">
+            <div className="w-full max-w-sm rounded-xl bg-slate-900 border border-emerald-500/30 shadow-2xl overflow-hidden animate-scaleIn">
+              <div className="px-5 py-4 border-b border-white/10 bg-slate-800/50 flex items-center justify-between">
+                <h3 className="font-bold text-emerald-400 flex items-center gap-2 text-sm uppercase tracking-wider">
+                  <i className="fas fa-plus-circle text-emerald-500"></i> Create Query
+                </h3>
+                <button
+                  onClick={() => setIsNewQueryModalOpen(false)}
+                  className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 text-emerald-400/50 hover:text-emerald-300 transition-colors"
+                >
+                  <i className="fas fa-times text-[11px]"></i>
+                </button>
+              </div>
+              <div className="p-5">
+                <p className="text-xs text-slate-400 mb-3">Enter a name for the new query file.</p>
+                <input
+                  type="text"
+                  autoFocus
+                  value={newQueryName}
+                  onChange={(e) => setNewQueryName(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter' && newQueryName.trim()) {
+                      const { createSoloAIQuery } = await import('../api');
+                      await createSoloAIQuery(newQueryName.trim());
+                      setNewQueryName('');
+                      setIsNewQueryModalOpen(false);
+                      fetchSoloQueries?.();
+                    } else if (e.key === 'Escape') {
+                      setIsNewQueryModalOpen(false);
+                    }
+                  }}
+                  placeholder="e.g. query-p1-kis"
+                  className="w-full bg-slate-950 border border-emerald-500/30 rounded-lg px-3 py-2 text-emerald-300 text-sm focus:outline-none focus:border-emerald-500 placeholder:text-emerald-500/30"
+                />
+                
+                <div className="mt-5 flex gap-2 justify-end">
                   <button
-                    key={mode}
-                    onClick={() => {
-                      setDresMode(mode);
-                      setIsDresModeOpen(false);
-                    }}
-                    className={`text-left px-3.5 py-1.5 text-xs transition-colors duration-150 flex items-center gap-2 ${dresMode === mode ? (theme === 'jujutsu' ? 'bg-[#795ceb] text-white font-bold' : 'bg-[var(--glass-bg)] text-[var(--text-primary)] font-semibold') : (theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]')}`}
+                    onClick={() => setIsNewQueryModalOpen(false)}
+                    className="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-white/5 hover:text-slate-300 transition-colors"
                   >
-                    <span className="flex-grow">{mode} Mode</span>
-                    {dresMode === mode && <i className="fas fa-check text-[10px] text-emerald-400"></i>}
+                    Cancel
                   </button>
-                ))}
+                  <button
+                    disabled={!newQueryName.trim()}
+                    onClick={async () => {
+                      if (newQueryName.trim()) {
+                        const { createSoloAIQuery } = await import('../api');
+                        await createSoloAIQuery(newQueryName.trim());
+                        setNewQueryName('');
+                        setIsNewQueryModalOpen(false);
+                        fetchSoloQueries?.();
+                      }
+                    }}
+                    className="px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Create
+                  </button>
+                </div>
               </div>
             </div>
-
-            <button
-              onClick={onOpenDresLogin}
-              data-topbar-button="true"
-              className={`${toolBtnBaseClasses()} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20`}
-              title="DRES Session Active (Click to view session/logout)"
-            >
-              <i className="fas fa-plug text-[11px]"></i>
-              <span className="hidden sm:inline">{dresUsername || 'Dres'}</span>
-            </button>
           </div>
-        ) : (
-          <button
-            onClick={onOpenDresLogin}
-            data-topbar-button="true"
-            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
-            title="DRES Login"
-          >
-            <i className="fas fa-plug text-[11px]"></i>
-            <span className="hidden sm:inline">Dres</span>
-          </button>
         )}
 
         <button

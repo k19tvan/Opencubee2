@@ -231,7 +231,6 @@ function AgentFrameCard({
   onQuickSearch,
   onPushToTeam,
   onPushToTrake,
-  onDresSubmit,
   onToggleLock,
 }) {
   const imageUrl = getImageUrl(frame.url || frame.frame_name || frame.filepath);
@@ -280,8 +279,7 @@ function AgentFrameCard({
           <button type="button" onClick={(event) => { event.stopPropagation(); onContext(frame); }} className={`${frameActionClass} hover:bg-blue-500`} title="View neighbors"><i className="fas fa-layer-group" /></button>
           <button type="button" onClick={(event) => { event.stopPropagation(); onQuickSearch(frame); }} className={`${frameActionClass} hover:bg-cyan-500`} title="Similarity search"><i className="fas fa-magnifying-glass-plus" /></button>
           <button type="button" onClick={(event) => { event.stopPropagation(); onPushToTeam(frame); }} className={`${frameActionClass} hover:bg-slate-500`} title="Send to Team"><i className="fas fa-users" /></button>
-          <button type="button" onClick={(event) => { event.stopPropagation(); onPushToTrake(frame); }} className={`${frameActionClass} hover:bg-rose-500`} title="Pin to Trake"><i className="fas fa-thumbtack" /></button>
-          <button type="button" onClick={(event) => { event.stopPropagation(); onDresSubmit(frame); }} className={`${frameActionClass} hover:bg-emerald-500`} title="Submit to DRES"><i className="fas fa-paper-plane" /></button>
+          <button type="button" onClick={(event) => { event.stopPropagation(); onPushToTrake(frame); }} className={`${frameActionClass} hover:bg-emerald-500`} title="Submit"><i className="fas fa-paper-plane" /></button>
         </div>
       </div>
     </div>
@@ -516,7 +514,6 @@ export default function AgentWorkspace({
   onQuickSearch,
   onPushToTeam,
   onPushToTrake,
-  onDresSubmit,
   onToggleLock,
 }) {
   const [messages, setMessages] = useState(initialMessages);
@@ -742,7 +739,7 @@ export default function AgentWorkspace({
 
   const frameActions = {
     onZoom, onPreview, onContext, onQuickSearch, onPushToTeam,
-    onPushToTrake, onDresSubmit, onToggleLock,
+    onPushToTrake, onToggleLock,
   };
   const hasResult = messages.some((message) => message.type === 'result');
   // A Search-mode Ctrl+Enter task arrives through backgroundAgentJob before

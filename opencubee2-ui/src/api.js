@@ -179,3 +179,54 @@ export async function getSimilarFrames(frameName, limit = 15, threshold = 0.95) 
   });
   return handleResponse(response);
 }
+
+// --- SoloAI Submissions ---
+
+export async function uploadSoloAIZip(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${BASE_URL}/soloai/upload_zip`, {
+    method: 'POST',
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
+export async function getSoloAIQueries() {
+  const response = await fetch(`${BASE_URL}/soloai/queries`);
+  return handleResponse(response);
+}
+
+export async function submitSoloAI(payload) {
+  const response = await fetch(`${BASE_URL}/soloai/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteSoloAISubmit(payload) {
+  const response = await fetch(`${BASE_URL}/soloai/submit`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(response);
+}
+
+export async function createSoloAIQuery(queryName) {
+  const response = await fetch(`${BASE_URL}/soloai/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query_name: queryName }),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteSoloAIQuery(queryName) {
+  const response = await fetch(`${BASE_URL}/soloai/query/${encodeURIComponent(queryName)}`, {
+    method: 'DELETE',
+  });
+  return handleResponse(response);
+}

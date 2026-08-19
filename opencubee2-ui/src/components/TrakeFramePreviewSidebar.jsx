@@ -15,7 +15,7 @@ export default function TrakeFramePreviewSidebar({ shot, onClose, onReplace }) {
     setError('');
 
     if (!shot?.video_id) {
-      setError('This Trake frame has no video information.');
+      setError('This Submission frame has no video information.');
       return undefined;
     }
 
@@ -56,7 +56,7 @@ export default function TrakeFramePreviewSidebar({ shot, onClose, onReplace }) {
       <header className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--glass-bg)] px-4 py-3">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[var(--accent-primary)]">
-            <i className="fas fa-film"></i> Trake frame preview
+            <i className="fas fa-film"></i> Submission frame preview
           </h2>
           <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
             {shot?.video_id || 'Unknown video'} · 0.2s intervals · ±3.0s

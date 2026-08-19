@@ -14,7 +14,7 @@ const formatTime = (seconds) => {
   return `${String(minutes).padStart(2, '0')}:${remaining.toFixed(3).padStart(6, '0')}`;
 };
 
-export default function VideoPreviewModal({ videoId, initialFrame, onClose, socketRef, sendRealtimeMessage, username, userColor, onDresSubmit, onPushToTrake, wrongFrames = [] }) {
+export default function VideoPreviewModal({ videoId, initialFrame, onClose, socketRef, sendRealtimeMessage, username, userColor, onPushToTrake, wrongFrames = [] }) {
   const videoRef = useRef(null);
   const timelineRef = useRef(null);
   const dragRef = useRef(null);
@@ -240,13 +240,6 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
     toast.success('Frame sent to Teamwork Panel!');
   };
 
-  const handleSubmitFrame = () => {
-    if (!onDresSubmit) return;
-    const mockShot = createCurrentShot();
-    if (!mockShot) return;
-    
-    onDresSubmit(mockShot, false);
-  };
 
   const handlePinToTrake = () => {
     const mockShot = createCurrentShot();
@@ -269,7 +262,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
         event.preventDefault();
         event.stopImmediatePropagation?.();
         handlePushFrame();
-      } else if (event.shiftKey && !event.ctrlKey && event.code === 'Space') {
+      } else if (event.ctrlKey && event.shiftKey && event.code === 'Space') {
         if (event.repeat) return;
         event.preventDefault();
         event.stopImmediatePropagation?.();
@@ -438,20 +431,12 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="px-4 py-2 rounded-lg bg-rose-500/20 border border-rose-500/50 text-rose-400 text-xs font-bold uppercase tracking-wider hover:bg-rose-500 hover:text-white active:scale-95 disabled:opacity-40"
+                className="px-4 py-2 rounded-lg bg-transparent border border-[#10b981] text-[#10b981] text-xs font-semibold tracking-wide hover:bg-[#10b981]/10 transition-colors active:scale-95 disabled:opacity-40 shadow-[0_0_8px_rgba(16,185,129,0.1)] flex items-center"
                 onClick={handlePinToTrake}
                 disabled={!onPushToTrake}
-                title="Pin current frame to Trake"
+                title="Stage current frame to Submission Panel"
               >
-                <i className="fas fa-thumbtack mr-2"></i>Pin to Trake
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg bg-[var(--accent-primary)]/20 border border-[var(--accent-primary)]/50 text-[var(--accent-primary)] text-xs font-bold uppercase tracking-wider hover:bg-[var(--accent-primary)] hover:text-white active:scale-95 disabled:opacity-40"
-                onClick={handleSubmitFrame}
-                disabled={!onDresSubmit}
-              >
-                <i className="fas fa-paper-plane mr-2"></i>Submit
+                <i className="fas fa-paper-plane mr-2 text-sm"></i> Add to Submission Panel
               </button>
               
               <button
