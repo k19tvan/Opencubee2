@@ -1,12 +1,22 @@
 // src/components/ChatbotPanel.jsx
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { sendChatMessage } from '../api';
+import { runMultiAgentSearch, sendChatMessage } from '../api';
+import MultiAgentResultsModal from './MultiAgentResultsModal';
 
 export default function ChatbotPanel({
   isOpen,
   onClose,
   onApplyQuery,
+  onZoom,
+  onPreview,
+  onContext,
+  onQuickSearch,
+  onToggleLock,
+  lockedVideoIds,
+  onPushToTeam,
+  onPushToTrake,
+  onDresSubmit,
 }) {
   const [messages, setMessages] = useState([
     {
@@ -17,7 +27,10 @@ export default function ChatbotPanel({
     },
   ]);
   const [input, setInput] = useState('');
-  const [isResearch, setIsResearch] = useState(true); // Mặc định Research là ON
+  const [loadingMode, setLoadingMode] = useState(null);
+  const [frameLimit, setFrameLimit] = useState(50);
+  const [isLimitOpen, setIsLimitOpen] = useState(false);
+  const [activeSearchResult, setActiveSearchResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expandedOptionIdx, setExpandedOptionIdx] = useState({});
   const [sessionId] = useState(() => `session_${Date.now()}`);
@@ -42,7 +55,7 @@ export default function ChatbotPanel({
     });
   };
 
-  const handleSend = async () => {
+  const handleSend = async (mode = 'research') => {
     const text = input.trim();
     if (!text || loading) return;
 
@@ -50,25 +63,31 @@ export default function ChatbotPanel({
       id: `user_${Date.now()}`,
       role: 'user',
       content: text,
+      mode,
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setLoading(true);
+    setLoadingMode(mode);
 
     try {
-      const res = await sendChatMessage({
-        query: text,
-        is_research: isResearch,
-        session_id: sessionId,
-      });
+      const res = mode === 'search'
+        ? await runMultiAgentSearch({ query: text, frame_limit: frameLimit })
+        : await sendChatMessage({
+          query: text,
+          is_research: true,
+          session_id: sessionId,
+        });
 
       const assistantMsg = {
         id: `ai_${Date.now()}`,
         role: 'assistant',
-        content: res.content || 'Đã có kết quả:',
-        options: res.options || null,
-        isResearch: res.is_research,
+        content: mode === 'search'
+          ? `Đã phân rã thành ${res.active_modalities || 0} modality và VLM critic đã chọn ${res.selected_count || 0} frame.`
+          : (res.content || 'Đã có kết quả:'),
+        options: mode === 'research' ? (res.options || null) : null,
+        searchResult: mode === 'search' ? res : null,
       };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
@@ -83,17 +102,20 @@ export default function ChatbotPanel({
       ]);
     } finally {
       setLoading(false);
+      setLoadingMode(null);
     }
   };
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      handleSend(e.ctrlKey || e.metaKey ? 'search' : 'research');
     }
   };
 
   const handleClear = () => {
+    setActiveSearchResult(null);
+    setExpandedOptionIdx({});
     setMessages([
       {
         id: 'welcome',
@@ -104,25 +126,27 @@ export default function ChatbotPanel({
     ]);
   };
 
-  return (
+  return (<>
     <div
-      className={`fixed top-[52px] bottom-0 right-0 h-[calc(100vh-52px)] w-full sm:w-[380px] md:w-[420px] lg:w-1/4 min-w-[320px] max-w-[500px] z-[75] pointer-events-auto bg-[var(--card-bg)] border-l border-[var(--border-color)] shadow-[-12px_0_40px_rgba(0,0,0,0.5)] backdrop-blur-2xl flex flex-col transition-transform duration-300 ease-in-out ${
-        isOpen ? 'translate-x-0' : 'translate-x-full'
+      className={`fixed inset-y-0 right-0 z-[1800] flex h-[100dvh] w-full min-w-[320px] max-w-[520px] flex-col border-l border-slate-700 bg-[#0b1324] shadow-[-16px_0_48px_rgba(0,0,0,0.6)] transition-transform duration-300 ease-in-out sm:w-[400px] md:w-[440px] lg:w-[480px] ${
+        isOpen ? 'pointer-events-auto translate-x-0' : 'pointer-events-none translate-x-full'
       }`}
+      aria-hidden={!isOpen}
     >
-      {/* Header — Nằm ngay dưới Top Bar */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border-color)] bg-[var(--glass-bg)] shrink-0 h-[48px]">
+      {/* Header — phủ lên vùng Top Bar để panel là một bề mặt độc lập */}
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-700 bg-[#080f1e] px-4">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-[var(--accent-primary)]/20 border border-[var(--accent-primary)]/30 flex items-center justify-center text-[var(--accent-primary)] shrink-0">
-            <i className="fas fa-robot text-xs"></i>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/40 bg-violet-500/15 text-violet-300">
+            <i className="fas fa-robot text-sm"></i>
           </div>
           <div className="min-w-0">
-            <h3 className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5 truncate">
+            <h3 className="flex items-center gap-1.5 truncate text-xs font-bold text-slate-100">
               AI Research Assistant
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[var(--glass-bg)] border border-[var(--border-color)] text-[var(--text-secondary)]">
+              <span className="rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 font-mono text-[9px] text-slate-400">
                 Alt+L
               </span>
             </h3>
+            <p className="mt-0.5 truncate text-[9px] text-slate-500">Research &amp; multi-modal retrieval</p>
           </div>
         </div>
 
@@ -130,7 +154,7 @@ export default function ChatbotPanel({
           <button
             type="button"
             onClick={handleClear}
-            className="w-7 h-7 rounded-lg text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center text-xs transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-xs text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
             title="Clear conversation"
           >
             <i className="fas fa-trash-alt"></i>
@@ -138,7 +162,7 @@ export default function ChatbotPanel({
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg)] flex items-center justify-center text-xs transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
             title="Close panel (Alt + L)"
           >
             <i className="fas fa-times"></i>
@@ -147,19 +171,38 @@ export default function ChatbotPanel({
       </div>
 
       {/* Messages Area — Tự cuộn mượt mà */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs custom-scrollbar">
+      <div className="custom-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-[#0b1324] p-4 text-xs">
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
           return (
             <div key={msg.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} space-y-1`}>
               <div
-                className={`max-w-[90%] rounded-2xl px-3.5 py-2.5 leading-relaxed break-words shadow-sm ${
+                className={`${isUser ? 'max-w-[90%]' : 'w-full max-w-full'} rounded-2xl px-3.5 py-2.5 leading-relaxed break-words shadow-sm ${
                   isUser
                     ? 'bg-[var(--accent-primary)] text-[var(--bg-primary)] font-medium rounded-tr-sm'
                     : 'bg-[var(--glass-bg)] border border-[var(--border-color)] text-[var(--text-primary)] rounded-tl-sm'
                 }`}
               >
+                {isUser && msg.mode && <div className="mb-1 text-[8px] font-bold uppercase tracking-[0.16em] opacity-65">{msg.mode === 'search' ? 'Multi-modal search' : 'Research'}</div>}
                 <div>{msg.content}</div>
+
+                {msg.searchResult && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveSearchResult(msg.searchResult)}
+                    className="mt-3 flex w-full items-center gap-3 rounded-xl border border-violet-400/40 bg-violet-500/10 p-3 text-left text-[11px] text-[var(--text-primary)] transition-all hover:border-violet-400/70 hover:bg-violet-500/20"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/20 text-violet-300"><i className="fas fa-images" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">Mở album kết quả critic</span>
+                      <span className="mt-1 flex flex-wrap gap-1 text-[9px] text-[var(--text-secondary)]">
+                        {Object.entries(msg.searchResult.modalities || {}).map(([key, value]) => <span key={key} className="rounded bg-black/15 px-1.5 py-0.5">{key.replace('_', ' ')} {value.frames?.length || 0}/{value.candidate_count || 0}</span>)}
+                      </span>
+                    </span>
+                    <span className="rounded-full bg-violet-500/20 px-2 py-1 text-[10px] font-bold text-violet-300">{msg.searchResult.selected_count || 0}</span>
+                    <i className="fas fa-chevron-right text-[9px] text-[var(--text-secondary)]" />
+                  </button>
+                )}
 
                 {/* Danh sách Research Options */}
                 {msg.options && msg.options.length > 0 && (
@@ -230,32 +273,23 @@ export default function ChatbotPanel({
         })}
 
         {loading && (
-          <div className="flex items-center gap-2 text-xs text-[var(--accent-primary)] p-2 animate-pulse">
-            <i className="fas fa-circle-notch fa-spin"></i>
-            <span>{isResearch ? 'Đang tra cứu internet & phân tích...' : 'Đang trả lời...'}</span>
+          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--glass-bg)] p-3 text-xs text-[var(--accent-primary)]">
+            <div className="flex items-center gap-2 font-semibold"><i className="fas fa-circle-notch fa-spin" /><span>{loadingMode === 'search' ? 'Đang chạy multi-modal search…' : 'Đang research…'}</span></div>
+            {loadingMode === 'search' && <p className="mt-1.5 pl-5 text-[10px] leading-relaxed text-[var(--text-secondary)]">Decompose → retrieve tối đa {frameLimit} frame/modality → critic theo canvas 20 frame. Với 100–200 frame, quá trình có thể mất vài phút.</p>}
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input Box Footer — Cố định ở đáy màn hình */}
-      <div className="p-3 border-t border-[var(--border-color)] bg-[var(--card-bg)] shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          {/* Nút bật/tắt Research Mode */}
-          <button
-            type="button"
-            onClick={() => setIsResearch((prev) => !prev)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
-              isResearch
-                ? 'bg-blue-500/20 border border-blue-400 text-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.3)]'
-                : 'bg-[var(--glass-bg)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <i className="fas fa-globe"></i>
-            <span>Research: {isResearch ? 'ON' : 'OFF'}</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${isResearch ? 'bg-blue-400 animate-pulse' : 'bg-gray-500'}`}></span>
-          </button>
-          <span className="text-[9px] text-[var(--text-secondary)]">Enter để gửi</span>
+      <div className="shrink-0 border-t border-slate-700 bg-[#080f1e] p-3 shadow-[0_-10px_24px_rgba(0,0,0,0.2)]">
+        <div className="mb-2 grid grid-cols-[1fr_1fr_auto] gap-1.5">
+          <button type="button" onClick={() => handleSend('search')} disabled={loading || !input.trim()} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-violet-400/50 bg-violet-500/20 px-2 text-[10px] font-bold uppercase tracking-wider text-violet-100 transition-colors hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-40" title="Ctrl+Enter: decompose, retrieve each modality, then visually critic"><i className="fas fa-magnifying-glass" /> Search</button>
+          <button type="button" onClick={() => handleSend('research')} disabled={loading || !input.trim()} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-blue-400/50 bg-blue-500/15 px-2 text-[10px] font-bold uppercase tracking-wider text-blue-100 transition-colors hover:bg-blue-500/25 disabled:cursor-not-allowed disabled:opacity-40" title="Enter: research and suggest likely entities"><i className="fas fa-globe" /> Research</button>
+          <div className="relative">
+            <button type="button" onClick={() => setIsLimitOpen((value) => !value)} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] px-2 text-[10px] font-semibold text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]" title="Candidates retrieved per modality; each canvas contains 20 frames"><i className="fas fa-images" /> {frameLimit}<i className={`fas fa-chevron-down text-[8px] transition-transform ${isLimitOpen ? 'rotate-180' : ''}`} /></button>
+            {isLimitOpen && <div className="absolute bottom-[calc(100%+6px)] right-0 z-20 min-w-[112px] overflow-hidden rounded-lg border border-slate-600 bg-[#0b1020] py-1 shadow-xl">{[20, 50, 100, 200].map((limit) => <button key={limit} type="button" onClick={() => { setFrameLimit(limit); setIsLimitOpen(false); }} className={`block w-full px-3 py-2 text-left text-[10px] font-semibold ${limit === frameLimit ? 'bg-violet-500/20 text-violet-200' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>{limit} frames</button>)}</div>}
+          </div>
         </div>
 
         <div className="relative flex items-center bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-xl focus-within:border-[var(--border-hover)] focus-within:ring-1 focus-within:ring-white/10 transition-all">
@@ -264,21 +298,14 @@ export default function ChatbotPanel({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Hỏi bất kỳ điều gì hoặc nhập chủ đề research..."
+            placeholder="Nhập mô tả cảnh cần tìm hoặc nội dung cần research…"
             rows="2"
             className="w-full bg-transparent px-3 py-2 text-xs text-[var(--text-primary)] outline-none resize-none placeholder:text-[var(--text-secondary)]"
           />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="mr-2 w-8 h-8 rounded-lg bg-[var(--accent-primary)] text-[var(--bg-primary)] flex items-center justify-center hover:opacity-90 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all shrink-0"
-            title="Gửi tin nhắn"
-          >
-            <i className="fas fa-paper-plane text-xs"></i>
-          </button>
         </div>
+        <div className="mt-1.5 text-right text-[9px] text-[var(--text-secondary)]">Enter: Research · Ctrl+Enter: Search · Shift+Enter: xuống dòng</div>
       </div>
     </div>
-  );
+    {activeSearchResult && <MultiAgentResultsModal result={activeSearchResult} onClose={() => setActiveSearchResult(null)} onZoom={onZoom} onPreview={onPreview} onContext={onContext} onQuickSearch={onQuickSearch} onToggleLock={onToggleLock} lockedVideoIds={lockedVideoIds} onPushToTeam={onPushToTeam} onPushToTrake={onPushToTrake} onDresSubmit={onDresSubmit} />}
+  </>);
 }

@@ -11,9 +11,15 @@ from fastapi import WebSocket
 
 from backend.core.config import (
     MEILISEARCH_HOST,
+    MULTIAGENT_MODEL,
+    MULTIAGENT_MODEL_API_KEY,
+    MULTIAGENT_MODEL_BASE_URL,
     QDRANT_GRPC_PORT,
     QDRANT_HOST,
     QDRANT_PORT,
+    TRANSLATE_MODEL,
+    TRANSLATE_MODEL_API_KEY,
+    TRANSLATE_MODEL_BASE_URL,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -56,67 +62,49 @@ class ConnectionManager:
         return len(self._connections)
 
 
+llm = None
+llm_enhance = None
+llm_translate = None
+llm_multiagent = None
+
 try:
     from langchain_groq import ChatGroq
 
-    try:
-        llm = ChatGroq(
-            model="qwen/qwen3.6-27b",
-            temperature=0.2,
-            max_tokens=1024,
-            api_key=os.getenv("GROQ_API_KEY"),
-            reasoning_effort="none"
-        )
-        print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b ---")
-    except Exception as e:
-        print(f"Warning: Failed to initialize ChatGroq (Ensure GROQ_API_KEY is set). Error: {e}")
-        llm = None
+    llm = ChatGroq(
+        model="qwen/qwen3.6-27b",
+        temperature=0.2,
+        max_tokens=1024,
+        api_key=os.getenv("GROQ_API_KEY"),
+        reasoning_effort="none",
+    )
+    llm_enhance = ChatGroq(
+        model="qwen/qwen3.6-27b",
+        temperature=0.2,
+        max_tokens=1024,
+        api_key=os.getenv("GROQ_API_KEY"),
+        reasoning_effort="none",
+    )
+    print("--- ChatGroq initialized for chat and query enhancement ---")
+except Exception as exc:
+    print(f"Warning: Failed to initialize ChatGroq: {exc}")
 
-    try:
-        llm_enhance = ChatGroq(
-            model="qwen/qwen3.6-27b",
-            temperature=0.2,
-            max_tokens=1024,
-            api_key=os.getenv("GROQ_API_KEY"),
-            reasoning_effort="none"
-        )
-        print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b, used as enhancer ---")
-    except Exception as e:
-        print(f"Warning: Failed to initialize ChatGroq for Enhance. Error: {e}")
-        llm_enhance = None
+try:
+    from langchain_openai import ChatOpenAI
 
-    # try:
-    #     llm_translate = ChatGroq(
-    #         model="qwen/qwen3.6-27b",
-    #         temperature=0.2,
-    #         max_tokens=1024,
-    #         api_key=os.getenv("GROQ_API_KEY"),
-    #         reasoning_effort="none"
-    #     )
-    #     print("--- ChatGroq initialized successfully with qwen/qwen3.6-27b, used as translator ---")
-    # except Exception as e:
-    #     print(f"Warning: Failed to initialize ChatGroq for Translator. Error: {e}")
-    #     llm_translate = None
-
-    
-    try:
-        from langchain_openai import ChatOpenAI
-        llm_translate = ChatOpenAI(
-            model=os.getenv("TRANSLATE_MODEL", "qwen3-vl-8b"),
-            base_url=os.getenv("TRANSLATE_MODEL_BASE_URL", "http://192.168.20.150:2108/v1"),
-            api_key="EMPTY",
-        )
-
-        print("--- ChatOpenAI initialized successfully with " + llm_translate.model + ", Using as Translator---")
-    except Exception as e:
-        print(f"Warning: Failed to initialize ChatOpenAI for Translation Error: {e}")
-        llm_translate = None
-
-except ModuleNotFoundError as e:
-    print(f"Warning: ChatOpenAI dependencies are not available. Error: {e}")
-    llm = None
-    llm_enhance = None
-    llm_translate = None
+    llm_translate = ChatOpenAI(
+        model=TRANSLATE_MODEL,
+        base_url=TRANSLATE_MODEL_BASE_URL,
+        api_key=TRANSLATE_MODEL_API_KEY,
+    )
+    llm_multiagent = ChatOpenAI(
+        model=MULTIAGENT_MODEL,
+        base_url=MULTIAGENT_MODEL_BASE_URL,
+        api_key=MULTIAGENT_MODEL_API_KEY,
+        temperature=0,
+    )
+    print("--- ChatOpenAI initialized for translation and multi-agent retrieval ---")
+except Exception as exc:
+    print(f"Warning: Failed to initialize ChatOpenAI runtimes: {exc}")
 
 qdrant_client = None
 meili_client = None

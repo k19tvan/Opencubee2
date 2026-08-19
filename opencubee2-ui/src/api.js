@@ -102,48 +102,6 @@ export async function enhanceQuery(payload) {
   return handleResponse(response);
 }
 
-export async function sendAgentMessage(payload) {
-  const response = await fetch(`${BASE_URL}/agent/message`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse(response);
-}
-
-export async function selectAgentOption(payload) {
-  const response = await fetch(`${BASE_URL}/agent/option`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse(response);
-}
-
-export async function sendAgentFeedback(payload) {
-  const response = await fetch(`${BASE_URL}/agent/feedback`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse(response);
-}
-
-export async function deleteAgentSession(sessionId) {
-  if (!sessionId) return { deleted: false };
-  const response = await fetch(`${BASE_URL}/agent/sessions/${encodeURIComponent(sessionId)}`, {
-    method: 'DELETE',
-  });
-  return handleResponse(response);
-}
-
-export async function getAgentEvents(sessionId, afterId = 0) {
-  const url = new URL(`${BASE_URL}/agent/sessions/${encodeURIComponent(sessionId)}/events`);
-  url.searchParams.set('after_id', String(afterId));
-  const response = await fetch(url.toString(), { cache: 'no-store' });
-  return handleResponse(response);
-}
-
 /**
  * Lấy thông tin video (đặc biệt là FPS)
  */
@@ -182,6 +140,15 @@ export async function getSimilarFrames(frameName, limit = 15, threshold = 0.95) 
 
 export async function sendChatMessage(payload) {
   const response = await fetch(`${BASE_URL}/chatbot/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(response);
+}
+
+export async function runMultiAgentSearch(payload) {
+  const response = await fetch(`${BASE_URL}/chatbot/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

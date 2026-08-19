@@ -6,21 +6,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@keyframes agent-result-toast-slide-in-right {
-    from {
-        transform: translateX(calc(100% + 2rem));
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-.agent-result-toast-enter {
-    animation: agent-result-toast-slide-in-right 500ms ease-out both;
-}
-
 /* Định nghĩa màu sắc và hiệu ứng cho 2 Theme */
 .theme-normal {
     --bg-primary: #070b16;
@@ -846,4 +831,3 @@ button {
     color: #ffffff !important;
     box-shadow: 0 0 12px rgba(124, 58, 237, 0.45) !important;
 }
-

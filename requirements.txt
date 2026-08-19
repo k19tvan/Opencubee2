@@ -21,5 +21,4 @@ langchain_groq
 langchain_openai
 googletrans
 langdetect
-playwright
 pillow

@@ -57,6 +57,15 @@ VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://192.168.20.152:2108/v1").rstr
 VLLM_MODEL = os.getenv("VLLM_MODEL")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 TRANSLATE_PROVIDER = os.getenv("TRANSLATE_PROVIDER", "llm_translate").strip().lower()
+TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "qwen3-vl-8b")
+TRANSLATE_MODEL_BASE_URL = os.getenv("TRANSLATE_MODEL_BASE_URL", "http://192.168.20.150:2108/v1").rstrip("/")
+TRANSLATE_MODEL_API_KEY = os.getenv("TRANSLATE_MODEL_API_KEY", "EMPTY")
+
+# Multi-agent retrieval uses one OpenAI-compatible model for both query planning
+# and visual canvas criticism. It follows the same configuration shape as translation.
+MULTIAGENT_MODEL = os.getenv("MULTIAGENT_MODEL", TRANSLATE_MODEL)
+MULTIAGENT_MODEL_BASE_URL = os.getenv("MULTIAGENT_MODEL_BASE_URL", TRANSLATE_MODEL_BASE_URL).rstrip("/")
+MULTIAGENT_MODEL_API_KEY = os.getenv("MULTIAGENT_MODEL_API_KEY", TRANSLATE_MODEL_API_KEY)
 
 GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "http://gemini-web2api:8081/v1").rstrip("/")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "enn")
