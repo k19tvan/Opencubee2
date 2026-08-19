@@ -945,6 +945,16 @@ export default function App() {
         const frameKey = data.frame_key || data.filepath;
         setTrakeFrames(prev => prev.filter(s => getShotKey(s) !== frameKey));
       } else if (type === 'soloai_submitted') {
+        const queryFile = data?.query_file;
+        if (queryFile) {
+          setStagedFramesByQuery(prev => {
+            const next = { ...prev };
+            delete next[queryFile];
+            return next;
+          });
+        } else {
+          setStagedFramesByQuery({});
+        }
         window.dispatchEvent(new Event('refreshSoloAIQueries'));
       } else if (type === 'global_correct_submission') {
         const mappedShot = {
@@ -1117,7 +1127,7 @@ export default function App() {
       }
       // Note: we do NOT clear trakeFrames (the staging area). It stays exactly as it is (Save-in-place).
       window.dispatchEvent(new Event('refreshSoloAIQueries'));
-      sendRealtimeMessage({ type: 'soloai_submitted', data: {} });
+      sendRealtimeMessage({ type: 'soloai_submitted', data: { query_file: activeSoloQuery.filename } });
     } catch (e) {
       toast.error(`Submit Failed: ${e.message}`, { id: toastId });
     }
@@ -1134,7 +1144,7 @@ export default function App() {
       });
       toast.success('Deleted successfully', { id: toastId });
       window.dispatchEvent(new Event('refreshSoloAIQueries'));
-      sendRealtimeMessage({ type: 'soloai_submitted', data: {} });
+      sendRealtimeMessage({ type: 'soloai_submitted', data: { query_file: activeSoloQuery.filename } });
     } catch (e) {
       toast.error(`Delete Failed: ${e.message}`, { id: toastId });
     }
