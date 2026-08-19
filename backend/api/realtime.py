@@ -205,6 +205,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     runtime.trake_panel_state = reordered
                     await broadcast_event("trake_sync", reordered)
 
+            elif msg_type == "soloai_submitted":
+                await broadcast_event("soloai_submitted", data)
+
             else:
                 await send_error(websocket, f"Unsupported message type: {msg_type!r}.")
 
