@@ -22,7 +22,8 @@ import {
   DRES_BASE_URL,
   getAgentEvents,
   sendAgentMessage,
-  uploadSoloAIZip
+  uploadSoloAIZip,
+  getVideoThumbnailUrl
 } from './api';
 import { getImageUrl } from './utils/imageUrl';
 import { getDresFrameNumber } from './utils/frameNumber';
@@ -171,7 +172,7 @@ export default function App() {
     setUsername(name);
     sessionStorage.setItem('username', name);
     if (!sessionStorage.getItem('userColor')) {
-      const color = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+      const color = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
       setUserColor(color);
       sessionStorage.setItem('userColor', color);
     }
@@ -296,30 +297,46 @@ export default function App() {
   useEffect(() => {
     const activeQuery = soloAIQueries[activeSoloQueryIndex];
     if (!activeQuery || !activeQuery.submissions) return;
-    
+
     const isQA = activeQuery.filename.toLowerCase().includes('qa');
-    
+
     let loadedFrames = [];
     activeQuery.submissions.forEach(row => {
-       const videoId = row[0];
-       if (isQA) {
-         if (row[1]) loadedFrames.push({ video_id: videoId, frame_id: row[1], qaAnswer: row[2] });
-       } else {
-         row.slice(1).forEach(fId => {
-           if (fId && !isNaN(Number(fId))) {
-             loadedFrames.push({ video_id: videoId, frame_id: fId });
-           }
-         });
-       }
+      const videoId = row[0];
+      if (isQA) {
+        if (row[1]) {
+          const fId = row[1];
+          loadedFrames.push({
+            video_id: videoId,
+            frame_id: fId,
+            qaAnswer: row[2],
+            url: getVideoThumbnailUrl(videoId, fId, 1920),
+            frame_name: `${videoId}_${String(fId).padStart(6, '0')}.webp`,
+            filepath: `csv-frame-${videoId}-${fId}`
+          });
+        }
+      } else {
+        row.slice(1).forEach(fId => {
+          if (fId && !isNaN(Number(fId))) {
+            loadedFrames.push({
+              video_id: videoId,
+              frame_id: fId,
+              url: getVideoThumbnailUrl(videoId, fId, 1920),
+              frame_name: `${videoId}_${String(fId).padStart(6, '0')}.webp`,
+              filepath: `csv-frame-${videoId}-${fId}`
+            });
+          }
+        });
+      }
     });
-    
+
     setStagedFramesByQuery(prev => {
-       // Only populate from CSV if we haven't loaded or modified this query yet
-       if (prev[activeQuery.filename] !== undefined) return prev;
-       return {
-         ...prev,
-         [activeQuery.filename]: loadedFrames
-       };
+      // Only populate from CSV if we haven't loaded or modified this query yet
+      if (prev[activeQuery.filename] !== undefined) return prev;
+      return {
+        ...prev,
+        [activeQuery.filename]: loadedFrames
+      };
     });
   }, [soloAIQueries, activeSoloQueryIndex]);
 
@@ -892,7 +909,7 @@ export default function App() {
           audio.muted = isMutedRef.current;
           playingAudioRef.current = audio;
           audio.play().catch(e => console.log("Audio play failed:", e));
-          
+
           setTimeout(() => {
             if (playingAudioRef.current === audio) {
               audio.pause();
@@ -1017,12 +1034,12 @@ export default function App() {
 
   const handlePushToTrake = (shot, qaAnswerStr = null) => {
     if (!shot) return;
-    
+
     // Check if we are in QA mode to intercept submission
     const activeQuery = soloAIQueries?.[activeSoloQueryIndex];
     if (activeQuery?.filename?.toLowerCase().includes('qa') && !qaAnswerStr && !shot.qaAnswer) {
-       setQaPromptShot({ ...shot, _ts: Date.now() });
-       return;
+      setQaPromptShot({ ...shot, _ts: Date.now() });
+      return;
     }
 
     const compiledAnswer = qaAnswerStr || shot.qaAnswer;
@@ -1127,7 +1144,7 @@ export default function App() {
     let loadedFrames = [];
     const isQA = activeSoloQuery.filename.toLowerCase().includes('qa');
     const videoId = row[0];
-    
+
     if (isQA) {
       if (row[1]) loadedFrames.push({ video_id: videoId, frame_id: row[1], qaAnswer: row[2] });
     } else {
