@@ -12,7 +12,9 @@ router = APIRouter()
 # Setup paths
 PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25")
 SOLOAI_DIR = PROJECT_ROOT / "SoLoaiAIC"
+SUBMISSION_DIR = SOLOAI_DIR / "submission"
 os.makedirs(SOLOAI_DIR, exist_ok=True)
+os.makedirs(SUBMISSION_DIR, exist_ok=True)
 
 class SubmitRequest(BaseModel):
     query_file: str  # e.g., 'query-1-kis.txt'
@@ -65,7 +67,7 @@ async def upload_zip(file: UploadFile = File(...)):
     # Initialize empty CSVs
     for txt in txt_files:
         csv_name = txt.replace(".txt", ".csv")
-        csv_path = SOLOAI_DIR / csv_name
+        csv_path = SUBMISSION_DIR / csv_name
         if not csv_path.exists():
             with open(csv_path, 'w', encoding='utf-8') as f:
                 pass
@@ -76,8 +78,8 @@ async def upload_zip(file: UploadFile = File(...)):
 async def get_queries():
     extract_dir = SOLOAI_DIR / "queries"
     
-    # We use CSV files in SOLOAI_DIR as the source of truth
-    csv_files = [f for f in os.listdir(SOLOAI_DIR) if f.endswith('.csv')]
+    # We use CSV files in SUBMISSION_DIR as the source of truth
+    csv_files = [f for f in os.listdir(SUBMISSION_DIR) if f.endswith('.csv')]
     
     queries = []
     for csv_f in csv_files:
@@ -90,7 +92,7 @@ async def get_queries():
             with open(txt_path, 'r', encoding='utf-8') as txt_file:
                 content = txt_file.read()
                 
-        csv_path = SOLOAI_DIR / csv_f
+        csv_path = SUBMISSION_DIR / csv_f
         submissions = []
         if csv_path.exists():
             with open(csv_path, 'r', encoding='utf-8') as csv_file:
@@ -119,7 +121,7 @@ async def create_query(req: CreateQueryRequest):
         raise HTTPException(status_code=400, detail="Name required")
     # Clean name
     safe_name = req.query_name.replace(".csv", "").replace(".txt", "")
-    csv_path = SOLOAI_DIR / f"{safe_name}.csv"
+    csv_path = SUBMISSION_DIR / f"{safe_name}.csv"
     if not csv_path.exists():
         with open(csv_path, 'w', encoding='utf-8') as f:
             pass
@@ -129,7 +131,7 @@ async def create_query(req: CreateQueryRequest):
 async def delete_query(query_name: str):
     safe_name = query_name.replace(".txt", "").replace(".csv", "")
     
-    csv_path = SOLOAI_DIR / f"{safe_name}.csv"
+    csv_path = SUBMISSION_DIR / f"{safe_name}.csv"
     if csv_path.exists():
         os.remove(csv_path)
         
@@ -142,7 +144,7 @@ async def delete_query(query_name: str):
 @router.post("/soloai/submit")
 async def submit(req: SubmitRequest):
     csv_name = req.query_file.replace(".txt", ".csv")
-    csv_path = SOLOAI_DIR / csv_name
+    csv_path = SUBMISSION_DIR / csv_name
     
     # Determine type
     is_qa = "qa" in req.query_file.lower()
@@ -197,7 +199,7 @@ async def submit(req: SubmitRequest):
 @router.delete("/soloai/submit")
 async def delete_submit(req: DeleteRequest):
     csv_name = req.query_file.replace(".txt", ".csv")
-    csv_path = SOLOAI_DIR / csv_name
+    csv_path = SUBMISSION_DIR / csv_name
     
     if not csv_path.exists():
         raise HTTPException(status_code=404, detail="CSV not found")
