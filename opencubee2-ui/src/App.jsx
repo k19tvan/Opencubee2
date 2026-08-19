@@ -4,7 +4,6 @@ import toast, { Toaster } from 'react-hot-toast';
 import TopToolbar from './components/TopToolbar';
 import LeftSearchPanel from './components/LeftSearchPanel';
 import RightResultsPanel from './components/RightResultsPanel';
-import AgentWorkspace from './components/AgentWorkspace';
 import ChatbotPanel from './components/ChatbotPanel';
 import UsernameModal from './components/modals/UsernameModal';
 import ObjectFilterModal from './components/modals/ObjectFilterModal';
@@ -14,7 +13,7 @@ import TrakeFramePreviewSidebar from './components/TrakeFramePreviewSidebar';
 import HelpModal from './components/modals/HelpModal';
 import DresLoginModal from './components/modals/DresLoginModal';
 import DresSubmitModal from './components/modals/DresSubmitModal';
-import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, searchSemanticAsr, getWsUrl, DRES_BASE_URL, getAgentEvents, sendAgentMessage } from './api';
+import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, searchSemanticAsr, getWsUrl, DRES_BASE_URL } from './api';
 import { getImageUrl } from './utils/imageUrl';
 import { getDresFrameNumber } from './utils/frameNumber';
 
@@ -101,40 +100,6 @@ const buildSearchModelPayload = (values) => {
   };
 };
 
-function AgentResultsToast({ toastInstance, frames = [], onZoom, onOpenAgent }) {
-  const visibleFrames = frames.slice(0, 20);
-  const hasResults = visibleFrames.length > 0;
-  return (
-    <div className={`w-[min(900px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--border-hover)] bg-[var(--card-bg)] text-[var(--text-primary)] shadow-[var(--shadow-heavy)] backdrop-blur-xl transition-all duration-500 ease-out ${toastInstance.visible ? 'agent-result-toast-enter translate-x-0 opacity-100' : 'translate-x-[calc(100%+2rem)] opacity-0'}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-3.5 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] text-[var(--accent-primary)]"><i className={`fas ${hasResults ? 'fa-check' : 'fa-magnifying-glass'} text-[10px]`} /></span>
-          <span className="min-w-0">
-            <span className="block text-[10px] font-semibold text-[var(--text-primary)]">{hasResults ? `Agent tìm thấy ${frames.length} kết quả` : 'Không tìm thấy kết quả phù hợp'}</span>
-            <span className="block text-[8px] text-[var(--text-secondary)]">{hasResults ? 'Kéo ngang để xem · bấm frame để phóng to' : 'Bạn có thể mở tab Agent để xem lại pipeline và query'}</span>
-          </span>
-        </div>
-        <div className="flex flex-shrink-0 items-center gap-1.5">
-          <button type="button" onClick={onOpenAgent} className="h-7 rounded-lg border border-[var(--border-color)] px-2.5 text-[9px] font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--border-hover)] hover:bg-[var(--glass-bg)]">Mở Agent</button>
-          <button type="button" onClick={() => toast.dismiss(toastInstance.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-secondary)] transition-colors hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]" title="Đóng"><i className="fas fa-xmark text-[10px]" /></button>
-        </div>
-      </div>
-      <div className="flex gap-2 overflow-x-auto p-2.5 pb-3">
-        {visibleFrames.length ? visibleFrames.map((frame, index) => {
-          const imageUrl = getImageUrl(frame.url || frame.frame_name || frame.filepath);
-          return (
-            <button key={`${frame.frame_name || imageUrl}-${index}`} type="button" onClick={() => onZoom(imageUrl)} className="group relative h-20 w-36 flex-shrink-0 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] text-left transition-all hover:-translate-y-0.5 hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-heavy)]">
-              <img src={imageUrl} alt={frame.frame_name || 'Agent result'} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" />
-              <span className="absolute left-1.5 top-1.5 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[8px] font-bold text-white">#{index + 1}</span>
-              <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-1 pt-5 font-mono text-[8px] text-white">{frame.frame_name || 'Frame'}</span>
-            </button>
-          );
-        }) : <span className="px-2 py-3 text-[10px] text-[var(--text-secondary)]">Agent đã chạy xong nhưng critic không chọn frame nào.</span>}
-      </div>
-    </div>
-  );
-}
-
 const readWorkspaceHistory = () => {
   try {
     const raw = sessionStorage.getItem(WORKSPACE_HISTORY_STORAGE_KEY);
@@ -178,7 +143,6 @@ export default function App() {
 
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [workspaceMode, setWorkspaceMode] = useState('search');
 
   const [activeModal, setActiveModal] = useState(null);
   const [previewVideoData, setPreviewVideoData] = useState(null);
@@ -249,8 +213,6 @@ export default function App() {
       setOpenDresSubmit(null);
     }
   }, [dresMode]);
-
-  const [backgroundAgentJob, setBackgroundAgentJob] = useState(null);
 
   const socketRef = useRef(null);
   const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
@@ -958,7 +920,8 @@ export default function App() {
     setShowTrake(true);
   };
 
-  const handleAgentPushToTeam = useCallback((shot) => {
+  const handlePushToTeam = useCallback((shot) => {
+    if (!shot) return;
     sendRealtimeMessage({
       type: 'new_frame',
       data: { shot, user: { name: username, color: userColor } },
@@ -1487,74 +1450,6 @@ export default function App() {
   const executeSearch = () => { performSearch(1); };
   const handleLoadMore = () => { performSearch(page + 1); };
 
-  const runAgentSearchInBackground = useCallback((stage) => {
-    const message = formatFinalQuery(stage);
-    if (!message) {
-      toast.error('Enter a query before starting the Agent.');
-      return;
-    }
-
-    const toastId = toast.loading('Agent is searching in the background…');
-    const sessionId = `search-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const agentSearchModel = stage?.queryType === 'image' && stage.tempImageName
-      ? ['bge']
-      : (metaClipOnly ? ['metaclip2'] : searchModel);
-    const modelPayload = buildSearchModelPayload(agentSearchModel);
-    setBackgroundAgentJob({ sessionId, message, status: 'running', events: [] });
-    let afterId = 0;
-    const pollEvents = async () => {
-      try {
-        const eventResponse = await getAgentEvents(sessionId, afterId);
-        if (eventResponse.events?.length) {
-          afterId = eventResponse.last_event_id || afterId;
-          setBackgroundAgentJob((current) => current?.sessionId === sessionId
-            ? {
-              ...current,
-              events: [...current.events, ...eventResponse.events].filter(
-                (event, index, all) => all.findIndex((item) => item.id === event.id) === index,
-              ),
-            }
-            : current);
-        }
-      } catch {
-        // Session created asynchronously
-      }
-    };
-    const pollId = window.setInterval(pollEvents, 700);
-    sendAgentMessage({
-      session_id: sessionId,
-      message,
-      use_research: false,
-      top_k: 30,
-      ...modelPayload,
-    }).then((response) => {
-      setBackgroundAgentJob({
-        sessionId,
-        message,
-        status: 'completed',
-        events: response.events || [],
-        response,
-      });
-      const selectedFrames = response.frames?.length ? response.frames : (response.kept_frames || []);
-      toast.custom((currentToast) => (
-        <AgentResultsToast
-          toastInstance={currentToast}
-          frames={selectedFrames}
-          onZoom={setZoomedImage}
-          onOpenAgent={() => {
-            setWorkspaceMode('agent');
-            toast.dismiss(currentToast.id);
-          }}
-        />
-      ), { id: toastId, duration: 12000, position: 'bottom-right' });
-    }).catch((error) => {
-      setBackgroundAgentJob({ sessionId, message, status: 'failed', events: [], error: error.message });
-      toast.error(`Agent search failed: ${error.message}`, { id: toastId });
-    }).finally(() => {
-      window.clearInterval(pollId);
-    });
-  }, [searchModel, metaClipOnly]);
-
   const handleOpenVideoPreview = (videoId, frameId) => {
     if (!videoId) return;
     setPreviewVideoData({ videoId, frameId });
@@ -1633,37 +1528,6 @@ export default function App() {
       { duration: Infinity, position: 'top-center' }
     );
   };
-
-  const handlePushAgentQueries = useCallback((queries = {}) => {
-    const nextStage = {
-      ...createEmptyStage(),
-      queryText: queries.text_query || '',
-      ocrText: queries.ocr_query || '',
-      asrText: queries.asr_query || '',
-      ocrActive: Boolean(queries.ocr_query),
-      asrActive: Boolean(queries.asr_query),
-      queryType: 'text',
-    };
-    submittedStagesRef.current = null;
-    submittedSimilarityScopeRef.current = null;
-    setStages([nextStage]);
-    setSearchResults([]);
-    setLastFinalQueries([]);
-    setTimingInfo(null);
-    setSimilarityScope(null);
-    setSimilarityScopeEnabled(false);
-    setPage(1);
-    setHasMore(false);
-    setWorkspaceMode('search');
-    setIsMobileMenuOpen(false);
-    setStageFocusRequest({ stageId: nextStage.id, field: 'query', token: Date.now() });
-    toast.success('Agent queries were pushed to Search.');
-  }, []);
-
-  const handleAgentQuickSearch = useCallback((shot) => {
-    setWorkspaceMode('search');
-    handleQuickImageSearch(shot);
-  }, [handleQuickImageSearch]);
 
   const handleApplyChatQuery = useCallback((text) => {
     if (!text) return;
@@ -1768,12 +1632,10 @@ export default function App() {
             timingInfo={timingInfo}
             isMuted={isMuted}
             setIsMuted={setIsMuted}
-            workspaceMode={workspaceMode}
-            setWorkspaceMode={setWorkspaceMode}
           />
 
           <div className={`flex flex-col flex-grow min-h-0 h-full w-full overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-transparent' : 'bg-[var(--bg-primary)]'} relative transition-colors duration-700 ease-smooth`}>
-            <div className={`${workspaceMode === 'search' ? 'flex' : 'hidden'} flex-row flex-grow min-h-0 w-full overflow-hidden relative`}>
+            <div className="flex flex-row flex-grow min-h-0 w-full overflow-hidden relative">
               {isMobileMenuOpen && (
                 <div
                   className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm"
@@ -1794,7 +1656,6 @@ export default function App() {
                   focusRequest={stageFocusRequest}
                   onFocusStage={setStageFocusRequest}
                   onSearch={executeSearch}
-                  onAgentSearch={runAgentSearchInBackground}
                   onQuickSearch={handleQuickImageSearch}
                   loading={loading}
                   theme={effectiveTheme}
@@ -1851,27 +1712,21 @@ export default function App() {
               )}
             </div>
 
-            <div className={`${workspaceMode === 'agent' ? 'flex' : 'hidden'} flex-grow min-h-0 w-full overflow-hidden relative`}>
-              <AgentWorkspace
-                searchModel={metaClipOnly ? ['metaclip2'] : searchModel}
-                backgroundAgentJob={backgroundAgentJob}
-                onPushQueries={handlePushAgentQueries}
-                onZoom={setZoomedImage}
-                onPreview={handleOpenVideoPreview}
-                onContext={setContextShot}
-                onQuickSearch={handleAgentQuickSearch}
-                onPushToTeam={handleAgentPushToTeam}
-                onPushToTrake={handlePushToTrake}
-                onDresSubmit={handleInstantDresSubmit}
-                onToggleLock={toggleVideoLock}
-              />
-            </div>
           </div>
 
           <ChatbotPanel
             isOpen={showChatbot}
             onClose={() => setShowChatbot(false)}
             onApplyQuery={handleApplyChatQuery}
+            onZoom={setZoomedImage}
+            onPreview={handleOpenVideoPreview}
+            onContext={setContextShot}
+            onQuickSearch={handleQuickImageSearch}
+            onToggleLock={toggleVideoLock}
+            lockedVideoIds={lockedVideos.map(v => v.videoId)}
+            onPushToTeam={handlePushToTeam}
+            onPushToTrake={handlePushToTrake}
+            onDresSubmit={handleInstantDresSubmit}
           />
 
           {showUserModal && <UsernameModal onJoin={handleJoinSession} />}
@@ -1936,6 +1791,7 @@ export default function App() {
 
           {zoomedImage && (
             <div
+              data-shortcut-scope="modal"
               className="fixed inset-0 bg-black/90 z-[2500] flex items-center justify-center cursor-default p-4"
               onClick={() => setZoomedImage(null)}
             >

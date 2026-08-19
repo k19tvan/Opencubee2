@@ -77,8 +77,6 @@ export default function TopToolbar({
   dresUsername,
   isMuted,
   setIsMuted,
-  workspaceMode = 'search',
-  setWorkspaceMode = () => { },
   getHistoryEntries = () => [],
   onRestoreHistory = () => {},
   onClearHistory = () => {},
@@ -156,29 +154,6 @@ export default function TopToolbar({
 
       {/* Action Buttons Toolbar - Fills Line 1 beside logo, extra buttons wrap to Line 2 on the right */}
       <div className="flex gap-1 sm:gap-2 items-center flex-wrap justify-end ml-auto flex-1 min-w-0 py-0.5">
-        {/* Compact Workspace Mode Buttons */}
-        <ToolBtn
-          onClick={() => setWorkspaceMode('search')}
-          icon="fas fa-search"
-          label="Search"
-          active={workspaceMode === 'search'}
-          title="Search Mode"
-          theme={theme}
-          responsive={false}
-        />
-        <ToolBtn
-          onClick={() => setWorkspaceMode('agent')}
-          icon="fas fa-wand-magic-sparkles"
-          label="Agent"
-          active={workspaceMode === 'agent'}
-          title="Agent Mode"
-          theme={theme}
-          responsive={false}
-        />
-
-        <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
-
-
         {/* Theme Selector */}
         <div className="relative flex items-center group shrink-0" ref={themeRef}>
           <button

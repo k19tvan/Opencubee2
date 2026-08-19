@@ -16,7 +16,7 @@ if requested_workers != 1:
 workers = 1
 worker_class = "uvicorn.workers.UvicornWorker"
 
-# Search and agent requests can take longer than the default Gunicorn timeout.
+# Search requests can take longer than the default Gunicorn timeout.
 timeout = int(os.getenv("GUNICORN_TIMEOUT", "1000"))
 graceful_timeout = int(os.getenv("GUNICORN_GRACEFUL_TIMEOUT", "30"))
 keepalive = int(os.getenv("GUNICORN_KEEPALIVE", "30"))

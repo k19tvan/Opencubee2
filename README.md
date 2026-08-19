@@ -2,7 +2,7 @@
   <img src="opencubee2-ui/public/logo.png" alt="OpenCubee2 logo" width="128" />
   <h1>OpenCubee2</h1>
   <p><strong>A high-performance multimodal video retrieval workspace for AI Challenge competitions.</strong></p>
-  <p>Text · Image · OCR · ASR · Temporal Search · Agent-Assisted Retrieval · Realtime Teamwork</p>
+  <p>Text · Image · OCR · ASR · Temporal Search · Realtime Teamwork</p>
 </div>
 
 ![OpenCubee2 search workspace](opencubee2-ui/public/readme/image.png)
@@ -17,7 +17,6 @@ OpenCubee2 helps teams find exact moments in large video collections quickly. It
 - **Temporal search** — describe multiple events and retrieve frames in sequence.
 - **Semantic ASR** — search transcript summaries and inspect matching scene frames.
 - **Full-video timeline** — use `Ctrl + Alt + Click` to browse all keyframes alongside word-level transcription.
-- **Agent workspace** — plan queries, perform optional browser research, inspect visual canvases, and refine results.
 - **Realtime teamwork** — share candidate frames, maintain a Trake panel, and submit to DRES.
 - **Competition-focused controls** — keyboard shortcuts, frame context, clustering, duplicate handling, and video preview.
 
@@ -36,7 +35,7 @@ flowchart LR
 
 | Component | Purpose | Default port |
 | --- | --- | ---: |
-| Backend | Search, media, agent, and realtime APIs | `2108` |
+| Backend | Search, media, chatbot, and realtime APIs | `2108` |
 | BGE worker | BGE-VL text/image embeddings | `2001` |
 | BEiT-3 worker | BEiT-3 text/image embeddings | `2002` |
 | MetaCLIP worker | MetaCLIP embeddings | `2003` |
@@ -53,7 +52,6 @@ flowchart LR
 - Conda or Miniconda
 - Node.js and npm
 - CUDA-compatible PyTorch for local embedding workers
-- Playwright Chromium for agent research
 - Layerbase for the provided local database setup script
 - Docker and Docker Compose for the recommended client UI deployment
 
@@ -74,7 +72,6 @@ The main environment runs the backend and most embedding workers:
 conda create -n env python=3.10 -y
 conda activate env
 pip install -r requirements.txt
-playwright install chromium
 ```
 
 BEiT-3 uses a separate environment because it has stricter dependencies:
@@ -109,11 +106,8 @@ Review these configuration groups in `.env`:
 | --- | --- |
 | Search databases | `QDRANT_HOST`, `MEILISEARCH_HOST`, `OCR_ASR_INDEX_NAME` |
 | Embedding workers | `BGE_WORKER_URL`, `BEIT3_WORKER_URL`, `METACLIP2_WORKER_URL`, `JINA_V5_OMNI_WORKER_URL`, `FGCLIP2_WORKER_URL` |
-| LLM services | `GROQ_API_KEY`, `TAVILY_API_KEY`, `AGENT_MODEL_BASE_URL`, `AGENT_MODEL_API_KEY` |
+| LLM services | `GROQ_API_KEY`, `TAVILY_API_KEY` |
 | Translation | `TRANSLATE_PROVIDER` and text-processing limits |
-| Agent research | `GEMINI_SESSION_POOL_SIZE`, `GEMINI_SESSION_ROOT`, `GEMINI_HEADLESS`, `GEMINI_TIMEOUT_SECONDS` |
-
-Each Gemini session directory is an independent Chromium profile. Pre-authenticated profiles can be supplied through `GEMINI_SESSION_DIRS`.
 
 ### 3. Download models and data
 
@@ -190,7 +184,7 @@ conda run --no-capture-output -n env \
   gunicorn -c gunicorn.conf.py backend.main:app
 ```
 
-> Keep `GUNICORN_WORKERS=1` unless realtime and agent state are moved out of process memory. Multiple workers currently split WebSocket clients and shared panel state.
+> Keep `GUNICORN_WORKERS=1` unless realtime state is moved out of process memory. Multiple workers currently split WebSocket clients and shared panel state.
 
 ## Frontend Setup
 
@@ -266,7 +260,6 @@ python -m compileall backend src
 | --- | --- |
 | Backend cannot reach Qdrant or Meilisearch | Confirm the services are running and the hosts in `.env` are reachable. |
 | A search model is unavailable | Start its worker and verify the corresponding `*_WORKER_URL`. |
-| Agent research times out | Check Chromium installation, Gemini profile authentication, headless mode, and timeout settings. |
 | Timeline has frames but no words | Confirm `storage/asr/word_level/<video_id>.json` and the matching FPS entry exist. |
 | Keyframes load slowly in development | Use the Docker/Nginx frontend and mount `public/keyframes` instead of serving them through Vite. |
 | Team clients do not synchronize | Verify every client uses the same backend WebSocket endpoint and that the backend runs with one worker. |
@@ -274,5 +267,5 @@ python -m compileall backend src
 ## Notes
 
 - Large model weights, databases, keyframes, and generated storage artifacts are intentionally kept outside normal source control.
-- Do not commit secrets or authenticated browser profiles. Keep `.env` and Gemini session directories private.
+- Do not commit secrets. Keep `.env` private.
 - Restart the backend after changing runtime storage mappings or environment configuration.
