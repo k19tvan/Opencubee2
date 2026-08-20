@@ -29,22 +29,15 @@ const renderHighlightedSummary = (summary) => {
 
 const getFrameDisplayName = (shot) => {
   if (!shot) return '';
-  if (shot.frame_name) return shot.frame_name;
-  if (shot.name) return shot.name;
-  if (shot.video_id && shot.frame_id !== undefined && shot.frame_id !== null) {
-    return `${shot.video_id}_${String(shot.frame_id).padStart(6, '0')}.webp`;
+  const rawName = shot.frame_name || shot.name || shot.filepath || shot.url || '';
+  if (rawName && typeof rawName === 'string' && !rawName.startsWith('data:')) {
+    const filename = rawName.split('?')[0].split('/').pop() || '';
+    const stem = filename.replace(/\.[^.]+$/, '');
+    const trailingDigits = stem.match(/(\d+)$/)?.[1];
+    if (trailingDigits) return trailingDigits.slice(-6).padStart(6, '0');
   }
-  if (shot.filepath) {
-    const parts = shot.filepath.split('/');
-    return parts[parts.length - 1];
-  }
-  if (shot.url && typeof shot.url === 'string') {
-    try {
-      const u = shot.url.split('?')[0];
-      const parts = u.split('/');
-      const last = parts[parts.length - 1];
-      if (last && !last.startsWith('data:')) return last;
-    } catch (e) {}
+  if (shot.frame_id !== undefined && shot.frame_id !== null) {
+    return String(shot.frame_id).slice(-6).padStart(6, '0');
   }
   return '';
 };
