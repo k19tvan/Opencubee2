@@ -24,10 +24,10 @@ class TemporalFrameRequest(BaseModel):
 
 IMAGE_BASE_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"
 CONTEXT_FRAME_RADIUS = 20
-PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25")
-WORD_LEVEL_DIR = PROJECT_ROOT / "results/asr/transcription/word_level"
-FPS_MAPPING_PATH = PROJECT_ROOT / "repo/Enn/Opencubee2/storage/fps_mapping.json"
-VIDEO_FRAME_MAPPING_PATH = PROJECT_ROOT / "repo/Enn/Opencubee2/storage/video_frame_mapping.json"
+PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/Opencubee2")
+WORD_LEVEL_DIR = PROJECT_ROOT / "storage/asr/transcription/word_level"
+FPS_MAPPING_PATH = PROJECT_ROOT / "storage/fps_mapping.json"
+VIDEO_FRAME_MAPPING_PATH = PROJECT_ROOT / "storage/video_frame_mapping.json"
 
 from backend.core import runtime
 from backend.core.config import MODEL_CONFIGS, OCR_ASR_INDEX_NAME, TEMP_UPLOAD_DIR
@@ -472,11 +472,9 @@ async def get_video_timeline(video_id: str):
 
     try:
         fps, words = await asyncio.to_thread(load_word_timeline, video_id)
-    except FileNotFoundError as error:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No word-level transcription found for video {video_id}",
-        ) from error
+    except FileNotFoundError:
+        # ASR transcriptions are optional; provide frames without word alignment
+        fps, words = None, []
     except (OSError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 

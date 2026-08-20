@@ -954,16 +954,6 @@ export default function App() {
           });
         }
       } else if (type === 'soloai_submitted') {
-        const queryFile = data?.query_file;
-        if (queryFile) {
-          setStagedFramesByQuery(prev => {
-            const next = { ...prev };
-            delete next[queryFile];
-            return next;
-          });
-        } else {
-          setStagedFramesByQuery({});
-        }
         window.dispatchEvent(new Event('refreshSoloAIQueries'));
       } else if (type === 'global_correct_submission') {
         const mappedShot = {
@@ -1140,6 +1130,13 @@ export default function App() {
       // Note: we do NOT clear trakeFrames (the staging area). It stays exactly as it is (Save-in-place).
       window.dispatchEvent(new Event('refreshSoloAIQueries'));
       sendRealtimeMessage({ type: 'soloai_submitted', data: { query_file: activeSoloQuery.filename } });
+      
+      // If we exit edit mode for a Trake row, clear out the draft for everyone
+      if (isTrake && editTrakeRowIndex !== null) {
+        setEditTrakeRowIndex(null);
+        setTrakeFrames([]);
+        sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQuery.filename, full_state: [] } });
+      }
     } catch (e) {
       toast.error(`Submit Failed: ${e.message}`, { id: toastId });
     }
@@ -1468,7 +1465,10 @@ export default function App() {
       let imageUrl = null;
 
       const isDynamicVideoFrame = shot.filepath?.startsWith('dynamic-frame-')
-        || shot.url?.startsWith('data:image');
+        || shot.filepath?.startsWith('csv-frame-')
+        || shot.url?.startsWith('data:image')
+        || shot.url?.includes('/video_thumbnail/')
+        || shot.url?.includes('/videos/');
 
       if (shot.frame_name && !isDynamicVideoFrame) {
         tempImageName = `_frame_:${shot.frame_name}`;

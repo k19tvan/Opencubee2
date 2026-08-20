@@ -192,6 +192,14 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "soloai_submitted":
                 await broadcast_event("soloai_submitted", data)
 
+            elif msg_type == "force_clear_draft":
+                query_file = data.get("query_file")
+                if query_file:
+                    async with runtime.realtime_state_lock:
+                        if query_file in runtime.trake_panel_state:
+                            del runtime.trake_panel_state[query_file]
+                        await broadcast_event("trake_clear", {"query_file": query_file})
+
             else:
                 await send_error(websocket, f"Unsupported message type: {msg_type!r}.")
 
