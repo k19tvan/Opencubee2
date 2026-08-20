@@ -88,6 +88,7 @@ async def websocket_endpoint(websocket: WebSocket):
             synced = await send_event(websocket, "team_sync", runtime.teamwork_panel_state)
             synced = synced and await send_event(websocket, "trake_sync", runtime.trake_panel_state)
             synced = synced and await send_event(websocket, "wrong_frames_sync", runtime.wrong_frames_state)
+            synced = synced and await send_event(websocket, "query_commits_sync", runtime.query_commits_state)
         if not synced:
             return
 
@@ -172,22 +173,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     runtime.trake_panel_state[query_file] = full_state
                     await broadcast_event("trake_sync", runtime.trake_panel_state)
 
+            elif msg_type == "update_query_commits":
+                query_file = data.get("query_file")
+                commits = data.get("commits")
+                if not query_file or not isinstance(commits, list):
+                    await send_error(websocket, "update_query_commits requires query_file and commits as a list.")
+                    continue
+                async with runtime.realtime_state_lock:
+                    runtime.query_commits_state[query_file] = commits
+                    await broadcast_event("query_commits_sync", runtime.query_commits_state)
+
             elif msg_type == "join_query":
                 query_file = data.get("query_file")
-                old_query = runtime.connection_active_queries.get(websocket)
-                
                 if query_file:
                     runtime.connection_active_queries[websocket] = query_file
                 elif websocket in runtime.connection_active_queries:
                     del runtime.connection_active_queries[websocket]
-                    
-                if old_query and old_query != query_file:
-                    async with runtime.realtime_state_lock:
-                        count = sum(1 for v in runtime.connection_active_queries.values() if v == old_query)
-                        if count == 0 and old_query in runtime.trake_panel_state:
-                            del runtime.trake_panel_state[old_query]
-                            await broadcast_event("trake_clear", {"query_file": old_query})
-                            await broadcast_event("trake_sync", runtime.trake_panel_state)
 
             elif msg_type == "soloai_submitted":
                 await broadcast_event("soloai_submitted", data)
@@ -199,6 +200,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         if query_file in runtime.trake_panel_state:
                             del runtime.trake_panel_state[query_file]
                         await broadcast_event("trake_clear", {"query_file": query_file})
+                        await broadcast_event("trake_sync", runtime.trake_panel_state)
 
             else:
                 await send_error(websocket, f"Unsupported message type: {msg_type!r}.")
@@ -208,14 +210,6 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception:
         LOGGER.exception("Unhandled WebSocket error")
     finally:
-        old_query = runtime.connection_active_queries.pop(websocket, None)
+        runtime.connection_active_queries.pop(websocket, None)
         runtime.manager.disconnect(websocket)
         LOGGER.info("WebSocket disconnected; active=%d", runtime.manager.connection_count)
-        
-        if old_query:
-            async with runtime.realtime_state_lock:
-                count = sum(1 for v in runtime.connection_active_queries.values() if v == old_query)
-                if count == 0 and old_query in runtime.trake_panel_state:
-                    del runtime.trake_panel_state[old_query]
-                    await broadcast_event("trake_clear", {"query_file": old_query})
-                    await broadcast_event("trake_sync", runtime.trake_panel_state)

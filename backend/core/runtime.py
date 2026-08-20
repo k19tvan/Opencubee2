@@ -129,6 +129,7 @@ connection_active_queries = {}
 teamwork_panel_state = []
 trake_panel_state = {}
 wrong_frames_state = []
+query_commits_state = {}
 frame_context_cache = {}
 similar_frames_map = {}
 frame_similarity_labels = {}

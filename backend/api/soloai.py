@@ -54,7 +54,12 @@ def upload_zip(file: UploadFile = File(...)):
                 continue
                 
             # Match any file containing 'query' to be safe, since they might lack extension
-            if 'query' in f.lower() or f.endswith('.txt'):
+            if f.endswith('.csv'):
+                src = os.path.join(root, f)
+                dst = os.path.join(SUBMISSION_DIR, f)
+                if src != dst:
+                    shutil.copy2(src, dst)
+            elif 'query' in f.lower() or f.endswith('.txt'):
                 src = os.path.join(root, f)
                 # Ensure they have .txt extension for consistency
                 if not f.endswith('.txt'):
@@ -91,7 +96,18 @@ def upload_zip(file: UploadFile = File(...)):
 @router.get("/soloai/queries")
 def get_queries():
     extract_dir = SOLOAI_DIR / "queries"
+    os.makedirs(extract_dir, exist_ok=True)
+    os.makedirs(SUBMISSION_DIR, exist_ok=True)
     
+    # Ensure any txt query without a csv has an initialized csv file
+    for txt_file in os.listdir(extract_dir):
+        if txt_file.endswith(".txt"):
+            c_name = txt_file.replace(".txt", ".csv")
+            c_path = SUBMISSION_DIR / c_name
+            if not c_path.exists():
+                with open(c_path, 'w', encoding='utf-8') as f:
+                    pass
+
     # We use CSV files in SUBMISSION_DIR as the source of truth
     csv_files = [f for f in os.listdir(SUBMISSION_DIR) if f.endswith('.csv')]
     
@@ -112,10 +128,11 @@ def get_queries():
             with open(csv_path, 'r', encoding='utf-8') as csv_file:
                 reader = csv.reader(csv_file)
                 for row in reader:
-                    submissions.append(row)
+                    # Only include non-empty rows
+                    if row and any(cell.strip() for cell in row):
+                        submissions.append(row)
                     
         # Give it a filename that includes .txt to match the front-end logic temporarily
-        # If there's no txt file, we just pretend it has one for identification
         queries.append({
             "filename": txt_name,
             "content": content,

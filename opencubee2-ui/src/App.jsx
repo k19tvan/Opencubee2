@@ -163,6 +163,48 @@ const writeWorkspaceHistory = (store) => {
   sessionStorage.setItem(WORKSPACE_HISTORY_STORAGE_KEY, JSON.stringify(store));
 };
 
+export function parseSubmissionsToFrames(submissions, isQA) {
+  if (!Array.isArray(submissions)) return [];
+  let loadedFrames = [];
+  submissions.forEach(row => {
+    if (!Array.isArray(row) || row.length === 0 || !row[0]) return;
+    const videoId = String(row[0]).trim();
+    if (!videoId) return;
+
+    if (isQA) {
+      if (row[1] !== undefined && row[1] !== "") {
+        const fId = parseInt(row[1], 10);
+        if (!isNaN(fId)) {
+          loadedFrames.push({
+            video_id: videoId,
+            frame_id: fId,
+            qaAnswer: row[2] || "",
+            url: getVideoThumbnailUrl(videoId, fId, 1920),
+            frame_name: `${videoId}_${String(fId).padStart(6, '0')}.webp`,
+            filepath: `csv-frame-${videoId}-${fId}`
+          });
+        }
+      }
+    } else {
+      row.slice(1).forEach(rawFId => {
+        if (rawFId !== undefined && rawFId !== "") {
+          const fId = parseInt(rawFId, 10);
+          if (!isNaN(fId)) {
+            loadedFrames.push({
+              video_id: videoId,
+              frame_id: fId,
+              url: getVideoThumbnailUrl(videoId, fId, 1920),
+              frame_name: `${videoId}_${String(fId).padStart(6, '0')}.webp`,
+              filepath: `csv-frame-${videoId}-${fId}`
+            });
+          }
+        }
+      });
+    }
+  });
+  return loadedFrames;
+}
+
 export default function App() {
   const [username, setUsername] = useState(sessionStorage.getItem('username') || '');
   const [userColor, setUserColor] = useState(sessionStorage.getItem('userColor') || '');
@@ -185,7 +227,7 @@ export default function App() {
   });
   const [randomTheme, setRandomTheme] = useState(() => RANDOM_THEME_OPTIONS[Math.floor(Math.random() * RANDOM_THEME_OPTIONS.length)]);
   const effectiveTheme = theme === 'random' ? randomTheme : theme;
-  const [showTrake, setShowTrake] = useState(false);
+  const [showTrake, setShowTrake] = useState(true);
   const [isClustered, setIsClustered] = useState(false);
   const [isAmbiguous, setIsAmbiguous] = useState(false);
 
@@ -256,23 +298,145 @@ export default function App() {
   const [goBackDepth, setGoBackDepth] = useState(0);
   const [goForwardDepth, setGoForwardDepth] = useState(0);
 
+  const socketRef = useRef(null);
+  const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
+  const lastRealtimeWarningRef = useRef(0);
+
+  const sendRealtimeMessage = useCallback((message, { notify = true } = {}) => {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify(message));
+        return true;
+      } catch (error) {
+        console.error('[ws] failed to send message:', error);
+      }
+    }
+    if (notify && Date.now() - lastRealtimeWarningRef.current > 3000) {
+      lastRealtimeWarningRef.current = Date.now();
+      toast.error('Teamwork is reconnecting. Please try again in a moment.');
+    }
+    return false;
+  }, []);
+
   const [lockedVideos, setLockedVideos] = useState([]);
 
-  // -- SoloAI Submission State --
+  // -- SoloAI Submission & Commit State --
   const [soloAIQueries, setSoloAIQueries] = useState([]);
   const [activeSoloQueryIndex, setActiveSoloQueryIndex] = useState(0);
   const [editTrakeRowIndex, setEditTrakeRowIndex] = useState(null);
 
-  const activeSoloQueryFile = soloAIQueries[activeSoloQueryIndex]?.filename || 'default';
-  const trakeFrames = useMemo(() => stagedFramesByQuery[activeSoloQueryFile] || [], [stagedFramesByQuery, activeSoloQueryFile]);
+  const [queryCommits, setQueryCommits] = useState(() => {
+    try {
+      const saved = localStorage.getItem('opencubee_query_commits');
+      if (!saved) return {};
+      const parsed = JSON.parse(saved);
+      for (const k in parsed) {
+        if (parsed[k]) {
+          parsed[k].activeCommitIndex = null;
+        }
+      }
+      return parsed;
+    } catch {
+      return {};
+    }
+  });
 
-  const setTrakeFrames = useCallback((updater) => {
-    setStagedFramesByQuery((prev) => {
-      const current = prev[activeSoloQueryFile] || [];
-      const next = typeof updater === 'function' ? updater(current) : updater;
-      return { ...prev, [activeSoloQueryFile]: next };
+  const activeSoloQueryFile = soloAIQueries[activeSoloQueryIndex]?.filename || 'default';
+  const trakeFrames = useMemo(() => {
+    if (!activeSoloQueryFile) return [];
+    const qState = queryCommits[activeSoloQueryFile];
+    const commitIdx = qState?.activeCommitIndex;
+    if (typeof commitIdx === 'number' && commitIdx >= 0 && qState?.commits?.[commitIdx]) {
+      return qState.commits[commitIdx].frames || [];
+    }
+    return stagedFramesByQuery[activeSoloQueryFile] || [];
+  }, [stagedFramesByQuery, activeSoloQueryFile, queryCommits]);
+
+  const isViewingCommit = useMemo(() => {
+    const qState = queryCommits[activeSoloQueryFile];
+    return typeof qState?.activeCommitIndex === 'number' && qState.activeCommitIndex >= 0;
+  }, [queryCommits, activeSoloQueryFile]);
+
+  useEffect(() => {
+    // Whenever switching to another query/question, default to Draft view (activeCommitIndex = null)
+    if (!activeSoloQueryFile || activeSoloQueryFile === 'default') return;
+    setQueryCommits(prev => {
+      if (!prev[activeSoloQueryFile] || prev[activeSoloQueryFile].activeCommitIndex === null) return prev;
+      const next = {
+        ...prev,
+        [activeSoloQueryFile]: {
+          ...prev[activeSoloQueryFile],
+          activeCommitIndex: null
+        }
+      };
+      try { localStorage.setItem('opencubee_query_commits', JSON.stringify(next)); } catch (e) {}
+      return next;
     });
   }, [activeSoloQueryFile]);
+
+  const setTrakeFrames = useCallback((updater) => {
+    if (!activeSoloQueryFile) return;
+    // Block edits when viewing a commit – read-only mode
+    if (isViewingCommit) {
+      toast.error('Commit view is read-only. Click "Push to Draft" to make changes.', { id: 'readonly-commit' });
+      return;
+    }
+
+    setStagedFramesByQuery((prev) => {
+      const baseFrames = prev[activeSoloQueryFile] || [];
+      const nextFrames = typeof updater === 'function' ? updater(baseFrames) : updater;
+
+      // Broadcast draft state to all team members in real-time
+      sendRealtimeMessage({
+        type: 'trake_update_state',
+        data: { query_file: activeSoloQueryFile, full_state: nextFrames }
+      });
+
+      return {
+        ...prev,
+        [activeSoloQueryFile]: nextFrames
+      };
+    });
+  }, [activeSoloQueryFile, isViewingCommit, sendRealtimeMessage]);
+
+  const handlePushCommitToDraft = useCallback(() => {
+    if (!activeSoloQueryFile) return;
+    const qState = queryCommits[activeSoloQueryFile];
+    const commitIdx = qState?.activeCommitIndex;
+    if (typeof commitIdx !== 'number' || commitIdx < 0) return;
+    const commitFrames = (qState.commits?.[commitIdx]?.frames || []).map(f => ({
+      ...f,
+      url: f.url?.startsWith('data:image')
+        ? f.url
+        : (getImageUrl(f.url || f.frame_name) || f.url)
+    }));
+
+    setStagedFramesByQuery(prev => ({
+      ...prev,
+      [activeSoloQueryFile]: commitFrames
+    }));
+
+    // Broadcast to team
+    sendRealtimeMessage({
+      type: 'trake_update_state',
+      data: { query_file: activeSoloQueryFile, full_state: commitFrames }
+    });
+
+    setQueryCommits(prev => {
+      const next = {
+        ...prev,
+        [activeSoloQueryFile]: {
+          ...prev[activeSoloQueryFile],
+          activeCommitIndex: null
+        }
+      };
+      try { localStorage.setItem('opencubee_query_commits', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+
+    toast.success(`Pushed Commit #${commitIdx + 1} to Draft!`);
+  }, [activeSoloQueryFile, queryCommits, sendRealtimeMessage]);
 
   const fetchSoloQueries = useCallback(async () => {
     try {
@@ -299,36 +463,39 @@ export default function App() {
     if (!activeQuery || !activeQuery.submissions) return;
 
     const isQA = activeQuery.filename.toLowerCase().includes('qa');
+    const loadedFrames = parseSubmissionsToFrames(activeQuery.submissions, isQA);
 
-    let loadedFrames = [];
-    activeQuery.submissions.forEach(row => {
-      const videoId = row[0];
-      if (isQA) {
-        if (row[1]) {
-          const fId = row[1];
-          loadedFrames.push({
-            video_id: videoId,
-            frame_id: fId,
-            qaAnswer: row[2],
-            url: getVideoThumbnailUrl(videoId, fId, 1920),
-            frame_name: `${videoId}_${String(fId).padStart(6, '0')}.webp`,
-            filepath: `csv-frame-${videoId}-${fId}`
-          });
+    // Seed initial commit from CSV if query has submissions and no commits exist yet
+    if (loadedFrames.length > 0) {
+      setQueryCommits(prev => {
+        const qState = prev[activeQuery.filename];
+        if (!qState || !qState.commits || qState.commits.length === 0) {
+          const initCommit = {
+            id: Date.now(),
+            timestamp: 'Initial CSV',
+            frames: loadedFrames
+          };
+          const next = {
+            ...prev,
+            [activeQuery.filename]: {
+              commits: [initCommit],
+              activeCommitIndex: null
+            }
+          };
+          try {
+            localStorage.setItem('opencubee_query_commits', JSON.stringify(next));
+          } catch (e) {}
+
+          sendRealtimeMessage({
+            type: 'update_query_commits',
+            data: { query_file: activeQuery.filename, commits: [initCommit] }
+          }, { notify: false });
+
+          return next;
         }
-      } else {
-        row.slice(1).forEach(fId => {
-          if (fId && !isNaN(Number(fId))) {
-            loadedFrames.push({
-              video_id: videoId,
-              frame_id: fId,
-              url: getVideoThumbnailUrl(videoId, fId, 1920),
-              frame_name: `${videoId}_${String(fId).padStart(6, '0')}.webp`,
-              filepath: `csv-frame-${videoId}-${fId}`
-            });
-          }
-        });
-      }
-    });
+        return prev;
+      });
+    }
 
     setStagedFramesByQuery(prev => {
       // Only populate from CSV if we haven't loaded or modified this query yet
@@ -338,13 +505,10 @@ export default function App() {
         [activeQuery.filename]: loadedFrames
       };
     });
-  }, [soloAIQueries, activeSoloQueryIndex]);
+  }, [soloAIQueries, activeSoloQueryIndex, sendRealtimeMessage]);
 
   const [backgroundAgentJob, setBackgroundAgentJob] = useState(null);
 
-  const socketRef = useRef(null);
-  const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
-  const lastRealtimeWarningRef = useRef(0);
   const latestWorkspaceRef = useRef(null);
   const submittedStagesRef = useRef(null);
   const submittedSearchModelRef = useRef(DEFAULT_SEARCH_MODEL);
@@ -367,28 +531,98 @@ export default function App() {
     contextShot,
   };
 
-  const sendRealtimeMessage = useCallback((message, { notify = true } = {}) => {
-    const socket = socketRef.current;
-    if (socket?.readyState === WebSocket.OPEN) {
-      try {
-        socket.send(JSON.stringify(message));
-        return true;
-      } catch (error) {
-        console.error('[ws] failed to send message:', error);
-      }
-    }
-    if (notify && Date.now() - lastRealtimeWarningRef.current > 3000) {
-      lastRealtimeWarningRef.current = Date.now();
-      toast.error('Teamwork is reconnecting. Please try again in a moment.');
-    }
-    return false;
-  }, []);
-
   useEffect(() => {
     if (activeSoloQueryFile && activeSoloQueryFile !== 'default') {
       sendRealtimeMessage({ type: 'join_query', data: { query_file: activeSoloQueryFile } }, { notify: false });
     }
   }, [activeSoloQueryFile, sendRealtimeMessage]);
+
+  const handleSelectCommit = useCallback((queryFilename, commitIndex) => {
+    if (!queryFilename) return;
+    setQueryCommits(prev => {
+      const qState = prev[queryFilename] || { commits: [], activeCommitIndex: null };
+      const commits = qState.commits || [];
+      const nextCommitIndex = (commitIndex >= 0 && commitIndex < commits.length) ? commitIndex : null;
+
+      const next = {
+        ...prev,
+        [queryFilename]: {
+          ...qState,
+          activeCommitIndex: nextCommitIndex
+        }
+      };
+      try {
+        localStorage.setItem('opencubee_query_commits', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  }, []);
+
+  const handlePrevCommit = useCallback(() => {
+    if (!activeSoloQueryFile) return;
+    const qState = queryCommits[activeSoloQueryFile] || { commits: [], activeCommitIndex: null };
+    const commits = qState.commits || [];
+    if (commits.length === 0) return;
+
+    let currentIndex = qState.activeCommitIndex;
+    if (currentIndex === null || currentIndex === undefined) {
+      currentIndex = commits.length;
+    }
+    const prevIndex = Math.max(0, currentIndex - 1);
+    handleSelectCommit(activeSoloQueryFile, prevIndex);
+  }, [activeSoloQueryFile, queryCommits, handleSelectCommit]);
+
+  const handleNextCommit = useCallback(() => {
+    if (!activeSoloQueryFile) return;
+    const qState = queryCommits[activeSoloQueryFile] || { commits: [], activeCommitIndex: null };
+    const commits = qState.commits || [];
+    if (commits.length === 0) return;
+
+    let currentIndex = qState.activeCommitIndex;
+    if (currentIndex === null || currentIndex === undefined) return;
+
+    const nextIndex = currentIndex + 1 >= commits.length ? -1 : currentIndex + 1;
+    handleSelectCommit(activeSoloQueryFile, nextIndex);
+  }, [activeSoloQueryFile, queryCommits, handleSelectCommit]);
+
+  const handleDeleteCommit = useCallback((queryFilename, commitIndexToDelete) => {
+    if (!queryFilename) return;
+    setQueryCommits(prev => {
+      const qState = prev[queryFilename] || { commits: [], activeCommitIndex: null };
+      const commits = qState.commits || [];
+      if (commitIndexToDelete < 0 || commitIndexToDelete >= commits.length) return prev;
+
+      const updatedCommits = commits.filter((_, i) => i !== commitIndexToDelete);
+      let newActiveIndex = qState.activeCommitIndex;
+
+      if (newActiveIndex === commitIndexToDelete) {
+        // Deleted the active commit → go back to draft
+        newActiveIndex = null;
+      } else if (typeof newActiveIndex === 'number' && newActiveIndex > commitIndexToDelete) {
+        // Shift index if a commit before active was deleted
+        newActiveIndex = newActiveIndex - 1;
+      }
+
+      const next = {
+        ...prev,
+        [queryFilename]: {
+          commits: updatedCommits,
+          activeCommitIndex: newActiveIndex
+        }
+      };
+      try {
+        localStorage.setItem('opencubee_query_commits', JSON.stringify(next));
+      } catch (e) {}
+
+      // Broadcast updated commits to team
+      sendRealtimeMessage({
+        type: 'update_query_commits',
+        data: { query_file: queryFilename, commits: updatedCommits }
+      });
+
+      return next;
+    });
+  }, [sendRealtimeMessage]);
 
   const updateHistoryDepths = (store = readWorkspaceHistory()) => {
     const currentIndex = store.entries.findIndex((entry) => entry.id === store.currentId);
@@ -937,22 +1171,46 @@ export default function App() {
               if (Array.isArray(shots)) {
                 nextState[qFile] = shots.map(shot => ({
                   ...shot,
-                  url: getImageUrl(shot.url || shot.frame_name)
+                  url: shot.url?.startsWith('data:image')
+                    ? shot.url
+                    : (getImageUrl(shot.url || shot.frame_name) || shot.url)
                 }));
               }
             }
             return nextState;
           });
         }
-      } else if (type === 'trake_clear') {
-        const queryFile = data?.query_file;
-        if (queryFile) {
-          setStagedFramesByQuery(prev => {
-            const next = { ...prev };
-            delete next[queryFile];
-            return next;
+      } else if (type === 'query_commits_sync') {
+        if (typeof data === 'object' && !Array.isArray(data)) {
+          setQueryCommits(prev => {
+            const nextState = { ...prev };
+            for (const [qFile, commits] of Object.entries(data)) {
+              if (Array.isArray(commits)) {
+                const mappedCommits = commits.map(c => ({
+                  ...c,
+                  frames: (c.frames || []).map(shot => ({
+                    ...shot,
+                    url: shot.url?.startsWith('data:image')
+                      ? shot.url
+                      : (getImageUrl(shot.url || shot.frame_name) || shot.url)
+                  }))
+                }));
+                const prevActiveIndex = prev[qFile]?.activeCommitIndex ?? null;
+                const validActiveIndex = (typeof prevActiveIndex === 'number' && prevActiveIndex >= 0 && prevActiveIndex < mappedCommits.length)
+                  ? prevActiveIndex
+                  : null;
+                nextState[qFile] = {
+                  commits: mappedCommits,
+                  activeCommitIndex: validActiveIndex
+                };
+              }
+            }
+            try { localStorage.setItem('opencubee_query_commits', JSON.stringify(nextState)); } catch (e) {}
+            return nextState;
           });
         }
+      } else if (type === 'trake_clear') {
+        // Preserving local drafts when switching queries: do not wipe out local stagedFramesByQuery on trake_clear
       } else if (type === 'soloai_submitted') {
         window.dispatchEvent(new Event('refreshSoloAIQueries'));
       } else if (type === 'global_correct_submission') {
@@ -1045,6 +1303,10 @@ export default function App() {
 
   const handlePushToTrake = (shot, qaAnswerStr = null) => {
     if (!shot) return;
+    if (isViewingCommit) {
+      toast.error('Commit view is read-only. Click "Push to Draft" to make changes.', { id: 'readonly-commit' });
+      return;
+    }
 
     // Check if we are in QA mode to intercept submission
     const activeQuery = soloAIQueries?.[activeSoloQueryIndex];
@@ -1054,14 +1316,17 @@ export default function App() {
     }
 
     const compiledAnswer = qaAnswerStr || shot.qaAnswer;
-    const shotWithUrl = { ...shot, url: getImageUrl(shot.url || shot.frame_name) || shot.url, qaAnswer: compiledAnswer };
+    const shotWithUrl = {
+      ...shot,
+      url: getImageUrl(shot.url || shot.frame_name) || shot.url,
+      qaAnswer: compiledAnswer,
+      user: { name: username || 'User', color: userColor || 'var(--accent-primary)' }
+    };
 
     setTrakeFrames(prev => {
       const incomingKey = getShotKey(shotWithUrl);
       if (incomingKey && prev.some(s => getShotKey(s) === incomingKey)) return prev;
-      const next = [...prev, shotWithUrl];
-      sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQueryFile, full_state: next } });
-      return next;
+      return [...prev, shotWithUrl];
     });
     setShowTrake(true);
   };
@@ -1074,44 +1339,85 @@ export default function App() {
   }, [username, userColor, sendRealtimeMessage]);
 
   const handleReplaceTrakeFrame = useCallback((newShot) => {
-    if (!trakePreviewShot) return;
+    if (!trakePreviewShot || isViewingCommit) return;
     setTrakeFrames(prev => {
       const index = prev.findIndex(s => s.frame_name === trakePreviewShot.frame_name);
       if (index === -1) return prev;
       const next = [...prev];
-      next[index] = { ...newShot, url: getImageUrl(newShot.url || newShot.frame_name) || newShot.url };
-      sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQueryFile, full_state: next } });
+      next[index] = {
+        ...newShot,
+        url: getImageUrl(newShot.url || newShot.frame_name) || newShot.url,
+        user: { name: username || 'User', color: userColor || 'var(--accent-primary)' }
+      };
       return next;
     });
     setTrakePreviewShot(newShot);
-  }, [trakePreviewShot, activeSoloQueryFile, sendRealtimeMessage]);
+  }, [trakePreviewShot, isViewingCommit, username, userColor, setTrakeFrames]);
 
   const handleReorderTrake = useCallback((orderedFrames) => {
+    if (isViewingCommit) return;
     setTrakeFrames(orderedFrames);
-    sendRealtimeMessage({
-      type: 'trake_update_state',
-      data: { full_state: orderedFrames, query_file: activeSoloQueryFile },
-    });
-  }, [sendRealtimeMessage, setTrakeFrames, activeSoloQueryFile]);
+  }, [isViewingCommit, setTrakeFrames]);
 
   const handleRemoveFromTrake = useCallback((shot) => {
+    if (isViewingCommit) return;
     const frameKey = getShotKey(shot);
     if (!frameKey) return;
-    setTrakeFrames((previous) => {
-      const next = previous.filter((frame) => getShotKey(frame) !== frameKey);
-      sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQueryFile, full_state: next } });
-      return next;
-    });
-  }, [sendRealtimeMessage, setTrakeFrames, activeSoloQueryFile]);
+    setTrakeFrames((previous) => previous.filter((frame) => getShotKey(frame) !== frameKey));
+  }, [isViewingCommit, setTrakeFrames]);
 
   const activeSoloQuery = soloAIQueries[activeSoloQueryIndex] || null;
+
+  const handleCreateCommit = useCallback((framesArray) => {
+    if (isViewingCommit) {
+      toast.error('You are currently viewing a commit. Switch to Draft or click "Push to Draft" to create a new commit.', { id: 'readonly-commit' });
+      return;
+    }
+    if (!activeSoloQuery) {
+      toast.error('No active query selected!');
+      return;
+    }
+
+    const newCommit = {
+      id: Date.now(),
+      timestamp: `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} (${username || 'User'})`,
+      frames: (framesArray || []).map(f => ({ ...f }))
+    };
+
+    let totalCommits = 0;
+    setQueryCommits(prev => {
+      const qState = prev[activeSoloQuery.filename] || { commits: [], activeCommitIndex: null };
+      const updatedCommits = [...(qState.commits || []), newCommit];
+      totalCommits = updatedCommits.length;
+      const next = {
+        ...prev,
+        [activeSoloQuery.filename]: {
+          commits: updatedCommits,
+          activeCommitIndex: updatedCommits.length - 1
+        }
+      };
+      try {
+        localStorage.setItem('opencubee_query_commits', JSON.stringify(next));
+      } catch (err) {}
+
+      // Broadcast to entire team
+      sendRealtimeMessage({
+        type: 'update_query_commits',
+        data: { query_file: activeSoloQuery.filename, commits: updatedCommits }
+      });
+
+      return next;
+    });
+
+    toast.success(`Created Commit #${totalCommits} for team!`);
+  }, [activeSoloQuery, isViewingCommit, username, sendRealtimeMessage]);
 
   const handleSoloAISubmit = useCallback(async (framesArray, answer = null) => {
     if (!activeSoloQuery) {
       toast.error('No active query selected!');
       return;
     }
-    const toastId = toast.loading('Submitting...');
+    const toastId = toast.loading('Saving to CSV...');
     try {
       const { submitSoloAI } = await import('./api');
       await submitSoloAI({
@@ -1120,27 +1426,49 @@ export default function App() {
         answer: answer,
         row_index: editTrakeRowIndex
       });
-      toast.success('Submitted successfully', { id: toastId });
+      toast.success('Committed and Saved to CSV successfully', { id: toastId });
       const isTrake = activeSoloQuery.filename.toLowerCase().includes('trake');
       if (isTrake && editTrakeRowIndex === null) {
-        // If we just appended a new row, we should transition into editing that new row to stay in it.
         const newIndex = activeSoloQuery.submissions ? activeSoloQuery.submissions.length : 0;
         setEditTrakeRowIndex(newIndex);
       }
-      // Note: we do NOT clear trakeFrames (the staging area). It stays exactly as it is (Save-in-place).
+
+      // Save commit snapshot for history tracking
+      const newCommit = {
+        id: Date.now(),
+        timestamp: `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} (${username || 'User'} - CSV)`,
+        frames: framesArray.map(f => ({ ...f }))
+      };
+
+      setQueryCommits(prev => {
+        const qState = prev[activeSoloQuery.filename] || { commits: [], activeCommitIndex: null };
+        const updatedCommits = [...(qState.commits || []), newCommit];
+        const next = {
+          ...prev,
+          [activeSoloQuery.filename]: {
+            commits: updatedCommits,
+            activeCommitIndex: updatedCommits.length - 1
+          }
+        };
+        try {
+          localStorage.setItem('opencubee_query_commits', JSON.stringify(next));
+        } catch (err) {}
+
+        // Broadcast to entire team
+        sendRealtimeMessage({
+          type: 'update_query_commits',
+          data: { query_file: activeSoloQuery.filename, commits: updatedCommits }
+        });
+
+        return next;
+      });
+
       window.dispatchEvent(new Event('refreshSoloAIQueries'));
       sendRealtimeMessage({ type: 'soloai_submitted', data: { query_file: activeSoloQuery.filename } });
-      
-      // If we exit edit mode for a Trake row, clear out the draft for everyone
-      if (isTrake && editTrakeRowIndex !== null) {
-        setEditTrakeRowIndex(null);
-        setTrakeFrames([]);
-        sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQuery.filename, full_state: [] } });
-      }
     } catch (e) {
       toast.error(`Submit Failed: ${e.message}`, { id: toastId });
     }
-  }, [activeSoloQuery, setTrakeFrames, editTrakeRowIndex]);
+  }, [activeSoloQuery, editTrakeRowIndex, username, sendRealtimeMessage]);
 
   const handleDeleteSoloAISubmit = useCallback(async (rowIndex) => {
     if (!activeSoloQuery) return;
@@ -1160,6 +1488,10 @@ export default function App() {
   }, [activeSoloQuery]);
 
   const handleEditTrakeRow = useCallback((rowIndex) => {
+    if (isViewingCommit) {
+      toast.error('Commit view is read-only. Click "Push to Draft" to make changes.', { id: 'readonly-commit' });
+      return;
+    }
     if (!activeSoloQuery || !activeSoloQuery.submissions) return;
     const row = activeSoloQuery.submissions[rowIndex];
     if (!row) return;
@@ -1176,7 +1508,8 @@ export default function App() {
           qaAnswer: row[2],
           url: getVideoThumbnailUrl(videoId, row[1], 1920),
           frame_name: `${videoId}_${String(row[1]).padStart(6, '0')}.webp`,
-          filepath: `csv-frame-${videoId}-${row[1]}`
+          filepath: `csv-frame-${videoId}-${row[1]}`,
+          user: { name: username || 'User', color: userColor || 'var(--accent-primary)' }
         });
       }
     } else {
@@ -1187,7 +1520,8 @@ export default function App() {
             frame_id: fId,
             url: getVideoThumbnailUrl(videoId, fId, 1920),
             frame_name: `${videoId}_${String(fId).padStart(6, '0')}.webp`,
-            filepath: `csv-frame-${videoId}-${fId}`
+            filepath: `csv-frame-${videoId}-${fId}`,
+            user: { name: username || 'User', color: userColor || 'var(--accent-primary)' }
           });
         }
       });
@@ -1195,16 +1529,13 @@ export default function App() {
 
     setTrakeFrames(loadedFrames);
     setEditTrakeRowIndex(rowIndex);
-    sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQuery.filename, full_state: loadedFrames } });
-  }, [activeSoloQuery, setTrakeFrames, sendRealtimeMessage]);
+  }, [isViewingCommit, activeSoloQuery, username, userColor, setTrakeFrames]);
 
   const handleCancelEditTrakeRow = useCallback(() => {
+    if (isViewingCommit) return;
     setTrakeFrames([]);
     setEditTrakeRowIndex(null);
-    if (activeSoloQuery) {
-      sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQuery.filename, full_state: [] } });
-    }
-  }, [setTrakeFrames, sendRealtimeMessage, activeSoloQuery]);
+  }, [isViewingCommit, setTrakeFrames]);
 
   useEffect(() => {
     // Reset edit mode when active query changes
@@ -1216,19 +1547,59 @@ export default function App() {
     }
   }, [activeSoloQueryIndex, soloAIQueries]);
 
+  const handleReloadSoloAICsv = useCallback(async () => {
+    const toastId = toast.loading('Reloading CSV from disk...');
+    try {
+      const { getSoloAIQueries } = await import('./api');
+      const res = await getSoloAIQueries();
+      const queries = res.queries || [];
+      setSoloAIQueries(queries);
+
+      const activeQuery = queries[activeSoloQueryIndex] || soloAIQueries[activeSoloQueryIndex];
+      if (!activeQuery || !activeQuery.submissions) {
+        toast.error('No active query found', { id: toastId });
+        return;
+      }
+
+      const isQA = activeQuery.filename.toLowerCase().includes('qa');
+      const loadedFrames = parseSubmissionsToFrames(activeQuery.submissions, isQA);
+
+      setStagedFramesByQuery(prev => ({
+        ...prev,
+        [activeQuery.filename]: loadedFrames
+      }));
+
+      if (activeQuery.filename.toLowerCase().includes('trake') && activeQuery.submissions.length > 0) {
+        setEditTrakeRowIndex(0);
+      }
+
+      sendRealtimeMessage({
+        type: 'trake_update_state',
+        data: { query_file: activeQuery.filename, full_state: loadedFrames }
+      });
+
+      toast.success(`Reloaded ${loadedFrames.length} frames from CSV`, { id: toastId });
+    } catch (e) {
+      toast.error(`Reload CSV failed: ${e.message}`, { id: toastId });
+    }
+  }, [activeSoloQueryIndex, soloAIQueries, sendRealtimeMessage]);
+
   const handleUploadSoloAIZip = useCallback(async (file) => {
     const toastId = toast.loading('Uploading zip...');
     try {
-      const { uploadSoloAIZip } = await import('./api');
+      const { uploadSoloAIZip, getSoloAIQueries } = await import('./api');
       await uploadSoloAIZip(file);
-      toast.success('Uploaded and extracted successfully', { id: toastId });
+      const res = await getSoloAIQueries();
+      const queries = res.queries || [];
+      setSoloAIQueries(queries);
       setStagedFramesByQuery({});
+      toast.success('Uploaded and extracted successfully', { id: toastId });
       window.dispatchEvent(new Event('refreshSoloAIQueries'));
       sendRealtimeMessage({ type: 'soloai_submitted', data: {} });
     } catch (e) {
       toast.error(`Upload Failed: ${e.message}`, { id: toastId });
     }
-  }, []);
+  }, [sendRealtimeMessage]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
@@ -1788,6 +2159,7 @@ export default function App() {
             activeSoloQueryIndex={activeSoloQueryIndex}
             setActiveSoloQueryIndex={setActiveSoloQueryIndex}
             fetchSoloQueries={fetchSoloQueries}
+            queryCommits={queryCommits}
 
             onOpenModal={setActiveModal}
             onGoBack={goBackOneStep}
@@ -1884,6 +2256,15 @@ export default function App() {
                 onCancelEditTrakeRow={handleCancelEditTrakeRow}
                 onDeleteTrakeRow={handleDeleteSoloAISubmit}
                 onDeleteSoloAISubmit={handleDeleteSoloAISubmit}
+                onReloadSoloAICsv={handleReloadSoloAICsv}
+                queryCommits={queryCommits}
+                onCreateCommit={handleCreateCommit}
+                onSelectCommit={handleSelectCommit}
+                onPrevCommit={handlePrevCommit}
+                onNextCommit={handleNextCommit}
+                onDeleteCommit={handleDeleteCommit}
+                isViewingCommit={isViewingCommit}
+                onPushCommitToDraft={handlePushCommitToDraft}
               />
               {trakePreviewShot && (
                 <TrakeFramePreviewSidebar

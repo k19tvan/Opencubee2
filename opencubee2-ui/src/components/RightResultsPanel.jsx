@@ -413,6 +413,15 @@ export default function RightResultsPanel({
   onEditTrakeRow,
   onCancelEditTrakeRow,
   onDeleteTrakeRow,
+  onReloadSoloAICsv,
+  queryCommits = {},
+  onCreateCommit,
+  onSelectCommit,
+  onPrevCommit,
+  onNextCommit,
+  onDeleteCommit,
+  isViewingCommit = false,
+  onPushCommitToDraft,
 }) {
   const containerRef = useRef(null);
   const sentinelRef = useRef(null);
@@ -509,19 +518,12 @@ export default function RightResultsPanel({
         }
       } else if (event.ctrlKey && event.shiftKey && event.code === 'Space') {
         event.preventDefault();
-        let targetShot = null;
-        if (hoveredShotRef.current && !hoveredTrakeShot && !hoveredTeamShot) {
-          targetShot = hoveredShotRef.current;
+        if (hoveredTrakeShot) {
+          removeFromTrake?.(hoveredTrakeShot);
+        } else if (hoveredShotRef.current && !hoveredTeamShot) {
+          pushToTrake(hoveredShotRef.current);
         } else if (hoveredTeamShot) {
-          targetShot = hoveredTeamShot;
-        }
-
-        if (targetShot) {
-          pushToTrake(targetShot);
-        } else {
-          if (onSoloAISubmit && typeof onSoloAISubmit === 'function') {
-            onSoloAISubmit(trakeFramesRef.current);
-          }
+          pushToTrake(hoveredTeamShot);
         }
       }
     };
@@ -745,27 +747,30 @@ export default function RightResultsPanel({
       className="flex-grow overflow-y-auto bg-[var(--bg-primary)] pb-12 transition-colors duration-300 relative w-full"
       style={{ willChange: 'transform' }}
     >
-      <div id="teamworkPanelContainer" className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[49] transition-colors duration-300 shadow-sm">
-        <h3 className="text-xs font-bold text-[var(--accent-primary)] uppercase tracking-widest flex items-center gap-2 px-6 mb-3">
-          <i className="fas fa-users"></i> Teamwork Submission Panel
-        </h3>
-        <TeamworkPanel
-          teamworkFrames={teamworkFrames}
-          wrongFrames={wrongFrames}
-          correctSubmission={correctSubmission}
-          onDragStart={handleDragStart}
-          onItemClick={handleItemClick}
-          onContextMenu={handleOpenPreview}
-          onMouseEnter={handleTeamMouseEnter}
-          onMouseLeave={handleTeamMouseLeave}
-        />
-      </div>
+      <div className="sticky top-0 z-[49] bg-[var(--bg-primary)] flex flex-col transition-colors duration-300 pointer-events-auto border-b border-[var(--border-color)] shadow-md">
+        {!showTrake && (
+          <div id="teamworkPanelContainer" className="pt-4 border-b border-[var(--border-color)] pb-2">
+            <h3 className="text-xs font-bold text-[var(--accent-primary)] uppercase tracking-widest flex items-center gap-2 px-6 mb-3">
+              <i className="fas fa-users"></i> Teamwork Submission Panel
+            </h3>
+            <TeamworkPanel
+              teamworkFrames={teamworkFrames}
+              wrongFrames={wrongFrames}
+              correctSubmission={correctSubmission}
+              onDragStart={handleDragStart}
+              onItemClick={handleItemClick}
+              onContextMenu={handleOpenPreview}
+              onMouseEnter={handleTeamMouseEnter}
+              onMouseLeave={handleTeamMouseLeave}
+            />
+          </div>
+        )}
 
-      {showTrake && (
-        <div
-          id="trakePanelContainer"
-          className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[48] transition-colors duration-300 shadow-sm"
-          onMouseEnter={() => setIsHoveringTrakePanel?.(true)}
+        {showTrake && (
+          <div
+            id="trakePanelContainer"
+            className="pt-4 pb-2"
+            onMouseEnter={() => setIsHoveringTrakePanel?.(true)}
           onMouseLeave={() => {
             hoveredTrakeShotRef.current = null;
             hoveredTrakeIndexRef.current = null;
@@ -774,19 +779,40 @@ export default function RightResultsPanel({
         >
           <div className="flex-shrink-0 px-6 mb-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2">
-                <i className="fas fa-file-invoice"></i> SOLOAI SUBMISSION PANEL
-                <span className="text-[10px] bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded-full font-mono ml-1 mr-2">
-                  {trakeFrames.length} Staged
-                </span>
-                
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                  {isViewingCommit ? (
+                    <span className="flex items-center gap-1.5 text-amber-400">
+                      <i className="fas fa-lock text-xs"></i> COMMIT VIEW (READ-ONLY)
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-emerald-400">
+                      <i className="fas fa-users text-xs"></i> TEAM DRAFT PANEL
+                    </span>
+                  )}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ml-1 ${
+                    isViewingCommit ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+                  }`}>
+                    {trakeFrames.length} Frames
+                  </span>
+                  {!isViewingCommit && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[9px] font-semibold border border-emerald-500/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Live Teamwork
+                    </span>
+                  )}
+                </h3>
+
                 {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && soloAIQueries[activeSoloQueryIndex]?.submissions?.length > 0 && (
                   <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-3">
                     <div className="relative" ref={dropdownRef}>
                       <button
                         type="button"
-                        onClick={() => setIsTrakeDropdownOpen(!isTrakeDropdownOpen)}
-                        className="flex items-center justify-between min-w-[120px] bg-[#1e1e1e] border border-white/10 rounded px-3 py-1 text-xs text-white outline-none focus:border-emerald-500 h-6 cursor-pointer hover:bg-white/5 transition-colors"
+                        disabled={isViewingCommit}
+                        onClick={() => !isViewingCommit && setIsTrakeDropdownOpen(!isTrakeDropdownOpen)}
+                        className={`flex items-center justify-between min-w-[120px] bg-[#1e1e1e] border border-white/10 rounded px-3 py-1 text-xs text-white outline-none focus:border-emerald-500 h-6 transition-colors ${
+                          isViewingCommit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-white/5'
+                        }`}
                       >
                         <span className="truncate mr-2 font-mono">
                           {editTrakeRowIndex !== null ? `Row ${editTrakeRowIndex + 1}` : "+ Append New"}
@@ -794,7 +820,7 @@ export default function RightResultsPanel({
                         <i className={`fas fa-chevron-down text-[10px] transition-transform ${isTrakeDropdownOpen ? 'rotate-180' : ''}`}></i>
                       </button>
                       
-                      {isTrakeDropdownOpen && (
+                      {isTrakeDropdownOpen && !isViewingCommit && (
                         <div className="absolute top-full left-0 mt-1 min-w-[120px] bg-[#2a2a2a] border border-white/10 rounded-md shadow-xl z-50 overflow-hidden text-xs">
                           {soloAIQueries[activeSoloQueryIndex].submissions.map((_, rIdx) => (
                             <button
@@ -821,7 +847,7 @@ export default function RightResultsPanel({
                         </div>
                       )}
                     </div>
-                    {editTrakeRowIndex !== null && (
+                    {editTrakeRowIndex !== null && !isViewingCommit && (
                       <button 
                         onClick={() => {
                            onDeleteTrakeRow && onDeleteTrakeRow(editTrakeRowIndex);
@@ -834,7 +860,23 @@ export default function RightResultsPanel({
                     )}
                   </div>
                 )}
-                
+              </div>
+              
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onCreateCommit && typeof onCreateCommit === 'function') {
+                      onCreateCommit(trakeFramesRef.current);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-purple-600/20 text-purple-300 border border-purple-500/40 rounded text-[11px] font-bold uppercase tracking-wider hover:bg-purple-600 hover:text-white transition-all cursor-pointer shadow-[0_0_8px_rgba(147,51,234,0.15)]"
+                  title="Create a local commit snapshot (without saving to CSV yet)"
+                >
+                  <i className="fas fa-bookmark mr-0.5"></i> Commit
+                </button>
+
                 <button
                   type="button"
                   onClick={(e) => {
@@ -843,55 +885,113 @@ export default function RightResultsPanel({
                       onSoloAISubmit(trakeFramesRef.current);
                     }
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/30 rounded text-[11px] font-bold uppercase tracking-wider hover:bg-[#10b981] hover:text-white transition-all shadow-[0_0_8px_rgba(16,185,129,0.15)]"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/30 rounded text-[11px] font-bold uppercase tracking-wider hover:bg-[#10b981] hover:text-white transition-all shadow-[0_0_8px_rgba(16,185,129,0.15)] cursor-pointer"
+                  title="Commit & Save to backend CSV file"
                 >
-                  <i className="fas fa-paper-plane mr-0.5"></i> Submit
+                  <i className="fas fa-save mr-0.5"></i> Save CSV
                 </button>
-              </h3>
-              <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-zinc-500 italic lowercase tracking-wider">
-                  /SoLoaiAIC/{soloAIQueries[activeSoloQueryIndex]?.filename?.replace('.txt', '.csv')}
-                </span>
-                
+              </div>
+            </div>
+            
+            <div className="flex gap-2 items-center flex-wrap mt-2">
+              <span className="text-[10px] text-zinc-500 italic lowercase tracking-wider">
+                /SoLoaiAIC/{soloAIQueries[activeSoloQueryIndex]?.filename?.replace('.txt', '.csv')}
+              </span>
+              
+              {(() => {
+                const activeQueryFilename = soloAIQueries[activeSoloQueryIndex]?.filename;
+                const activeQueryCommitState = queryCommits[activeQueryFilename] || { commits: [], activeCommitIndex: null };
+                const currentCommits = activeQueryCommitState.commits || [];
+                const activeCommitIndex = activeQueryCommitState.activeCommitIndex;
+
+                return (
+                  <div className="flex items-center gap-1.5 bg-[#181825] border border-emerald-500/30 rounded px-2 py-0.5 text-xs text-white">
+                    <span className="text-[10px] uppercase font-bold text-emerald-400">Commits ({currentCommits.length}):</span>
+                    <button
+                      type="button"
+                      disabled={activeCommitIndex === null || activeCommitIndex <= 0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPrevCommit && onPrevCommit();
+                      }}
+                      className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded text-[10px] cursor-pointer"
+                      title="Previous Commit"
+                    >
+                      <i className="fas fa-chevron-left"></i>
+                    </button>
+                    <select
+                      value={typeof activeCommitIndex === 'number' && activeCommitIndex >= 0 ? activeCommitIndex : -1}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        onSelectCommit && onSelectCommit(activeQueryFilename, Number(e.target.value));
+                      }}
+                      className="bg-[#11111b] border border-emerald-500/40 rounded px-2 py-0.5 text-[11px] text-emerald-300 font-mono outline-none cursor-pointer"
+                    >
+                      <option value={-1}>* Draft (Live Collaborative) *</option>
+                      {currentCommits.map((c, i) => (
+                        <option key={c.id || i} value={i}>
+                          Commit #{i + 1} ({c.timestamp}) [{c.frames?.length || 0} frames]
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={activeCommitIndex === null || activeCommitIndex >= currentCommits.length - 1}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNextCommit && onNextCommit();
+                      }}
+                      className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded text-[10px] cursor-pointer"
+                      title="Next Commit"
+                    >
+                      <i className="fas fa-chevron-right"></i>
+                    </button>
+                    {typeof activeCommitIndex === 'number' && activeCommitIndex >= 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPushCommitToDraft && onPushCommitToDraft();
+                          }}
+                          className="px-2.5 py-0.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded text-[10px] uppercase cursor-pointer transition-all flex items-center gap-1 shadow-[0_0_8px_rgba(245,158,11,0.3)]"
+                          title="Copy this commit's frames into Draft (editable)"
+                        >
+                          <i className="fas fa-file-export"></i> Push to Draft
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onDeleteCommit && typeof onDeleteCommit === 'function') {
+                              onDeleteCommit(activeQueryFilename, activeCommitIndex);
+                            }
+                          }}
+                          className="px-1.5 py-0.5 bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white rounded text-[10px] cursor-pointer transition-colors"
+                          title={`Delete Commit #${activeCommitIndex + 1}`}
+                        >
+                          <i className="fas fa-trash-alt"></i>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+              
+              {isViewingCommit && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    const qFile = soloAIQueries[activeSoloQueryIndex]?.filename;
-                    const csvContent = soloAIQueries[activeSoloQueryIndex]?.content;
-                    if (qFile) {
-                      if (csvContent) {
-                        const lines = csvContent.trim().split(/\r?\n/).filter(line => line.trim().length > 0);
-                        const parsedFrames = lines.map(line => {
-                          const parts = line.split(',');
-                          if (parts.length >= 2) {
-                            const video_id = parts[0].trim();
-                            const frame_id = parseInt(parts[1].trim(), 10);
-                            return {
-                              video_id,
-                              frame_id,
-                              frame_name: `${video_id}_${frame_id.toString().padStart(4, '0')}.webp`,
-                              url: ''
-                            };
-                          }
-                          return null;
-                        }).filter(Boolean);
-
-                        sendRealtimeMessage({
-                          type: 'trake_update_state',
-                          data: { query_file: qFile, full_state: parsedFrames }
-                        });
-                      } else {
-                        sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: qFile, full_state: [] } });
-                      }
-                    }
+                    const activeQueryFilename = soloAIQueries[activeSoloQueryIndex]?.filename;
+                    onSelectCommit && onSelectCommit(activeQueryFilename, -1);
                   }}
-                  className="flex items-center justify-center px-3 py-1 cursor-pointer text-blue-200 bg-blue-600/30 hover:bg-blue-600 hover:text-white rounded transition-colors border border-blue-500/30 font-bold uppercase tracking-wider text-[11px]"
-                  title="Reload from CSV"
+                  className="flex items-center justify-center px-3 py-1 cursor-pointer text-emerald-300 bg-emerald-600/25 hover:bg-emerald-500 hover:text-white rounded transition-all border border-emerald-500/40 font-bold uppercase tracking-wider text-[11px]"
+                  title="Return to the live collaborative Draft"
                 >
-                  <i className="fas fa-sync-alt text-[10px] mr-1.5"></i> Reload CSV
+                  <i className="fas fa-arrow-left text-[10px] mr-1.5"></i> Back to Draft
                 </button>
-              </div>
+              )}
             </div>
             
             {soloAIQueries[activeSoloQueryIndex]?.content && (
@@ -903,8 +1003,8 @@ export default function RightResultsPanel({
           <div
             id="trakeGrid"
             className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none min-h-[110px]"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleTrakePanelDrop}
+            onDragOver={(event) => !isViewingCommit && event.preventDefault()}
+            onDrop={!isViewingCommit ? handleTrakePanelDrop : undefined}
           >
             {(() => {
               if (trakeFrames.length === 0) {
@@ -914,12 +1014,14 @@ export default function RightResultsPanel({
               const renderStaged = () => trakeFrames.map((shot, idx) => (
                 <div
                   key={`staged-${shot?.filepath || shot?.frame_name || shot?.url || idx}`}
-                  draggable={true}
-                  onDragStart={(e) => handleTrakeDragStart(e, shot, idx)}
+                  draggable={!isViewingCommit}
+                  onDragStart={(e) => !isViewingCommit && handleTrakeDragStart(e, shot, idx)}
                   onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleTrakeDrop(e, idx)}
+                  onDrop={(e) => !isViewingCommit && handleTrakeDrop(e, idx)}
                   onDragEnd={() => { trakeDragIndexRef.current = null; }}
-                  className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border transition-all duration-300 ease-spring will-change-transform animate-scaleIn border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-[1.03] hover:-translate-y-0.5 cursor-grab active:cursor-grabbing active:scale-100 shrink-0`}
+                  className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border transition-all duration-300 ease-spring will-change-transform animate-scaleIn ${
+                    isViewingCommit ? 'border-amber-500/40 opacity-95' : 'border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-[1.03] hover:-translate-y-0.5 cursor-grab active:cursor-grabbing active:scale-100'
+                  }`}
                   onClick={(e) => handleItemClick(e, shot)}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -949,21 +1051,32 @@ export default function RightResultsPanel({
                       E{idx + 1}
                     </div>
                   )}
+                  {shot.user?.name && (
+                    <div
+                      className="absolute bottom-1 left-1 z-10 bg-slate-900/90 text-white px-1.5 py-0.5 rounded text-[8px] font-bold border-l-2 max-w-[80px] truncate shadow-sm pointer-events-none"
+                      style={{ borderLeftColor: shot.user.color || 'var(--accent-primary)' }}
+                      title={`Added by ${shot.user.name}`}
+                    >
+                      {shot.user.name}
+                    </div>
+                  )}
                   {shot.qaAnswer && (
                     <div className="absolute bottom-1 left-1 z-10 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-bold shadow-sm w-fit max-w-[85%] truncate" title={shot.qaAnswer}>
                       {shot.qaAnswer}
                     </div>
                   )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFromTrake(shot);
-                    }}
-                    className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-[10px] text-white/70 hover:bg-rose-500 hover:text-white"
-                    title="Remove from staging"
-                  >
-                    <i className="fas fa-times"></i>
-                  </button>
+                  {!isViewingCommit && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFromTrake(shot);
+                      }}
+                      className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-[10px] text-white/70 hover:bg-rose-500 hover:text-white"
+                      title="Remove from staging"
+                    >
+                      <i className="fas fa-times"></i>
+                    </button>
+                  )}
                   {shot.similarityScore !== undefined && shot.similarityScore !== null && (
                      <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded text-[8px] bg-black/50 text-white font-mono pointer-events-none">
                         {(shot.similarityScore).toFixed(2)}
@@ -996,7 +1109,8 @@ export default function RightResultsPanel({
             })()}
           </div>
         </div>
-      )}
+        )}
+      </div>
 
       <div className="px-6 py-4">
         {loading ? (

@@ -1,5 +1,5 @@
 // src/components/TopToolbar.jsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { SEARCH_MODEL_OPTIONS, DEFAULT_SEARCH_MODEL } from '../App';
 
@@ -82,11 +82,20 @@ export default function TopToolbar({
   activeSoloQueryIndex,
   setActiveSoloQueryIndex,
   fetchSoloQueries,
+  queryCommits = {},
 }) {
   const [isNewQueryModalOpen, setIsNewQueryModalOpen] = useState(false);
   const [newQueryName, setNewQueryName] = useState('');
   const [isQueryDropdownOpen, setIsQueryDropdownOpen] = useState(false);
   const queryDropdownRef = useRef(null);
+
+  const hasSavedCommit = useCallback((q) => {
+    if (!q) return false;
+    const fromSubmissions = Array.isArray(q.submissions) && q.submissions.length > 0;
+    const qCommits = queryCommits[q.filename]?.commits || [];
+    const fromCommits = qCommits.length > 0;
+    return fromSubmissions || fromCommits;
+  }, [queryCommits]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -451,24 +460,37 @@ export default function TopToolbar({
                   onClick={() => setIsQueryDropdownOpen(!isQueryDropdownOpen)}
                   className="h-7 px-3 min-w-[120px] max-w-[180px] sm:max-w-[220px] bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 text-xs rounded border border-emerald-500/20 flex items-center justify-between font-bold"
                 >
-                  <span className="truncate">{soloAIQueries[activeSoloQueryIndex]?.filename || 'Select Query'}</span>
+                  <span className="truncate flex items-center gap-1.5">
+                    {hasSavedCommit(soloAIQueries[activeSoloQueryIndex]) && (
+                      <i className="fas fa-check-circle text-emerald-400 text-xs shadow-[0_0_8px_rgba(52,211,153,0.6)]" title="Has saved commit"></i>
+                    )}
+                    <span className="truncate">{soloAIQueries[activeSoloQueryIndex]?.filename || 'Select Query'}</span>
+                  </span>
                   <i className="fas fa-chevron-down ml-2 text-[9px] opacity-70"></i>
                 </button>
                 
                 {isQueryDropdownOpen && (
                   <div className="absolute top-full left-0 mt-1 w-64 max-h-64 overflow-y-auto bg-slate-900 border border-emerald-500/30 rounded shadow-xl z-50 animate-popIn scrollbar-thin scrollbar-thumb-emerald-500/50 scrollbar-track-transparent">
-                    {soloAIQueries.map((q, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          setActiveSoloQueryIndex(idx);
-                          setIsQueryDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-emerald-500/20 ${activeSoloQueryIndex === idx ? 'bg-emerald-500/30 text-emerald-300 font-bold' : 'text-emerald-400/80'} border-b border-white/5 last:border-b-0`}
-                      >
-                        {q.filename}
-                      </button>
-                    ))}
+                    {soloAIQueries.map((q, idx) => {
+                      const isSaved = hasSavedCommit(q);
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            setActiveSoloQueryIndex(idx);
+                            setIsQueryDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-emerald-500/20 flex items-center justify-between gap-2 ${activeSoloQueryIndex === idx ? 'bg-emerald-500/30 text-emerald-300 font-bold' : 'text-emerald-400/80'} border-b border-white/5 last:border-b-0`}
+                        >
+                          <span className="truncate">{q.filename}</span>
+                          {isSaved && (
+                            <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_6px_rgba(52,211,153,0.4)]" title="Has saved commit">
+                              <i className="fas fa-check text-[10px] text-emerald-400 font-extrabold"></i>
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
