@@ -49,7 +49,7 @@ const getFrameDisplayName = (shot) => {
   return '';
 };
 
-const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext, setHoveredFrame, onMouseEnterPopoverItem, parentShot }) => {
+const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext, onQuickSearch, setHoveredFrame, onMouseEnterPopoverItem, parentShot }) => {
   const [neighbors, setNeighbors] = useState([]);
   const [loading, setLoading] = useState(true);
   const popoverRef = useRef(null);
@@ -120,9 +120,17 @@ const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext,
                 key={idx} 
                 className="relative flex-shrink-0 aspect-video rounded-lg overflow-hidden border-2 border-[#412e4f] hover:border-orange-500 hover:scale-[1.02] transition-all cursor-pointer shadow-md group"
                 onClick={(e) => { 
-                  e.stopPropagation(); 
+                  e.preventDefault();
+                  e.stopPropagation();
                   const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-                  if (isCtrlOrCmd && onContext) {
+                  if (isCtrlOrCmd && e.altKey && onContext) {
+                    // Same as result cards: open the frame timeline with transcript.
+                    onContext({ ...shot, contextView: 'video-timeline' });
+                  } else if (isCtrlOrCmd && e.shiftKey && onQuickSearch) {
+                    // Same as result cards: use this neighbor as similarity-search input.
+                    onQuickSearch(shot);
+                    onClose();
+                  } else if (isCtrlOrCmd && onContext) {
                     onContext(shot);
                   } else {
                     onZoom(shot.url); 
@@ -177,6 +185,7 @@ const ResultItem = React.memo(({
   onZoom,
   onPreview,
   onContext,
+  onQuickSearch,
   isLocked = false,
   setHoveredFrame,
   isWrong = false,
@@ -288,7 +297,16 @@ const ResultItem = React.memo(({
           <div className="relative">
             <div 
               className={`px-2 py-0.5 rounded-md text-white flex items-center justify-center w-fit shadow-lg cursor-pointer pointer-events-auto hover:scale-105 transition-transform ${hasDuplicate ? 'bg-[#e86c1f] border border-[#ff8b45]' : 'bg-emerald-600 border border-emerald-400'}`}
-              onClick={(e) => { e.stopPropagation(); setShowSimilarPopover(!showSimilarPopover); }}
+              onClick={(e) => {
+                // Modifier-clicking the badge must behave exactly like clicking
+                // the frame behind it instead of only opening this popover.
+                if (e.ctrlKey || e.metaKey || e.altKey) {
+                  onClick(e, shot);
+                  return;
+                }
+                e.stopPropagation();
+                setShowSimilarPopover(!showSimilarPopover);
+              }}
               title="View Similar Frames"
             >
               <i className="far fa-clone text-[9px] mr-1.5"></i>
@@ -301,6 +319,7 @@ const ResultItem = React.memo(({
                 onZoom={onZoom}
                 onPreview={onPreview}
                 onContext={onContext}
+                onQuickSearch={onQuickSearch}
                 setHoveredFrame={setHoveredFrame}
                 onMouseEnterPopoverItem={onMouseEnter}
                 parentShot={shot}
@@ -724,6 +743,7 @@ export default function RightResultsPanel({
         onZoom={onZoom}
         onPreview={onPreview}
         onContext={onContext}
+        onQuickSearch={onQuickSearch}
         isLocked={lockedVideoIds.includes(shot.video_id)}
         setHoveredFrame={setHoveredFrame}
         isWrong={isWrong}
