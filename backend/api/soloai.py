@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 router = APIRouter()
 
 # Setup paths
-PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25")
+PROJECT_ROOT = Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2")
 SOLOAI_DIR = PROJECT_ROOT / "SoLoaiAIC"
 SUBMISSION_DIR = SOLOAI_DIR / "submission"
 os.makedirs(SOLOAI_DIR, exist_ok=True)
@@ -27,7 +27,7 @@ class DeleteRequest(BaseModel):
     row_index: int
 
 @router.post("/soloai/upload_zip")
-async def upload_zip(file: UploadFile = File(...)):
+def upload_zip(file: UploadFile = File(...)):
     if not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Must be a .zip file")
 
@@ -47,8 +47,12 @@ async def upload_zip(file: UploadFile = File(...)):
     
     # Flatten structure if it extracted a folder
     txt_files = []
+    seen = set()
     for root, _, files in os.walk(extract_dir):
         for f in files:
+            if f.startswith('._') or f == '.DS_Store' or '__MACOSX' in root:
+                continue
+                
             # Match any file containing 'query' to be safe, since they might lack extension
             if 'query' in f.lower() or f.endswith('.txt'):
                 src = os.path.join(root, f)
@@ -61,8 +65,17 @@ async def upload_zip(file: UploadFile = File(...)):
                 dst = os.path.join(extract_dir, new_f)
                 if src != dst:
                     shutil.move(src, dst)
-                if new_f not in txt_files:
+                if new_f not in seen:
                     txt_files.append(new_f)
+                    seen.add(new_f)
+                    
+    # Clean up empty directories after moving
+    for root, dirs, _ in os.walk(extract_dir, topdown=False):
+        for d in dirs:
+            try:
+                os.rmdir(os.path.join(root, d))
+            except OSError:
+                pass
                 
     # Initialize empty CSVs
     os.makedirs(SUBMISSION_DIR, exist_ok=True)
@@ -76,7 +89,7 @@ async def upload_zip(file: UploadFile = File(...)):
     return {"message": "Success", "queries": txt_files}
 
 @router.get("/soloai/queries")
-async def get_queries():
+def get_queries():
     extract_dir = SOLOAI_DIR / "queries"
     
     # We use CSV files in SUBMISSION_DIR as the source of truth
@@ -117,7 +130,7 @@ class CreateQueryRequest(BaseModel):
     query_name: str
 
 @router.post("/soloai/query")
-async def create_query(req: CreateQueryRequest):
+def create_query(req: CreateQueryRequest):
     if not req.query_name:
         raise HTTPException(status_code=400, detail="Name required")
     # Clean name
@@ -130,7 +143,7 @@ async def create_query(req: CreateQueryRequest):
     return {"message": "Success"}
 
 @router.delete("/soloai/query/{query_name}")
-async def delete_query(query_name: str):
+def delete_query(query_name: str):
     safe_name = query_name.replace(".txt", "").replace(".csv", "")
     
     csv_path = SUBMISSION_DIR / f"{safe_name}.csv"
@@ -144,7 +157,7 @@ async def delete_query(query_name: str):
     return {"message": "Success"}
 
 @router.post("/soloai/submit")
-async def submit(req: SubmitRequest):
+def submit(req: SubmitRequest):
     csv_name = req.query_file.replace(".txt", ".csv")
     csv_path = SUBMISSION_DIR / csv_name
     os.makedirs(SUBMISSION_DIR, exist_ok=True)
@@ -200,7 +213,7 @@ async def submit(req: SubmitRequest):
     return {"message": "Success", "rows": existing_rows}
 
 @router.delete("/soloai/submit")
-async def delete_submit(req: DeleteRequest):
+def delete_submit(req: DeleteRequest):
     csv_name = req.query_file.replace(".txt", ".csv")
     csv_path = SUBMISSION_DIR / csv_name
     
