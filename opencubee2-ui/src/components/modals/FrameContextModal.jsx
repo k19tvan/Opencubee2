@@ -43,7 +43,7 @@ const isSameShot = (first, second) => {
   );
 };
 
-export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onContext, onQuickSearch, wrongFrames = [], correctSubmission = null }) {
+export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onContext, onQuickSearch, wrongFrames = [], correctSubmission = null, onPushToTrake }) {
   const [neighbors, setNeighbors] = useState([]);
   const [contextMode, setContextMode] = useState('all');
   const [timelineWords, setTimelineWords] = useState([]);
@@ -148,8 +148,8 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
   }, [sendRealtimeMessage, username, userColor]);
 
   const pushToTrake = useCallback((shot) => {
-    sendRealtimeMessage?.({ type: 'trake_add', data: { shot } });
-  }, [sendRealtimeMessage]);
+    onPushToTrake?.(shot);
+  }, [onPushToTrake]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {

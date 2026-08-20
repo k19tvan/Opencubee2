@@ -14,7 +14,7 @@ import { BASE_URL } from '../api';
  */
 export const getImageUrl = (filename) => {
   if (!filename) return '';
-  if (/^(https?:|data:|blob:)/.test(filename)) return filename;
+  if (/^(https?:|data:|blob:|\/video_thumbnail\/|\/videos\/)/.test(filename)) return filename;
 
   const configuredAssetBase = import.meta.env.VITE_ASSET_BASE_URL?.replace(/\/$/, '');
   const baseUrl = configuredAssetBase || `${BASE_URL}/keyframes`;

@@ -1172,23 +1172,42 @@ export default function App() {
     const videoId = row[0];
 
     if (isQA) {
-      if (row[1]) loadedFrames.push({ video_id: videoId, frame_id: row[1], qaAnswer: row[2] });
+      if (row[1]) {
+        loadedFrames.push({
+          video_id: videoId,
+          frame_id: row[1],
+          qaAnswer: row[2],
+          url: getVideoThumbnailUrl(videoId, row[1], 1920),
+          frame_name: `${videoId}_${String(row[1]).padStart(6, '0')}.webp`,
+          filepath: `csv-frame-${videoId}-${row[1]}`
+        });
+      }
     } else {
       row.slice(1).forEach(fId => {
         if (fId && !isNaN(Number(fId))) {
-          loadedFrames.push({ video_id: videoId, frame_id: fId });
+          loadedFrames.push({
+            video_id: videoId,
+            frame_id: fId,
+            url: getVideoThumbnailUrl(videoId, fId, 1920),
+            frame_name: `${videoId}_${String(fId).padStart(6, '0')}.webp`,
+            filepath: `csv-frame-${videoId}-${fId}`
+          });
         }
       });
     }
 
     setTrakeFrames(loadedFrames);
     setEditTrakeRowIndex(rowIndex);
-  }, [activeSoloQuery, setTrakeFrames]);
+    sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQuery.filename, full_state: loadedFrames } });
+  }, [activeSoloQuery, setTrakeFrames, sendRealtimeMessage]);
 
   const handleCancelEditTrakeRow = useCallback(() => {
     setTrakeFrames([]);
     setEditTrakeRowIndex(null);
-  }, [setTrakeFrames]);
+    if (activeSoloQuery) {
+      sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQuery.filename, full_state: [] } });
+    }
+  }, [setTrakeFrames, sendRealtimeMessage, activeSoloQuery]);
 
   useEffect(() => {
     // Reset edit mode when active query changes
@@ -1956,6 +1975,7 @@ export default function App() {
               onQuickSearch={handleQuickImageSearch}
               wrongFrames={wrongFrames}
               correctSubmission={correctSubmission}
+              onPushToTrake={handlePushToTrake}
             />
           )}
 
