@@ -20,6 +20,7 @@ from backend.core.config import (
     MODEL_CONFIGS,
     OCR_ASR_INDEX_NAME,
     SEMANTIC_ASR_INDEX_NAME,
+    SEMANTIC_ASR_SENTENCE_LEVEL_INDEX_NAME,
     OCR_SEARCH_FIELD,
     ASR_SEARCH_FIELD,
     TEMP_UPLOAD_DIR,
@@ -769,11 +770,22 @@ def search_semantic_asr_on_meilisearch_sync(
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
+    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     """Search semantic scene summaries in the dedicated Meilisearch index."""
     if not runtime.meili_client:
         return [], 0
     try:
+        index_name = (
+            SEMANTIC_ASR_SENTENCE_LEVEL_INDEX_NAME
+            if sentence_level
+            else SEMANTIC_ASR_INDEX_NAME
+        )
+        scene_mapping = (
+            runtime.scene_frame_mapping_sentence_level
+            if sentence_level
+            else runtime.scene_frame_mapping
+        )
         params: Dict[str, Any] = {
             "limit": limit,
             "offset": offset,
@@ -791,18 +803,22 @@ def search_semantic_asr_on_meilisearch_sync(
         filters = _semantic_meilisearch_filters(video_ids, candidate_frame_names)
         if filters:
             params["filter"] = filters
-        response = runtime.meili_client.index(SEMANTIC_ASR_INDEX_NAME).search(query_text, params)
+        response = runtime.meili_client.index(index_name).search(query_text, params)
         results = []
         for hit in response.get("hits", []):
             scene_id = hit.get("scene_id") or hit.get("id")
             if not isinstance(scene_id, str) or not isinstance(hit.get("video_id"), str):
                 continue
             frame_inside = hit.get("frame_inside")
-            if not isinstance(frame_inside, list) or not all(isinstance(name, str) for name in frame_inside):
-                continue
+            if not isinstance(frame_inside, list):
+                scene_info = scene_mapping.get(scene_id) or {}
+                frame_inside = scene_info.get("frame_inside", [])
+            hit_data = dict(hit)
+            hit_data["frame_inside"] = frame_inside
+
             result = _semantic_result_from_scene(
                 scene_id,
-                hit,
+                hit_data,
                 float(hit.get("_rankingScore", 0.0)),
                 candidate_frame_names,
                 source_scores={"meilisearch": float(hit.get("_rankingScore", 0.0))},
@@ -820,13 +836,16 @@ def search_semantic_asr_on_meilisearch_sync(
 
 
 async def search_semantic_asr_on_meilisearch(
-    query_text: str, limit: int = 50, offset: int = 0,
+    query_text: str,
+    limit: int = 50,
+    offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
+    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     return await asyncio.to_thread(
         search_semantic_asr_on_meilisearch_sync,
-        query_text, limit, offset, video_ids, candidate_frame_names,
+        query_text, limit, offset, video_ids, candidate_frame_names, sentence_level,
     )
 
 
@@ -837,99 +856,12 @@ async def search_semantic_asr_qdrant(
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
 ) -> tuple[List[Dict[str, Any]], int]:
-    """Retrieve semantic ASR scenes and their exact mapped keyframes."""
-    if not runtime.qdrant_client:
-        return [], 0
-    try:
-        if not runtime.scene_frame_mapping:
-            print("Semantic ASR scene mapping is not loaded")
-            return [], 0
-
-        must_conditions = []
-        if video_ids:
-            must_conditions.append(
-                q_models.FieldCondition(
-                    key="video_id",
-                    match=q_models.MatchAny(any=video_ids),
-                )
-            )
-        if candidate_frame_names is not None:
-            scene_ids = sorted({
-                scene_id
-                for frame_name in candidate_frame_names
-                for scene_id in runtime.frame_scene_ids_map.get(frame_name, [])
-            })
-            if not scene_ids:
-                return [], 0
-            must_conditions.append(
-                q_models.FieldCondition(
-                    key="scene_id",
-                    match=q_models.MatchAny(any=scene_ids),
-                )
-            )
-        query_filter = q_models.Filter(must=must_conditions) if must_conditions else None
-        collection_name = MODEL_CONFIGS["qwen"]["collection"]
-
-        response, count_response = await asyncio.gather(
-            asyncio.to_thread(
-                runtime.qdrant_client.query_points,
-                collection_name=collection_name,
-                query=query_vector,
-                query_filter=query_filter,
-                limit=limit,
-                offset=offset,
-                with_payload=["scene_id", "video_id"],
-                timeout=60,
-            ),
-            asyncio.to_thread(
-                runtime.qdrant_client.count,
-                collection_name=collection_name,
-                count_filter=query_filter,
-                exact=True,
-            ),
-        )
-
-        results = []
-        for hit in response.points:
-            payload = hit.payload or {}
-            scene_id = payload.get("scene_id")
-            scene = runtime.scene_frame_mapping.get(scene_id)
-            if not isinstance(scene, dict):
-                continue
-            video_id = scene.get("video_id")
-            start_id = scene.get("start_id", 0)
-            end_id = scene.get("end_id", 0)
-            summary = scene.get("summary", "")
-            if not isinstance(video_id, str):
-                continue
-
-            shots = keyframes_from_scene(
-                video_id,
-                scene.get("frame_inside", []),
-                candidate_frame_names=candidate_frame_names,
-            )
-            if candidate_frame_names and not shots:
-                continue
-            results.append({
-                "chunk_id": scene_id,
-                "scene_id": scene_id,
-                "score": hit.score,
-                "video_id": video_id,
-                "start_id": start_id,
-                "end_id": end_id,
-                "summary": summary,
-                "frame_inside": [shot["frame_name"] for shot in shots],
-                "shots": shots,
-            })
-        return results, count_response.count
-    except Exception as e:
-        print(f"Error searching semantic ASR collection: {e}")
-        return [], 0
+    return [], 0
 
 
 async def search_semantic_asr(
     query_text: str,
-    query_vector: Optional[list],
+    query_vector: Optional[list] = None,
     search_mode: str = "meilisearch",
     embedding_weight: float = 0.7,
     meilisearch_weight: float = 0.3,
@@ -937,64 +869,14 @@ async def search_semantic_asr(
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
+    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
-    """Search semantic ASR scenes with Meilisearch, Qdrant, or both."""
-    if search_mode == "embedding":
-        if not query_vector:
-            return [], 0
-        return await search_semantic_asr_qdrant(
-            query_vector, limit, offset, video_ids, candidate_frame_names
-        )
-
-    if search_mode == "meilisearch":
-        return await search_semantic_asr_on_meilisearch(
-            query_text, limit, offset, video_ids, candidate_frame_names
-        )
-
-    if not query_vector:
-        return [], 0
-    candidate_limit = max(200, (offset + limit) * 5)
-    (meili_results, _), (vector_results, _) = await asyncio.gather(
-        search_semantic_asr_on_meilisearch(
-            query_text, candidate_limit, 0, video_ids, candidate_frame_names
-        ),
-        search_semantic_asr_qdrant(
-            query_vector, candidate_limit, 0, video_ids, candidate_frame_names
-        ),
+    """Search semantic ASR scenes with Meilisearch (paragraph or sentence level)."""
+    return await search_semantic_asr_on_meilisearch(
+        query_text=query_text,
+        limit=limit,
+        offset=offset,
+        video_ids=video_ids,
+        candidate_frame_names=candidate_frame_names,
+        sentence_level=sentence_level,
     )
-    weight_total = embedding_weight + meilisearch_weight
-    if weight_total <= 0:
-        raise ValueError("At least one semantic ASR search weight must be greater than zero.")
-    embedding_weight /= weight_total
-    meilisearch_weight /= weight_total
-
-    max_meili_score = max((float(item["score"]) for item in meili_results), default=1.0) or 1.0
-    by_scene: Dict[str, Dict[str, Any]] = {}
-    meili_by_scene: Dict[str, Dict[str, Any]] = {}
-    for item in meili_results:
-        scene_id = item.get("scene_id")
-        if isinstance(scene_id, str):
-            meili_by_scene[scene_id] = item
-    for item in vector_results + meili_results:
-        scene_id = item.get("scene_id")
-        if isinstance(scene_id, str):
-            by_scene.setdefault(scene_id, item)
-    vector_scores = {item["scene_id"]: max(0.0, min(1.0, float(item["score"]))) for item in vector_results}
-    meili_scores = {item["scene_id"]: float(item["score"]) / max_meili_score for item in meili_results}
-
-    ranked = []
-    for scene_id, result in by_scene.items():
-        embedding_score = vector_scores.get(scene_id, 0.0)
-        meili_score = meili_scores.get(scene_id, 0.0)
-        result = result.copy()
-        result["score"] = embedding_weight * embedding_score + meilisearch_weight * meili_score
-        result["source_scores"] = {
-            "embedding": embedding_score,
-            "meilisearch": meili_score,
-        }
-        formatted_summary = meili_by_scene.get(scene_id, {}).get("formatted_summary")
-        if isinstance(formatted_summary, str):
-            result["formatted_summary"] = formatted_summary
-        ranked.append(result)
-    ranked.sort(key=lambda result: result["score"], reverse=True)
-    return ranked[offset:offset + limit], len(ranked)

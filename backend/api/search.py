@@ -709,35 +709,14 @@ async def search_semantic_asr_endpoint(request_data: SemanticAsrSearchRequest):
     if not query_text:
         raise HTTPException(status_code=400, detail="Query text is required.")
 
-    embedding = None
-    if request_data.search_mode in {"embedding", "hybrid"}:
-        embedding = await get_embedding(
-            model_name="qwen",
-            text=query_text,
-        )
-        if not embedding:
-            raise HTTPException(
-                status_code=502,
-                detail="Failed to generate embedding from Qwen worker (Check if Qwen worker is running on port 2006)."
-            )
-    if request_data.search_mode == "hybrid" and (
-        request_data.embedding_weight + request_data.meilisearch_weight <= 0
-    ):
-        raise HTTPException(status_code=422, detail="At least one search weight must be greater than zero.")
-
-    # Meilisearch handles lexical semantic-ASR retrieval; hybrid fuses its
-    # ranking score with Qwen/Qdrant similarity scores.
     offset = (request_data.page - 1) * request_data.page_size
     results, total_results = await search_semantic_asr(
         query_text=query_text,
-        query_vector=embedding,
-        search_mode=request_data.search_mode,
-        embedding_weight=request_data.embedding_weight,
-        meilisearch_weight=request_data.meilisearch_weight,
         limit=request_data.page_size,
         offset=offset,
         video_ids=request_data.video_ids,
         candidate_frame_names=request_data.candidate_frame_names,
+        sentence_level=request_data.sentence_level,
     )
 
     timings["total_request_s"] = time.time() - start_time
@@ -747,6 +726,7 @@ async def search_semantic_asr_endpoint(request_data: SemanticAsrSearchRequest):
         "page": request_data.page,
         "page_size": request_data.page_size,
         "is_semantic_asr": True,
-        "search_mode": request_data.search_mode,
+        "sentence_level": request_data.sentence_level,
+        "search_mode": "meilisearch",
         "timing_info": timings,
     }

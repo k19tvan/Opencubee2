@@ -122,6 +122,8 @@ frame_similarity_labels = {}
 video_frame_mapping = {}
 scene_frame_mapping = {}
 frame_scene_ids_map = {}
+scene_frame_mapping_sentence_level = {}
+frame_scene_ids_map_sentence_level = {}
 
 def load_similar_frames_json():
     global similar_frames_map
@@ -185,14 +187,11 @@ def load_video_frame_mapping_json():
         print(f"Error loading video frame mapping {json_path}: {e}")
 
 
-def load_scene_frame_mapping_json():
-    """Load semantic scenes and build a frame-to-scene lookup in RAM."""
-    global scene_frame_mapping, frame_scene_ids_map
-    json_path = Path(__file__).resolve().parents[2] / "storage/scene_frame_mapping.json"
+def _load_scene_mapping_file(filename: str):
+    json_path = Path(__file__).resolve().parents[2] / f"storage/{filename}"
     try:
         import json
-
-        print("--- Loading semantic ASR scene mapping into RAM... ---")
+        print(f"--- Loading {filename} into RAM... ---")
         with open(json_path, "r", encoding="utf-8") as file:
             data = json.load(file)
         if not isinstance(data, dict):
@@ -205,17 +204,19 @@ def load_scene_frame_mapping_json():
             for frame_name in scene.get("frame_inside", []):
                 if isinstance(frame_name, str):
                     reverse_mapping.setdefault(frame_name, []).append(scene_id)
-
-        scene_frame_mapping = data
-        frame_scene_ids_map = reverse_mapping
-        print(
-            "--- Semantic ASR scene mapping loaded! "
-            f"({len(data)} scenes, {len(reverse_mapping)} frames) ---"
-        )
+        print(f"--- Loaded {filename}! ({len(data)} scenes, {len(reverse_mapping)} frames) ---")
+        return data, reverse_mapping
     except Exception as e:
-        scene_frame_mapping = {}
-        frame_scene_ids_map = {}
-        print(f"Error loading semantic ASR scene mapping {json_path}: {e}")
+        print(f"Error loading {json_path}: {e}")
+        return {}, {}
+
+
+def load_scene_frame_mapping_json():
+    """Load both standard and sentence-level semantic scenes into RAM."""
+    global scene_frame_mapping, frame_scene_ids_map
+    global scene_frame_mapping_sentence_level, frame_scene_ids_map_sentence_level
+    scene_frame_mapping, frame_scene_ids_map = _load_scene_mapping_file("scene_frame_mapping.json")
+    scene_frame_mapping_sentence_level, frame_scene_ids_map_sentence_level = _load_scene_mapping_file("scene_frame_mapping_sentence_level.json")
             
 def startup_runtime():
     global qdrant_client, meili_client, http_client
