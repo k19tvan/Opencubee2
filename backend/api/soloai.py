@@ -65,6 +65,7 @@ async def upload_zip(file: UploadFile = File(...)):
                     txt_files.append(new_f)
                 
     # Initialize empty CSVs
+    os.makedirs(SUBMISSION_DIR, exist_ok=True)
     for txt in txt_files:
         csv_name = txt.replace(".txt", ".csv")
         csv_path = SUBMISSION_DIR / csv_name
@@ -122,6 +123,7 @@ async def create_query(req: CreateQueryRequest):
     # Clean name
     safe_name = req.query_name.replace(".csv", "").replace(".txt", "")
     csv_path = SUBMISSION_DIR / f"{safe_name}.csv"
+    os.makedirs(SUBMISSION_DIR, exist_ok=True)
     if not csv_path.exists():
         with open(csv_path, 'w', encoding='utf-8') as f:
             pass
@@ -145,6 +147,7 @@ async def delete_query(query_name: str):
 async def submit(req: SubmitRequest):
     csv_name = req.query_file.replace(".txt", ".csv")
     csv_path = SUBMISSION_DIR / csv_name
+    os.makedirs(SUBMISSION_DIR, exist_ok=True)
     
     # Determine type
     is_qa = "qa" in req.query_file.lower()

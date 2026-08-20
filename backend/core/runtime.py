@@ -125,8 +125,9 @@ manager = ConnectionManager()
 # WebSocket handlers run concurrently. Keep shared-panel mutations and their
 # broadcasts in one order so every connected client observes the same state.
 realtime_state_lock = asyncio.Lock()
+connection_active_queries = {}
 teamwork_panel_state = []
-trake_panel_state = []
+trake_panel_state = {}
 wrong_frames_state = []
 frame_context_cache = {}
 similar_frames_map = {}

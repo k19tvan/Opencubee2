@@ -162,48 +162,32 @@ async def websocket_endpoint(websocket: WebSocket):
                         del runtime.wrong_frames_state[MAX_WRONG_FRAMES:]
                     await broadcast_event("global_wrong_submission", data)
 
-            elif msg_type == "trake_add":
-                shot = data.get("shot")
-                key = frame_key(shot)
-                if not isinstance(shot, dict) or not key:
-                    await send_error(websocket, "trake_add requires a valid shot.")
+            elif msg_type == "trake_update_state":
+                query_file = data.get("query_file")
+                full_state = data.get("full_state")
+                if not query_file or not isinstance(full_state, list):
+                    await send_error(websocket, "trake_update_state requires query_file and full_state as a list.")
                     continue
                 async with runtime.realtime_state_lock:
-                    if not any(frame_key(item) == key for item in runtime.trake_panel_state):
-                        runtime.trake_panel_state.append(shot)
-                        del runtime.trake_panel_state[MAX_TRAKE_FRAMES:]
+                    runtime.trake_panel_state[query_file] = full_state
                     await broadcast_event("trake_sync", runtime.trake_panel_state)
 
-            elif msg_type == "trake_remove":
-                key = str(data.get("frame_key") or data.get("filepath") or "")
-                if not key:
-                    await send_error(websocket, "trake_remove requires frame_key.")
-                    continue
-                async with runtime.realtime_state_lock:
-                    runtime.trake_panel_state = [
-                        item for item in runtime.trake_panel_state if frame_key(item) != key
-                    ]
-                    await broadcast_event("trake_sync", runtime.trake_panel_state)
-
-            elif msg_type == "trake_reorder":
-                ordered_keys = data.get("frame_keys")
-                if not isinstance(ordered_keys, list):
-                    await send_error(websocket, "trake_reorder requires frame_keys as a list.")
-                    continue
-                async with runtime.realtime_state_lock:
-                    frames_by_key = {
-                        frame_key(frame): frame
-                        for frame in runtime.trake_panel_state
-                        if frame_key(frame)
-                    }
-                    reordered = [
-                        frames_by_key.pop(str(key))
-                        for key in ordered_keys
-                        if str(key) in frames_by_key
-                    ]
-                    reordered.extend(frames_by_key.values())
-                    runtime.trake_panel_state = reordered
-                    await broadcast_event("trake_sync", reordered)
+            elif msg_type == "join_query":
+                query_file = data.get("query_file")
+                old_query = runtime.connection_active_queries.get(websocket)
+                
+                if query_file:
+                    runtime.connection_active_queries[websocket] = query_file
+                elif websocket in runtime.connection_active_queries:
+                    del runtime.connection_active_queries[websocket]
+                    
+                if old_query and old_query != query_file:
+                    async with runtime.realtime_state_lock:
+                        count = sum(1 for v in runtime.connection_active_queries.values() if v == old_query)
+                        if count == 0 and old_query in runtime.trake_panel_state:
+                            del runtime.trake_panel_state[old_query]
+                            await broadcast_event("trake_clear", {"query_file": old_query})
+                            await broadcast_event("trake_sync", runtime.trake_panel_state)
 
             elif msg_type == "soloai_submitted":
                 await broadcast_event("soloai_submitted", data)
@@ -216,5 +200,14 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception:
         LOGGER.exception("Unhandled WebSocket error")
     finally:
+        old_query = runtime.connection_active_queries.pop(websocket, None)
         runtime.manager.disconnect(websocket)
         LOGGER.info("WebSocket disconnected; active=%d", runtime.manager.connection_count)
+        
+        if old_query:
+            async with runtime.realtime_state_lock:
+                count = sum(1 for v in runtime.connection_active_queries.values() if v == old_query)
+                if count == 0 and old_query in runtime.trake_panel_state:
+                    del runtime.trake_panel_state[old_query]
+                    await broadcast_event("trake_clear", {"query_file": old_query})
+                    await broadcast_event("trake_sync", runtime.trake_panel_state)

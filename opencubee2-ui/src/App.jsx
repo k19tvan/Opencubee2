@@ -384,6 +384,12 @@ export default function App() {
     return false;
   }, []);
 
+  useEffect(() => {
+    if (activeSoloQueryFile && activeSoloQueryFile !== 'default') {
+      sendRealtimeMessage({ type: 'join_query', data: { query_file: activeSoloQueryFile } }, { notify: false });
+    }
+  }, [activeSoloQueryFile, sendRealtimeMessage]);
+
   const updateHistoryDepths = (store = readWorkspaceHistory()) => {
     const currentIndex = store.entries.findIndex((entry) => entry.id === store.currentId);
     setGoBackDepth(currentIndex > 0 ? Math.min(currentIndex, MAX_GO_BACK_STEPS - 1) : 0);
@@ -924,26 +930,29 @@ export default function App() {
         }));
         setWrongFrames(mappedData);
       } else if (type === 'trake_sync') {
-        const mappedData = (data || []).map(shot => ({
-          ...shot,
-          url: getImageUrl(shot.url || shot.frame_name)
-        }));
-        setTrakeFrames(mappedData);
-      } else if (type === 'trake_add') {
-        const mappedShot = {
-          ...data.shot,
-          url: data.shot.url?.startsWith('data:image')
-            ? data.shot.url
-            : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
-        };
-        setTrakeFrames(prev => {
-          const incomingKey = getShotKey(mappedShot);
-          if (incomingKey && prev.some(s => getShotKey(s) === incomingKey)) return prev;
-          return [...prev, mappedShot];
-        });
-      } else if (type === 'trake_remove') {
-        const frameKey = data.frame_key || data.filepath;
-        setTrakeFrames(prev => prev.filter(s => getShotKey(s) !== frameKey));
+        if (typeof data === 'object' && !Array.isArray(data)) {
+          setStagedFramesByQuery(prev => {
+            const nextState = { ...prev };
+            for (const [qFile, shots] of Object.entries(data)) {
+              if (Array.isArray(shots)) {
+                nextState[qFile] = shots.map(shot => ({
+                  ...shot,
+                  url: getImageUrl(shot.url || shot.frame_name)
+                }));
+              }
+            }
+            return nextState;
+          });
+        }
+      } else if (type === 'trake_clear') {
+        const queryFile = data?.query_file;
+        if (queryFile) {
+          setStagedFramesByQuery(prev => {
+            const next = { ...prev };
+            delete next[queryFile];
+            return next;
+          });
+        }
       } else if (type === 'soloai_submitted') {
         const queryFile = data?.query_file;
         if (queryFile) {
@@ -1060,10 +1069,10 @@ export default function App() {
     setTrakeFrames(prev => {
       const incomingKey = getShotKey(shotWithUrl);
       if (incomingKey && prev.some(s => getShotKey(s) === incomingKey)) return prev;
-      return [...prev, shotWithUrl];
+      const next = [...prev, shotWithUrl];
+      sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQueryFile, full_state: next } });
+      return next;
     });
-
-    sendRealtimeMessage({ type: 'trake_add', data: { shot: shotWithUrl } });
     setShowTrake(true);
   };
 
@@ -1081,26 +1090,29 @@ export default function App() {
       if (index === -1) return prev;
       const next = [...prev];
       next[index] = { ...newShot, url: getImageUrl(newShot.url || newShot.frame_name) || newShot.url };
-      // Sync the new state directly if needed, for now just update locally.
+      sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQueryFile, full_state: next } });
       return next;
     });
     setTrakePreviewShot(newShot);
-  }, [trakePreviewShot]);
+  }, [trakePreviewShot, activeSoloQueryFile, sendRealtimeMessage]);
 
   const handleReorderTrake = useCallback((orderedFrames) => {
     setTrakeFrames(orderedFrames);
     sendRealtimeMessage({
-      type: 'trake_reorder',
-      data: { frame_keys: orderedFrames.map(getShotKey).filter(Boolean) },
+      type: 'trake_update_state',
+      data: { full_state: orderedFrames, query_file: activeSoloQueryFile },
     });
-  }, [sendRealtimeMessage, setTrakeFrames]);
+  }, [sendRealtimeMessage, setTrakeFrames, activeSoloQueryFile]);
 
   const handleRemoveFromTrake = useCallback((shot) => {
     const frameKey = getShotKey(shot);
     if (!frameKey) return;
-    setTrakeFrames((previous) => previous.filter((frame) => getShotKey(frame) !== frameKey));
-    sendRealtimeMessage({ type: 'trake_remove', data: { frame_key: frameKey } });
-  }, [sendRealtimeMessage, setTrakeFrames]);
+    setTrakeFrames((previous) => {
+      const next = previous.filter((frame) => getShotKey(frame) !== frameKey);
+      sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: activeSoloQueryFile, full_state: next } });
+      return next;
+    });
+  }, [sendRealtimeMessage, setTrakeFrames, activeSoloQueryFile]);
 
   const activeSoloQuery = soloAIQueries[activeSoloQueryIndex] || null;
 
