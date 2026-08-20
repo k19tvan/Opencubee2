@@ -852,19 +852,44 @@ export default function RightResultsPanel({
                 <span className="text-[10px] text-zinc-500 italic lowercase tracking-wider">
                   /SoLoaiAIC/{soloAIQueries[activeSoloQueryIndex]?.filename?.replace('.txt', '.csv')}
                 </span>
+                
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     const qFile = soloAIQueries[activeSoloQueryIndex]?.filename;
+                    const csvContent = soloAIQueries[activeSoloQueryIndex]?.content;
                     if (qFile) {
-                      sendRealtimeMessage({ type: 'force_clear_draft', data: { query_file: qFile } });
+                      if (csvContent) {
+                        const lines = csvContent.trim().split(/\r?\n/).filter(line => line.trim().length > 0);
+                        const parsedFrames = lines.map(line => {
+                          const parts = line.split(',');
+                          if (parts.length >= 2) {
+                            const video_id = parts[0].trim();
+                            const frame_id = parseInt(parts[1].trim(), 10);
+                            return {
+                              video_id,
+                              frame_id,
+                              frame_name: `${video_id}_${frame_id.toString().padStart(4, '0')}.webp`,
+                              url: ''
+                            };
+                          }
+                          return null;
+                        }).filter(Boolean);
+
+                        sendRealtimeMessage({
+                          type: 'trake_update_state',
+                          data: { query_file: qFile, full_state: parsedFrames }
+                        });
+                      } else {
+                        sendRealtimeMessage({ type: 'trake_update_state', data: { query_file: qFile, full_state: [] } });
+                      }
                     }
                   }}
-                  className="flex items-center justify-center p-1 cursor-pointer text-zinc-400 hover:text-white rounded bg-white/5 hover:bg-white/10 transition-colors border border-transparent hover:border-white/20"
-                  title="Reload from CSV & Clear Staging"
+                  className="flex items-center justify-center px-3 py-1 cursor-pointer text-blue-200 bg-blue-600/30 hover:bg-blue-600 hover:text-white rounded transition-colors border border-blue-500/30 font-bold uppercase tracking-wider text-[11px]"
+                  title="Reload from CSV"
                 >
-                  <i className="fas fa-sync-alt text-[10px]"></i>
+                  <i className="fas fa-sync-alt text-[10px] mr-1.5"></i> Reload CSV
                 </button>
               </div>
             </div>

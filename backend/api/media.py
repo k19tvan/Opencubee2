@@ -25,7 +25,7 @@ class TemporalFrameRequest(BaseModel):
 IMAGE_BASE_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"
 CONTEXT_FRAME_RADIUS = 20
 PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/Opencubee2")
-WORD_LEVEL_DIR = PROJECT_ROOT / "storage/asr/transcription/word_level"
+WORD_LEVEL_DIR = PROJECT_ROOT / "storage/asr/word_level"
 FPS_MAPPING_PATH = PROJECT_ROOT / "storage/fps_mapping.json"
 VIDEO_FRAME_MAPPING_PATH = PROJECT_ROOT / "storage/video_frame_mapping.json"
 
