@@ -55,6 +55,17 @@ const MAX_GO_BACK_STEPS = 10;
 const WORKSPACE_HISTORY_STORAGE_KEY = 'opencubee2.workspaceHistory';
 const WORKSPACE_HISTORY_STATE_KEY = 'opencubee2WorkspaceId';
 
+const SPATIAL_SHORTCUTS = {
+  Digit1: { region: 'left', label: 'LEFT half (a + c)' },
+  Digit2: { region: 'right', label: 'RIGHT half (b + d)' },
+  Digit3: { region: 'top', label: 'TOP half (a + b)' },
+  Digit4: { region: 'bottom', label: 'BOTTOM half (c + d)' },
+  Numpad1: { region: 'left', label: 'LEFT half (a + c)' },
+  Numpad2: { region: 'right', label: 'RIGHT half (b + d)' },
+  Numpad3: { region: 'top', label: 'TOP half (a + b)' },
+  Numpad4: { region: 'bottom', label: 'BOTTOM half (c + d)' },
+};
+
 const getShotKey = (shot = {}) => shot.filepath || shot.frame_name || shot.url || (shot.video_id && shot.frame_id ? `${shot.video_id}_${shot.frame_id}` : '');
 
 const collectFrameNames = (results = []) => {
@@ -252,6 +263,8 @@ export default function App() {
   const [stages, setStages] = useState([createEmptyStage()]);
   const [searchModel, setSearchModel] = useState(DEFAULT_SEARCH_MODEL);
   const [metaClipOnly, setMetaClipOnly] = useState(false);
+  // Alt+1..4 picks one named vector in beit3_spatial for the next search.
+  const [spatialShortcutRegion, setSpatialShortcutRegion] = useState(null);
   const [stageFocusRequest, setStageFocusRequest] = useState(null);
 
   const [searchResults, setSearchResults] = useState([]);
@@ -513,10 +526,13 @@ export default function App() {
   const submittedStagesRef = useRef(null);
   const submittedSearchModelRef = useRef(DEFAULT_SEARCH_MODEL);
   const submittedSimilarityScopeRef = useRef(null);
+  const submittedSpatialShortcutRegionRef = useRef(null);
+  const spatialShortcutRegionRef = useRef(null);
   const previousAutoTranslateRef = useRef(autoTranslate);
   latestWorkspaceRef.current = {
     stages,
     searchModel,
+    spatialShortcutRegion,
     autoTranslate,
     searchResults,
     similarityScope,
@@ -644,6 +660,10 @@ export default function App() {
       previousAutoTranslateRef.current = snapshot.autoTranslate;
     }
     submittedSearchModelRef.current = normalizeSearchModel(snapshot.submittedSearchModel || snapshot.searchModel, DEFAULT_SEARCH_MODEL);
+    const restoredSpatialRegion = snapshot.spatialShortcutRegion || null;
+    setSpatialShortcutRegion(restoredSpatialRegion);
+    spatialShortcutRegionRef.current = restoredSpatialRegion;
+    submittedSpatialShortcutRegionRef.current = snapshot.submittedSpatialShortcutRegion || restoredSpatialRegion;
     submittedSimilarityScopeRef.current = snapshot.similarityScopeEnabled === true
       ? (snapshot.submittedSimilarityScope || snapshot.similarityScope || null)
       : null;
@@ -944,7 +964,21 @@ export default function App() {
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
       const key = event.key.toLowerCase();
-      if (key === 'q') {
+      const spatialShortcut = SPATIAL_SHORTCUTS[event.code];
+      if (spatialShortcut) {
+        event.preventDefault();
+        const nextRegion = spatialShortcutRegionRef.current === spatialShortcut.region
+          ? null
+          : spatialShortcut.region;
+        spatialShortcutRegionRef.current = nextRegion;
+        setSpatialShortcutRegion(nextRegion);
+        toast.success(
+          nextRegion
+            ? `Spatial search: ${spatialShortcut.label}`
+            : 'Spatial search: OFF (full frame)',
+          { position: 'top-right' },
+        );
+      } else if (key === 'q') {
         event.preventDefault();
         setDresMode((previousMode) => {
           const nextMode = previousMode === 'QA' ? 'KIS' : 'QA';
@@ -1661,8 +1695,15 @@ export default function App() {
       ? normalizeSearchModel(searchModel)
       : submittedSearchModelRef.current || normalizeSearchModel(searchModel);
     const requestedSearchModel = metaClipOnly ? ['metaclip2'] : selectedSearchModel;
+    const activeSpatialShortcutRegion = pageNumber === 1
+      ? spatialShortcutRegion
+      : submittedSpatialShortcutRegionRef.current;
+    // Spatial crops exist only for BEiT-3, and shortcut mode is crop-only.
+    const activeSearchModel = activeSpatialShortcutRegion
+      ? ['beit3']
+      : (options.forceModel || requestedSearchModel);
 
-    if (!requestedSearchModel) {
+    if (!activeSearchModel) {
       toast.error('Choose search model(s).');
       setLoading(false);
       setLoadingMore(false);
@@ -1681,10 +1722,9 @@ export default function App() {
       let response;
       const sourceStages = overrideStages || stages;
       const activeStages = pageNumber === 1
-        ? await enhanceStagesForSearch(sourceStages, requestedSearchModel)
+        ? await enhanceStagesForSearch(sourceStages, activeSearchModel)
         : submittedStagesRef.current || sourceStages;
 
-      const activeSearchModel = options.forceModel || requestedSearchModel;
       const modelPayload = buildSearchModelPayload(activeSearchModel);
       const hasScopeOverride = Object.prototype.hasOwnProperty.call(options, 'similarityScope');
       const requestedSimilarityScope = hasScopeOverride
@@ -1696,6 +1736,7 @@ export default function App() {
         submittedStagesRef.current = activeStages;
         submittedSearchModelRef.current = activeSearchModel;
         submittedSimilarityScopeRef.current = activeSimilarityScope;
+        submittedSpatialShortcutRegionRef.current = activeSpatialShortcutRegion;
       }
 
       if (activeStages.length === 1) {
@@ -1710,6 +1751,8 @@ export default function App() {
           use_bge_caption: stage.options?.bge_caption || false,
           page: pageNumber,
           page_size: pageSize,
+          spatial_region: activeSpatialShortcutRegion || 'auto',
+          spatial_only: Boolean(activeSpatialShortcutRegion),
           ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
           ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
         };
@@ -1723,6 +1766,8 @@ export default function App() {
             image_search_text: s.queryType === 'image' && s.imageText?.trim() ? s.imageText.trim() : null,
             ocr_query: s.ocrActive && s.ocrText?.trim() ? s.ocrText.trim() : null,
             asr_query: s.asrActive && s.asrText?.trim() ? s.asrText.trim() : null,
+            spatial_region: activeSpatialShortcutRegion || 'auto',
+            spatial_only: Boolean(activeSpatialShortcutRegion),
           })),
           ...modelPayload,
           cluster: isClustered,
@@ -1796,6 +1841,8 @@ export default function App() {
           submittedStages: activeStages,
           searchModel: activeSearchModel,
           submittedSearchModel: activeSearchModel,
+          spatialShortcutRegion: activeSpatialShortcutRegion,
+          submittedSpatialShortcutRegion: activeSpatialShortcutRegion,
           similarityScope: nextSimilarityScope,
           submittedSimilarityScope: nextSimilarityScopeEnabled ? nextSimilarityScope : null,
           similarityScopeEnabled: nextSimilarityScopeEnabled,
@@ -2006,7 +2053,10 @@ export default function App() {
     submittedStagesRef.current = null;
     submittedSearchModelRef.current = currentSearchModel;
     submittedSimilarityScopeRef.current = null;
+    submittedSpatialShortcutRegionRef.current = null;
+    spatialShortcutRegionRef.current = null;
     setSimilarityScope(null);
+    setSpatialShortcutRegion(null);
     setStages(nextStages);
     setIsSemanticAsr(false);
     setSemanticAsrQuery('');

@@ -27,6 +27,28 @@ const renderHighlightedSummary = (summary) => {
   });
 };
 
+const getFrameDisplayName = (shot) => {
+  if (!shot) return '';
+  if (shot.frame_name) return shot.frame_name;
+  if (shot.name) return shot.name;
+  if (shot.video_id && shot.frame_id !== undefined && shot.frame_id !== null) {
+    return `${shot.video_id}_${String(shot.frame_id).padStart(6, '0')}.webp`;
+  }
+  if (shot.filepath) {
+    const parts = shot.filepath.split('/');
+    return parts[parts.length - 1];
+  }
+  if (shot.url && typeof shot.url === 'string') {
+    try {
+      const u = shot.url.split('?')[0];
+      const parts = u.split('/');
+      const last = parts[parts.length - 1];
+      if (last && !last.startsWith('data:')) return last;
+    } catch (e) {}
+  }
+  return '';
+};
+
 const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext, setHoveredFrame, onMouseEnterPopoverItem, parentShot }) => {
   const [neighbors, setNeighbors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -186,6 +208,7 @@ const ResultItem = React.memo(({
   const hasIntro = similarityLabels.includes('INTRO');
   const hasDuplicate = similarityLabels.includes('DUP');
   const hasReuse = similarityLabels.includes('REUSE');
+  const frameDisplayName = getFrameDisplayName(shot);
 
   return (
     <div
@@ -243,11 +266,18 @@ const ResultItem = React.memo(({
         </button>
 
       </div>
-      {isLocked && (
-        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded bg-emerald-500/90 flex items-center justify-center z-10" title="Video locked">
-          <i className="fas fa-lock text-[8px] text-white"></i>
-        </div>
-      )}
+      <div className="absolute top-1.5 right-1.5 flex items-center gap-1 z-20 pointer-events-none max-w-[80%]">
+        {frameDisplayName && (
+          <span className="px-1.5 py-0.5 rounded bg-black/75 backdrop-blur-md text-white/95 font-mono text-[9px] border border-white/15 shadow-md truncate font-semibold" title={frameDisplayName}>
+            {frameDisplayName}
+          </span>
+        )}
+        {isLocked && (
+          <div className="w-5 h-5 shrink-0 rounded bg-emerald-500/90 flex items-center justify-center shadow-sm" title="Video locked">
+            <i className="fas fa-lock text-[8px] text-white"></i>
+          </div>
+        )}
+      </div>
       <div className="absolute top-1.5 left-1.5 flex flex-col gap-1 z-30 pointer-events-none">
         {hasIntro && (
           <div className="px-2 py-0.5 rounded-full bg-blue-600 text-white flex items-center justify-center w-fit shadow-[0_0_8px_rgba(37,99,235,0.8)] border border-blue-400">
@@ -327,6 +357,8 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
             : (frame.user?.color || 'var(--accent-primary)');
         const hasSubmissionStatus = isCorrect || isWrong;
 
+        const frameDisplayName = getFrameDisplayName(frame.shot);
+
         return (
           <div
           key={`teamwork-${frame.shot?.filepath || frame.shot?.frame_name || frame.shot?.url || idx}`}
@@ -363,8 +395,13 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
             loading="lazy"
             decoding="async"
           />
+          {frameDisplayName && (
+            <div className="absolute top-1 right-1.5 z-10 px-1.5 py-0.5 rounded bg-black/75 backdrop-blur-md text-white/95 font-mono text-[8px] border border-white/15 shadow-sm pointer-events-none max-w-[70%] truncate font-semibold" title={frameDisplayName}>
+              {frameDisplayName}
+            </div>
+          )}
           <div
-            className="absolute bottom-1 left-1.5 bg-slate-900/90 text-white px-2 py-0.5 rounded text-[9px] font-bold border-l-2"
+            className="absolute bottom-1 left-1.5 bg-slate-900/90 text-white px-2 py-0.5 rounded text-[9px] font-bold border-l-2 shadow-sm"
             style={{ borderLeftColor: statusColor }}
           >
             {frame.user?.name}
@@ -1011,7 +1048,9 @@ export default function RightResultsPanel({
                 return <p className="text-[var(--text-secondary)] text-xs italic py-2">Drag or pin frames here to build your submission...</p>;
               }
               
-              const renderStaged = () => trakeFrames.map((shot, idx) => (
+              const renderStaged = () => trakeFrames.map((shot, idx) => {
+                const frameDisplayName = getFrameDisplayName(shot);
+                return (
                 <div
                   key={`staged-${shot?.filepath || shot?.frame_name || shot?.url || idx}`}
                   draggable={!isViewingCommit}
@@ -1049,6 +1088,11 @@ export default function RightResultsPanel({
                   {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && (
                     <div className="absolute top-1 left-1.5 z-10 px-1.5 py-0.5 rounded bg-emerald-700/90 text-emerald-100 text-[10px] font-bold shadow-md">
                       E{idx + 1}
+                    </div>
+                  )}
+                  {frameDisplayName && (
+                    <div className={`absolute top-1 ${!isViewingCommit ? 'right-8' : 'right-1.5'} z-10 px-1.5 py-0.5 rounded bg-black/75 backdrop-blur-md text-white/95 font-mono text-[8px] border border-white/15 shadow-sm pointer-events-none max-w-[60%] truncate font-semibold`} title={frameDisplayName}>
+                      {frameDisplayName}
                     </div>
                   )}
                   {shot.user?.name && (
@@ -1099,7 +1143,7 @@ export default function RightResultsPanel({
                     </button>
                   )}
                 </div>
-              ));
+              )});
 
               return (
                 <React.Fragment>
