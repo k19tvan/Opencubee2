@@ -224,8 +224,16 @@ def submit(req: SubmitRequest):
         existing_rows = new_rows
 
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerows(existing_rows)
+        if is_qa:
+            for row in existing_rows:
+                if len(row) >= 3:
+                    clean_ans = row[2].strip('"')
+                    f.write(f'{row[0]},{row[1]},"{clean_ans}"\n')
+                else:
+                    f.write(",".join(row) + "\n")
+        else:
+            writer = csv.writer(f)
+            writer.writerows(existing_rows)
         
     return {"message": "Success", "rows": existing_rows}
 
@@ -248,7 +256,16 @@ def delete_submit(req: DeleteRequest):
     rows.pop(req.row_index)
     
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerows(rows)
+        is_qa = "qa" in req.query_file.lower()
+        if is_qa:
+            for row in rows:
+                if len(row) >= 3:
+                    clean_ans = row[2].strip('"')
+                    f.write(f'{row[0]},{row[1]},"{clean_ans}"\n')
+                else:
+                    f.write(",".join(row) + "\n")
+        else:
+            writer = csv.writer(f)
+            writer.writerows(rows)
         
     return {"message": "Success"}

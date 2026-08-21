@@ -1104,7 +1104,7 @@ export default function RightResultsPanel({
                     </div>
                   )}
                   {frameDisplayName && (
-                    <div className={`absolute top-1 ${!isViewingCommit ? 'right-8' : 'right-1.5'} z-10 px-1.5 py-0.5 rounded bg-black/75 backdrop-blur-md text-white/95 font-mono text-[8px] border border-white/15 shadow-sm pointer-events-none max-w-[60%] truncate font-semibold`} title={frameDisplayName}>
+                    <div className={`absolute top-1.5 ${!isViewingCommit ? 'right-8' : 'right-1.5'} z-10 bg-black/80 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-white tracking-wide shadow-sm pointer-events-none max-w-[60%] truncate`} title={frameDisplayName}>
                       {frameDisplayName}
                     </div>
                   )}
