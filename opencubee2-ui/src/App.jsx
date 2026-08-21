@@ -1691,7 +1691,11 @@ export default function App() {
   };
 
   const performSearch = async (pageNumber = 1, overrideStages = null, captureHistory = true, options = {}) => {
-    if (isSemanticAsr) {
+    // A similarity search launched from any result card is an explicit visual
+    // search.  It must bypass the currently selected Semantic ASR mode;
+    // otherwise Ctrl+Shift+click on an ASR frame simply repeats the ASR query
+    // and never sends the selected frame through the image-search pipeline.
+    if (isSemanticAsr && !options.forceVisualSearch) {
       await executeSemanticAsrSearch();
       return;
     }
@@ -1956,7 +1960,8 @@ export default function App() {
         similarityScope: null,
         activateSimilarityScope: true,
         similaritySourceFrameName: shot.frame_name || null,
-        forceModel: ['beit3']
+        forceModel: ['beit3'],
+        forceVisualSearch: true,
       });
 
     } catch (err) {
