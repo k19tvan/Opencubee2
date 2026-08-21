@@ -199,7 +199,7 @@ def submit(req: SubmitRequest):
                 ans = frame.get("answer", req.answer)
                 if not ans:
                     raise HTTPException(status_code=400, detail="Q&A requires an answer")
-                new_rows.append([frame["video_id"], str(frame["frame_id"]), ans])
+                new_rows.append([frame["video_id"], str(frame["frame_id"]), f'"{ans}"'])
     else: # KIS
         if len(req.frames) > 0:
             for frame in req.frames:

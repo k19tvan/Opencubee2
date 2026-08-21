@@ -817,6 +817,33 @@ def attach_similarity_labels(results: List[Dict[str, Any]]) -> List[Dict[str, An
     return results
 
 
+def classify_similar_frames(
+    source_frame_name: str,
+    candidates: List[Dict[str, Any]],
+    limit: int,
+    threshold: float,
+    intro_min_frame_gap: int,
+    intro_start_window_frames: int,
+) -> List[Dict[str, Any]]:
+    """Keep only usable, non-adjacent visual matches and assign UI labels."""
+    classified_frames = []
+    for frame in candidates:
+        if not isinstance(frame, dict) or frame.get("score", 0) < threshold:
+            continue
+
+        match_type = classify_similarity_match(
+            source_frame_name,
+            frame,
+            intro_min_frame_gap=intro_min_frame_gap,
+            intro_start_window_frames=intro_start_window_frames,
+        )
+        if match_type:
+            classified_frames.append({**frame, "match_type": match_type})
+        if len(classified_frames) >= limit:
+            break
+    return classified_frames
+
+
 async def find_similar_frames(
     frame_name: str,
     limit: int = 20,
@@ -842,33 +869,36 @@ async def find_similar_frames(
             if similar_frames is not None:
                 break
                 
-    if similar_frames is None:
-        # The JSON is an optional pre-computed cache.  Falling back to Qdrant
-        # keeps the feature usable while that offline cache is unavailable.
-        vector = await get_stored_vector(frame_name, "beit3")
-        similar_frames = (
-            await search_qdrant(vector, "beit3", limit=max(100, limit * 5))
-            if vector else []
-        )
-
-    classified_frames = []
-    for frame in similar_frames:
-        if not isinstance(frame, dict) or frame.get("score", 0) < threshold:
-            continue
-
-        match_type = classify_similarity_match(
+    if similar_frames is not None:
+        cached_results = classify_similar_frames(
             frame_name,
-            frame,
-            intro_min_frame_gap=intro_min_frame_gap,
-            intro_start_window_frames=intro_start_window_frames,
+            similar_frames,
+            limit,
+            threshold,
+            intro_min_frame_gap,
+            intro_start_window_frames,
         )
+        if cached_results:
+            return cached_results
 
-        if match_type:
-            classified_frames.append({**frame, "match_type": match_type})
-        if len(classified_frames) >= limit:
-            break
-
-    return classified_frames
+    # The JSON is an optional, directional pre-computed cache.  A label can
+    # have been produced from the reverse edge of a pair, while this frame's
+    # cache entry contains only adjacent frames.  In either case an empty or
+    # unusable cache must fall back to the current BEiT-3 index instead of
+    # making a visible REPEAT/DUP badge open an empty popover.
+    vector = await get_stored_vector(frame_name, "beit3")
+    live_results = (
+        await search_qdrant(vector, "beit3", limit=max(100, limit * 5))
+        if vector else []
+    )
+    return classify_similar_frames(
+        frame_name,
+        live_results,
+        limit,
+        threshold,
+        intro_min_frame_gap,
+        intro_start_window_frames,
+    )
 
 def keyframes_from_scene(
     video_id: str,
