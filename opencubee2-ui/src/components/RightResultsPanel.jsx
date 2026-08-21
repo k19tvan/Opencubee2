@@ -92,7 +92,7 @@ const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext,
   }, [shotData]);
 
   return (
-    <div 
+    <div
       ref={popoverRef}
       className="absolute top-[110%] left-0 w-[240px] bg-[#22102f] border border-white/20 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-[9999] overflow-hidden flex flex-col cursor-default animate-scaleIn origin-top-left pointer-events-auto"
       onClick={(e) => e.stopPropagation()}
@@ -109,10 +109,10 @@ const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext,
           {neighbors.map((shot, idx) => {
             const hasDup = shot.match_type === 'DUP';
             return (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className="relative flex-shrink-0 aspect-video rounded-lg overflow-hidden border-2 border-[#412e4f] hover:border-orange-500 hover:scale-[1.02] transition-all cursor-pointer shadow-md group"
-                onClick={(e) => { 
+                onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   const isCtrlOrCmd = e.ctrlKey || e.metaKey;
@@ -126,7 +126,7 @@ const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext,
                   } else if (isCtrlOrCmd && onContext) {
                     onContext(shot);
                   } else {
-                    onZoom(shot.url); 
+                    onZoom(shot.url);
                   }
                 }}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onPreview(shot.video_id, shot.frame_id); }}
@@ -288,7 +288,7 @@ const ResultItem = React.memo(({
         )}
         {(hasReuse || hasDuplicate) && (
           <div className="relative">
-            <div 
+            <div
               className={`px-2 py-0.5 rounded-md text-white flex items-center justify-center w-fit shadow-lg cursor-pointer pointer-events-auto hover:scale-105 transition-transform ${hasDuplicate ? 'bg-[#e86c1f] border border-[#ff8b45]' : 'bg-emerald-600 border border-emerald-400'}`}
               onClick={(e) => {
                 // Modifier-clicking the badge must behave exactly like clicking
@@ -306,8 +306,8 @@ const ResultItem = React.memo(({
               <span className="text-[10px] font-extrabold tracking-wider text-white">{hasDuplicate ? 'DUP' : 'REPEAT'}</span>
             </div>
             {showSimilarPopover && (
-              <SimilarFramesPopover 
-                shotData={shot} 
+              <SimilarFramesPopover
+                shotData={shot}
                 onClose={() => setShowSimilarPopover(false)}
                 onZoom={onZoom}
                 onPreview={onPreview}
@@ -373,52 +373,53 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
 
         return (
           <div
-          key={`teamwork-${frame.shot?.filepath || frame.shot?.frame_name || frame.shot?.url || idx}`}
-          draggable={true}
-          onDragStart={(e) => onDragStart(e, frame.shot)}
-          className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border-0 hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${
-            hasSubmissionStatus ? 'z-20' : '!border-2 !border-[var(--border-color)]'
-          }`}
-          style={{
-            boxShadow: hasSubmissionStatus
-              ? `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`
-              : `0 4px 15px ${statusColor}26`
-          }}
-          onClick={(e) => onItemClick(e, frame.shot)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onContextMenu(frame.shot);
-          }}
-          onMouseEnter={() => onMouseEnter(frame.shot, false)}
-          onMouseMove={(event) => onMouseEnter(
-            frame.shot,
-            event.movementX !== 0 || event.movementY !== 0,
-          )}
-          onMouseLeave={() => onMouseLeave(frame.shot)}
-        >
-          <img
-            src={getImageUrl(frame.shot?.url || frame.shot?.frame_name || frame.shot?.filepath)}
-            alt="Frame"
-            className="w-full h-full object-cover animate-fadeIn"
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+';
+            key={`teamwork-${frame.shot?.filepath || frame.shot?.frame_name || frame.shot?.url || idx}`}
+            draggable={true}
+            onDragStart={(e) => onDragStart(e, frame.shot)}
+            className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border-0 hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${hasSubmissionStatus ? 'z-20' : '!border-2 !border-[var(--border-color)]'
+              }`}
+            style={{
+              boxShadow: hasSubmissionStatus
+                ? `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`
+                : `0 4px 15px ${statusColor}26`
             }}
-            loading="lazy"
-            decoding="async"
-          />
-          {frameDisplayName && (
-            <div className="absolute top-1.5 right-1.5 z-10 bg-black/80 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-white tracking-wide shadow-sm pointer-events-none max-w-[70%] truncate" title={frameDisplayName}>
-              {frameDisplayName}
-            </div>
-          )}
-          <div
-            className="absolute bottom-1 left-1.5 bg-slate-900/90 text-white px-2 py-0.5 rounded text-[9px] font-bold border-l-2 shadow-sm"
-            style={{ borderLeftColor: statusColor }}
+            onClick={(e) => onItemClick(e, frame.shot)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onContextMenu(frame.shot);
+            }}
+            onMouseEnter={() => onMouseEnter(frame.shot, false)}
+            onMouseMove={(event) => onMouseEnter(
+              frame.shot,
+              event.movementX !== 0 || event.movementY !== 0,
+            )}
+            onMouseLeave={() => onMouseLeave(frame.shot)}
           >
-            {frame.user?.name}
+            <img
+              src={getImageUrl(frame.shot?.url || frame.shot?.frame_name || frame.shot?.filepath)}
+              alt="Frame"
+              className="w-full h-full object-cover animate-fadeIn"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+';
+              }}
+              loading="lazy"
+              decoding="async"
+            />
+            {frameDisplayName && (
+              <div className="absolute top-1.5 right-1.5 z-10 bg-black/80 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-white tracking-wide shadow-sm pointer-events-none max-w-[70%] truncate" title={frameDisplayName}>
+                {frameDisplayName}
+              </div>
+            )}
+            <div className="absolute bottom-1 right-1.5 z-10 flex items-center gap-1 pointer-events-none">
+              <div
+                className="bg-slate-900/90 text-white px-2 py-0.5 rounded text-[9px] font-bold border-l-2 shadow-sm pointer-events-none"
+                style={{ borderLeftColor: statusColor }}
+              >
+                {frame.user?.name}
+              </div>
+            </div>
           </div>
-        </div>
         );
       })}
     </div>
@@ -484,7 +485,7 @@ export default function RightResultsPanel({
   const hoveredTeamShotRef = useRef(null);
   const suppressTeamRemovalRef = useRef(false);
   const hoveredShotRef = useRef(null);
-  
+
   const [isTrakeDropdownOpen, setIsTrakeDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -822,362 +823,364 @@ export default function RightResultsPanel({
             id="trakePanelContainer"
             className="pt-4 pb-2"
             onMouseEnter={() => setIsHoveringTrakePanel?.(true)}
-          onMouseLeave={() => {
-            hoveredTrakeShotRef.current = null;
-            hoveredTrakeIndexRef.current = null;
-            setIsHoveringTrakePanel?.(false);
-          }}
-        >
-          <div className="flex-shrink-0 px-6 mb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                  {isViewingCommit ? (
-                    <span className="flex items-center gap-1.5 text-amber-400">
-                      <i className="fas fa-lock text-xs"></i> COMMIT VIEW (READ-ONLY)
+            onMouseLeave={() => {
+              hoveredTrakeShotRef.current = null;
+              hoveredTrakeIndexRef.current = null;
+              setIsHoveringTrakePanel?.(false);
+            }}
+          >
+            <div className="flex-shrink-0 px-6 mb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                    {isViewingCommit ? (
+                      <span className="flex items-center gap-1.5 text-amber-400">
+                        <i className="fas fa-lock text-xs"></i> COMMIT VIEW (READ-ONLY)
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-emerald-400">
+                        <i className="fas fa-users text-xs"></i> TEAM DRAFT PANEL
+                      </span>
+                    )}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ml-1 ${isViewingCommit ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+                      }`}>
+                      {trakeFrames.length} Frames
                     </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-emerald-400">
-                      <i className="fas fa-users text-xs"></i> TEAM DRAFT PANEL
-                    </span>
-                  )}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ml-1 ${
-                    isViewingCommit ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
-                  }`}>
-                    {trakeFrames.length} Frames
-                  </span>
-                  {!isViewingCommit && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[9px] font-semibold border border-emerald-500/20">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      Live Teamwork
-                    </span>
-                  )}
-                </h3>
+                    {!isViewingCommit && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[9px] font-semibold border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Live Teamwork
+                      </span>
+                    )}
+                  </h3>
 
-                {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && soloAIQueries[activeSoloQueryIndex]?.submissions?.length > 0 && (
-                  <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-3">
-                    <div className="relative" ref={dropdownRef}>
-                      <button
-                        type="button"
-                        disabled={isViewingCommit}
-                        onClick={() => !isViewingCommit && setIsTrakeDropdownOpen(!isTrakeDropdownOpen)}
-                        className={`flex items-center justify-between min-w-[120px] bg-[#1e1e1e] border border-white/10 rounded px-3 py-1 text-xs text-white outline-none focus:border-emerald-500 h-6 transition-colors ${
-                          isViewingCommit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-white/5'
-                        }`}
-                      >
-                        <span className="truncate mr-2 font-mono">
-                          {editTrakeRowIndex !== null ? `Row ${editTrakeRowIndex + 1}` : "+ Append New"}
-                        </span>
-                        <i className={`fas fa-chevron-down text-[10px] transition-transform ${isTrakeDropdownOpen ? 'rotate-180' : ''}`}></i>
-                      </button>
-                      
-                      {isTrakeDropdownOpen && !isViewingCommit && (
-                        <div className="absolute top-full left-0 mt-1 min-w-[120px] bg-[#2a2a2a] border border-white/10 rounded-md shadow-xl z-50 overflow-hidden text-xs">
-                          {soloAIQueries[activeSoloQueryIndex].submissions.map((_, rIdx) => (
+                  {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && soloAIQueries[activeSoloQueryIndex]?.submissions?.length > 0 && (
+                    <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-3">
+                      <div className="relative" ref={dropdownRef}>
+                        <button
+                          type="button"
+                          disabled={isViewingCommit}
+                          onClick={() => !isViewingCommit && setIsTrakeDropdownOpen(!isTrakeDropdownOpen)}
+                          className={`flex items-center justify-between min-w-[120px] bg-[#1e1e1e] border border-white/10 rounded px-3 py-1 text-xs text-white outline-none focus:border-emerald-500 h-6 transition-colors ${isViewingCommit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-white/5'
+                            }`}
+                        >
+                          <span className="truncate mr-2 font-mono">
+                            {editTrakeRowIndex !== null ? `Row ${editTrakeRowIndex + 1}` : "+ Append New"}
+                          </span>
+                          <i className={`fas fa-chevron-down text-[10px] transition-transform ${isTrakeDropdownOpen ? 'rotate-180' : ''}`}></i>
+                        </button>
+
+                        {isTrakeDropdownOpen && !isViewingCommit && (
+                          <div className="absolute top-full left-0 mt-1 min-w-[120px] bg-[#2a2a2a] border border-white/10 rounded-md shadow-xl z-50 overflow-hidden text-xs">
+                            {soloAIQueries[activeSoloQueryIndex].submissions.map((_, rIdx) => (
+                              <button
+                                key={`trake-row-${rIdx}`}
+                                className={`w-full text-left px-3 py-1.5 font-mono transition-colors hover:bg-emerald-500 hover:text-white ${editTrakeRowIndex === rIdx ? 'bg-emerald-500/20 text-emerald-300' : 'text-white'}`}
+                                onClick={() => {
+                                  onEditTrakeRow && onEditTrakeRow(rIdx);
+                                  setIsTrakeDropdownOpen(false);
+                                }}
+                              >
+                                Row {rIdx + 1}
+                              </button>
+                            ))}
+                            <div className="border-t border-white/10 my-0.5"></div>
                             <button
-                              key={`trake-row-${rIdx}`}
-                              className={`w-full text-left px-3 py-1.5 font-mono transition-colors hover:bg-emerald-500 hover:text-white ${editTrakeRowIndex === rIdx ? 'bg-emerald-500/20 text-emerald-300' : 'text-white'}`}
+                              className={`w-full text-left px-3 py-1.5 font-mono transition-colors hover:bg-emerald-500 hover:text-white ${editTrakeRowIndex === null ? 'bg-emerald-500/20 text-emerald-300' : 'text-white/70'}`}
                               onClick={() => {
-                                onEditTrakeRow && onEditTrakeRow(rIdx);
+                                onCancelEditTrakeRow && onCancelEditTrakeRow();
                                 setIsTrakeDropdownOpen(false);
                               }}
                             >
-                              Row {rIdx + 1}
+                              + Append New
                             </button>
-                          ))}
-                          <div className="border-t border-white/10 my-0.5"></div>
-                          <button
-                            className={`w-full text-left px-3 py-1.5 font-mono transition-colors hover:bg-emerald-500 hover:text-white ${editTrakeRowIndex === null ? 'bg-emerald-500/20 text-emerald-300' : 'text-white/70'}`}
-                            onClick={() => {
-                              onCancelEditTrakeRow && onCancelEditTrakeRow();
-                              setIsTrakeDropdownOpen(false);
-                            }}
-                          >
-                            + Append New
-                          </button>
-                        </div>
+                          </div>
+                        )}
+                      </div>
+                      {editTrakeRowIndex !== null && !isViewingCommit && (
+                        <button
+                          onClick={() => {
+                            onDeleteTrakeRow && onDeleteTrakeRow(editTrakeRowIndex);
+                          }}
+                          className="text-[10px] text-white/40 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 px-2 flex items-center justify-center h-6 w-6 rounded transition-colors"
+                          title="Delete this row"
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
                       )}
                     </div>
-                    {editTrakeRowIndex !== null && !isViewingCommit && (
-                      <button 
-                        onClick={() => {
-                           onDeleteTrakeRow && onDeleteTrakeRow(editTrakeRowIndex);
-                        }}
-                        className="text-[10px] text-white/40 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 px-2 flex items-center justify-center h-6 w-6 rounded transition-colors"
-                        title="Delete this row"
-                      >
-                        <i className="fas fa-trash"></i>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onCreateCommit && typeof onCreateCommit === 'function') {
-                      onCreateCommit(trakeFramesRef.current);
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-purple-600/20 text-purple-300 border border-purple-500/40 rounded text-[11px] font-bold uppercase tracking-wider hover:bg-purple-600 hover:text-white transition-all cursor-pointer shadow-[0_0_8px_rgba(147,51,234,0.15)]"
-                  title="Create a local commit snapshot (without saving to CSV yet)"
-                >
-                  <i className="fas fa-bookmark mr-0.5"></i> Commit
-                </button>
-
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onSoloAISubmit && typeof onSoloAISubmit === 'function') {
-                      onSoloAISubmit(trakeFramesRef.current);
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/30 rounded text-[11px] font-bold uppercase tracking-wider hover:bg-[#10b981] hover:text-white transition-all shadow-[0_0_8px_rgba(16,185,129,0.15)] cursor-pointer"
-                  title="Commit & Save to backend CSV file"
-                >
-                  <i className="fas fa-save mr-0.5"></i> Save CSV
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex gap-2 items-center flex-wrap mt-2">
-              <span className="text-[10px] text-zinc-500 italic lowercase tracking-wider">
-                /SoLoaiAIC/{soloAIQueries[activeSoloQueryIndex]?.filename?.replace('.txt', '.csv')}
-              </span>
-              
-              {(() => {
-                const activeQueryFilename = soloAIQueries[activeSoloQueryIndex]?.filename;
-                const activeQueryCommitState = queryCommits[activeQueryFilename] || { commits: [], activeCommitIndex: null };
-                const currentCommits = activeQueryCommitState.commits || [];
-                const activeCommitIndex = activeQueryCommitState.activeCommitIndex;
-
-                return (
-                  <div className="flex items-center gap-1.5 bg-[#181825] border border-emerald-500/30 rounded px-2 py-0.5 text-xs text-white">
-                    <span className="text-[10px] uppercase font-bold text-emerald-400">Commits ({currentCommits.length}):</span>
-                    <button
-                      type="button"
-                      disabled={activeCommitIndex === null || activeCommitIndex <= 0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onPrevCommit && onPrevCommit();
-                      }}
-                      className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded text-[10px] cursor-pointer"
-                      title="Previous Commit"
-                    >
-                      <i className="fas fa-chevron-left"></i>
-                    </button>
-                    <select
-                      value={typeof activeCommitIndex === 'number' && activeCommitIndex >= 0 ? activeCommitIndex : -1}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        onSelectCommit && onSelectCommit(activeQueryFilename, Number(e.target.value));
-                      }}
-                      className="bg-[#11111b] border border-emerald-500/40 rounded px-2 py-0.5 text-[11px] text-emerald-300 font-mono outline-none cursor-pointer"
-                    >
-                      <option value={-1}>* Draft (Live Collaborative) *</option>
-                      {currentCommits.map((c, i) => (
-                        <option key={c.id || i} value={i}>
-                          Commit #{i + 1} ({c.timestamp}) [{c.frames?.length || 0} frames]
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={activeCommitIndex === null || activeCommitIndex >= currentCommits.length - 1}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNextCommit && onNextCommit();
-                      }}
-                      className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded text-[10px] cursor-pointer"
-                      title="Next Commit"
-                    >
-                      <i className="fas fa-chevron-right"></i>
-                    </button>
-                    {typeof activeCommitIndex === 'number' && activeCommitIndex >= 0 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPushCommitToDraft && onPushCommitToDraft();
-                          }}
-                          className="px-2.5 py-0.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded text-[10px] uppercase cursor-pointer transition-all flex items-center gap-1 shadow-[0_0_8px_rgba(245,158,11,0.3)]"
-                          title="Copy this commit's frames into Draft (editable)"
-                        >
-                          <i className="fas fa-file-export"></i> Push to Draft
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onDeleteCommit && typeof onDeleteCommit === 'function') {
-                              onDeleteCommit(activeQueryFilename, activeCommitIndex);
-                            }
-                          }}
-                          className="px-1.5 py-0.5 bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white rounded text-[10px] cursor-pointer transition-colors"
-                          title={`Delete Commit #${activeCommitIndex + 1}`}
-                        >
-                          <i className="fas fa-trash-alt"></i>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-              
-              {isViewingCommit && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const activeQueryFilename = soloAIQueries[activeSoloQueryIndex]?.filename;
-                    onSelectCommit && onSelectCommit(activeQueryFilename, -1);
-                  }}
-                  className="flex items-center justify-center px-3 py-1 cursor-pointer text-emerald-300 bg-emerald-600/25 hover:bg-emerald-500 hover:text-white rounded transition-all border border-emerald-500/40 font-bold uppercase tracking-wider text-[11px]"
-                  title="Return to the live collaborative Draft"
-                >
-                  <i className="fas fa-arrow-left text-[10px] mr-1.5"></i> Back to Draft
-                </button>
-              )}
-            </div>
-            
-            {soloAIQueries[activeSoloQueryIndex]?.content && (
-              <div className="text-[11px] leading-relaxed text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md p-3 mt-3 break-words whitespace-pre-wrap">
-                {soloAIQueries[activeSoloQueryIndex].content}
-              </div>
-            )}
-          </div>
-          <div
-            id="trakeGrid"
-            className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none min-h-[110px]"
-            onDragOver={(event) => !isViewingCommit && event.preventDefault()}
-            onDrop={!isViewingCommit ? handleTrakePanelDrop : undefined}
-          >
-            {(() => {
-              if (trakeFrames.length === 0) {
-                return <p className="text-[var(--text-secondary)] text-xs italic py-2">Drag or pin frames here to build your submission...</p>;
-              }
-              
-              const renderStaged = () => trakeFrames.map((shot, idx) => {
-                const frameDisplayName = getFrameDisplayName(shot);
-                return (
-                <div
-                  key={`staged-${shot?.filepath || shot?.frame_name || shot?.url || idx}`}
-                  draggable={!isViewingCommit}
-                  onDragStart={(e) => !isViewingCommit && handleTrakeDragStart(e, shot, idx)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => !isViewingCommit && handleTrakeDrop(e, idx)}
-                  onDragEnd={() => { trakeDragIndexRef.current = null; }}
-                  className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border transition-all duration-300 ease-spring will-change-transform animate-scaleIn ${
-                    isViewingCommit ? 'border-amber-500/40 opacity-95' : 'border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-[1.03] hover:-translate-y-0.5 cursor-grab active:cursor-grabbing active:scale-100'
-                  }`}
-                  onClick={(e) => handleItemClick(e, shot)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    handleOpenPreview(shot);
-                  }}
-                  onMouseEnter={() => {
-                    hoveredTrakeShotRef.current = shot;
-                    hoveredTrakeIndexRef.current = idx;
-                    setIsHoveringTrakePanel?.(true);
-                  }}
-                  onMouseMove={() => {
-                    hoveredTrakeShotRef.current = shot;
-                    hoveredTrakeIndexRef.current = idx;
-                  }}
-                  onMouseLeave={() => {
-                    if (hoveredTrakeShotRef.current === shot) hoveredTrakeShotRef.current = null;
-                  }}
-                >
-                  <img
-                    src={getImageUrl(shot.url || shot.frame_name || shot.filepath || getVideoThumbnailUrl(shot.video_id, shot.frame_id))}
-                    alt={`Frame ${shot.frame_id || idx}`}
-                    className="w-full h-full object-cover"
-                    onError={(e) => { e.target.onerror = null; e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+'; }}
-                  />
-                  {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && (
-                    <div className="absolute top-1 left-1.5 z-10 px-1.5 py-0.5 rounded bg-emerald-700/90 text-emerald-100 text-[10px] font-bold shadow-md">
-                      E{idx + 1}
-                    </div>
-                  )}
-                  {frameDisplayName && (
-                    <div className={`absolute top-1.5 ${!isViewingCommit ? 'right-8' : 'right-1.5'} z-10 bg-black/80 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-white tracking-wide shadow-sm pointer-events-none max-w-[60%] truncate`} title={frameDisplayName}>
-                      {frameDisplayName}
-                    </div>
-                  )}
-                  {shot.user?.name && (
-                    <div
-                      className="absolute bottom-1 left-1 z-10 bg-slate-900/90 text-white px-1.5 py-0.5 rounded text-[8px] font-bold border-l-2 max-w-[80px] truncate shadow-sm pointer-events-none"
-                      style={{ borderLeftColor: shot.user.color || 'var(--accent-primary)' }}
-                      title={`Added by ${shot.user.name}`}
-                    >
-                      {shot.user.name}
-                    </div>
-                  )}
-                  {shot.qaAnswer && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        if (!isViewingCommit) {
-                          onEditQaAnswer(shot);
-                        }
-                      }}
-                      className={`absolute bottom-1 left-1 z-10 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-bold shadow-sm w-fit max-w-[85%] truncate ${!isViewingCommit ? 'cursor-pointer hover:bg-emerald-400 hover:scale-105 transition-all' : 'cursor-default'}`} 
-                      title={!isViewingCommit ? "Click to edit answer" : shot.qaAnswer}
-                    >
-                      {shot.qaAnswer}
-                    </button>
-                  )}
-                  {!isViewingCommit && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeFromTrake(shot);
-                      }}
-                      className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-[10px] text-white/70 hover:bg-rose-500 hover:text-white"
-                      title="Remove from staging"
-                    >
-                      <i className="fas fa-times"></i>
-                    </button>
-                  )}
-                  {shot.similarityScore !== undefined && shot.similarityScore !== null && (
-                     <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded text-[8px] bg-black/50 text-white font-mono pointer-events-none">
-                        {(shot.similarityScore).toFixed(2)}
-                     </div>
-                  )}
-                  {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && (
-                    <button
-                      type="button"
-                      draggable={false}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onPreviewTrakeFrame(shot);
-                      }}
-                      className="absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded bg-slate-900/80 text-[10px] text-white shadow-sm border border-white/20 transition-all hover:scale-110 hover:border-transparent hover:bg-rose-500 cursor-pointer"
-                      title="Preview frames around this point"
-                    >
-                      <i className="fas fa-film"></i>
-                    </button>
                   )}
                 </div>
-              )});
 
-              return (
-                <React.Fragment>
-                  {renderStaged()}
-                </React.Fragment>
-              );
-            })()}
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onCreateCommit && typeof onCreateCommit === 'function') {
+                        onCreateCommit(trakeFramesRef.current);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-purple-600/20 text-purple-300 border border-purple-500/40 rounded text-[11px] font-bold uppercase tracking-wider hover:bg-purple-600 hover:text-white transition-all cursor-pointer shadow-[0_0_8px_rgba(147,51,234,0.15)]"
+                    title="Create a local commit snapshot (without saving to CSV yet)"
+                  >
+                    <i className="fas fa-bookmark mr-0.5"></i> Commit
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onSoloAISubmit && typeof onSoloAISubmit === 'function') {
+                        onSoloAISubmit(trakeFramesRef.current);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/30 rounded text-[11px] font-bold uppercase tracking-wider hover:bg-[#10b981] hover:text-white transition-all shadow-[0_0_8px_rgba(16,185,129,0.15)] cursor-pointer"
+                    title="Commit & Save to backend CSV file"
+                  >
+                    <i className="fas fa-save mr-0.5"></i> Save CSV
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2 items-center flex-wrap mt-2">
+                <span className="text-[10px] text-zinc-500 italic lowercase tracking-wider">
+                  /SoLoaiAIC/{soloAIQueries[activeSoloQueryIndex]?.filename?.replace('.txt', '.csv')}
+                </span>
+
+                {(() => {
+                  const activeQueryFilename = soloAIQueries[activeSoloQueryIndex]?.filename;
+                  const activeQueryCommitState = queryCommits[activeQueryFilename] || { commits: [], activeCommitIndex: null };
+                  const currentCommits = activeQueryCommitState.commits || [];
+                  const activeCommitIndex = activeQueryCommitState.activeCommitIndex;
+
+                  return (
+                    <div className="flex items-center gap-1.5 bg-[#181825] border border-emerald-500/30 rounded px-2 py-0.5 text-xs text-white">
+                      <span className="text-[10px] uppercase font-bold text-emerald-400">Commits ({currentCommits.length}):</span>
+                      <button
+                        type="button"
+                        disabled={activeCommitIndex === null || activeCommitIndex <= 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPrevCommit && onPrevCommit();
+                        }}
+                        className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded text-[10px] cursor-pointer"
+                        title="Previous Commit"
+                      >
+                        <i className="fas fa-chevron-left"></i>
+                      </button>
+                      <select
+                        value={typeof activeCommitIndex === 'number' && activeCommitIndex >= 0 ? activeCommitIndex : -1}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          onSelectCommit && onSelectCommit(activeQueryFilename, Number(e.target.value));
+                        }}
+                        className="bg-[#11111b] border border-emerald-500/40 rounded px-2 py-0.5 text-[11px] text-emerald-300 font-mono outline-none cursor-pointer"
+                      >
+                        <option value={-1}>* Draft (Live Collaborative) *</option>
+                        {currentCommits.map((c, i) => (
+                          <option key={c.id || i} value={i}>
+                            Commit #{i + 1} ({c.timestamp}) [{c.frames?.length || 0} frames]
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={activeCommitIndex === null || activeCommitIndex >= currentCommits.length - 1}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onNextCommit && onNextCommit();
+                        }}
+                        className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded text-[10px] cursor-pointer"
+                        title="Next Commit"
+                      >
+                        <i className="fas fa-chevron-right"></i>
+                      </button>
+                      {typeof activeCommitIndex === 'number' && activeCommitIndex >= 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPushCommitToDraft && onPushCommitToDraft();
+                            }}
+                            className="px-2.5 py-0.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded text-[10px] uppercase cursor-pointer transition-all flex items-center gap-1 shadow-[0_0_8px_rgba(245,158,11,0.3)]"
+                            title="Copy this commit's frames into Draft (editable)"
+                          >
+                            <i className="fas fa-file-export"></i> Push to Draft
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onDeleteCommit && typeof onDeleteCommit === 'function') {
+                                onDeleteCommit(activeQueryFilename, activeCommitIndex);
+                              }
+                            }}
+                            className="px-1.5 py-0.5 bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white rounded text-[10px] cursor-pointer transition-colors"
+                            title={`Delete Commit #${activeCommitIndex + 1}`}
+                          >
+                            <i className="fas fa-trash-alt"></i>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {isViewingCommit && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const activeQueryFilename = soloAIQueries[activeSoloQueryIndex]?.filename;
+                      onSelectCommit && onSelectCommit(activeQueryFilename, -1);
+                    }}
+                    className="flex items-center justify-center px-3 py-1 cursor-pointer text-emerald-300 bg-emerald-600/25 hover:bg-emerald-500 hover:text-white rounded transition-all border border-emerald-500/40 font-bold uppercase tracking-wider text-[11px]"
+                    title="Return to the live collaborative Draft"
+                  >
+                    <i className="fas fa-arrow-left text-[10px] mr-1.5"></i> Back to Draft
+                  </button>
+                )}
+              </div>
+
+              {soloAIQueries[activeSoloQueryIndex]?.content && (
+                <div className="text-[11px] leading-relaxed text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md p-3 mt-3 break-words whitespace-pre-wrap">
+                  {soloAIQueries[activeSoloQueryIndex].content}
+                </div>
+              )}
+            </div>
+            <div
+              id="trakeGrid"
+              className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none min-h-[110px]"
+              onDragOver={(event) => !isViewingCommit && event.preventDefault()}
+              onDrop={!isViewingCommit ? handleTrakePanelDrop : undefined}
+            >
+              {(() => {
+                if (trakeFrames.length === 0) {
+                  return <p className="text-[var(--text-secondary)] text-xs italic py-2">Drag or pin frames here to build your submission...</p>;
+                }
+
+                const renderStaged = () => trakeFrames.map((shot, idx) => {
+                  const frameDisplayName = getFrameDisplayName(shot);
+                  return (
+                    <div
+                      key={`staged-${shot?.filepath || shot?.frame_name || shot?.url || idx}`}
+                      draggable={!isViewingCommit}
+                      onDragStart={(e) => !isViewingCommit && handleTrakeDragStart(e, shot, idx)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => !isViewingCommit && handleTrakeDrop(e, idx)}
+                      onDragEnd={() => { trakeDragIndexRef.current = null; }}
+                      className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border transition-all duration-300 ease-spring will-change-transform animate-scaleIn ${isViewingCommit ? 'border-amber-500/40 opacity-95' : 'border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-[1.03] hover:-translate-y-0.5 cursor-grab active:cursor-grabbing active:scale-100'
+                        }`}
+                      onClick={(e) => handleItemClick(e, shot)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        handleOpenPreview(shot);
+                      }}
+                      onMouseEnter={() => {
+                        hoveredTrakeShotRef.current = shot;
+                        hoveredTrakeIndexRef.current = idx;
+                        setIsHoveringTrakePanel?.(true);
+                      }}
+                      onMouseMove={() => {
+                        hoveredTrakeShotRef.current = shot;
+                        hoveredTrakeIndexRef.current = idx;
+                      }}
+                      onMouseLeave={() => {
+                        if (hoveredTrakeShotRef.current === shot) hoveredTrakeShotRef.current = null;
+                      }}
+                    >
+                      <img
+                        src={getImageUrl(shot.url || shot.frame_name || shot.filepath || getVideoThumbnailUrl(shot.video_id, shot.frame_id))}
+                        alt={`Frame ${shot.frame_id || idx}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.onerror = null; e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+'; }}
+                      />
+                      <div className="absolute top-1 left-1 z-10 flex items-center gap-1 pointer-events-none">
+                        {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && (
+                          <div className="px-1.5 py-0.5 rounded bg-emerald-700/90 text-emerald-100 text-[10px] font-bold shadow-md">
+                            E{idx + 1}
+                          </div>
+                        )}
+                      </div>
+                      {frameDisplayName && (
+                        <div className={`absolute top-1.5 ${!isViewingCommit ? 'right-8' : 'right-1.5'} z-10 bg-black/80 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-white tracking-wide shadow-sm pointer-events-none max-w-[60%] truncate`} title={frameDisplayName}>
+                          {frameDisplayName}
+                        </div>
+                      )}
+                      {shot.qaAnswer && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (!isViewingCommit) {
+                              onEditQaAnswer(shot);
+                            }
+                          }}
+                          className={`absolute bottom-1 left-1 z-10 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-bold shadow-sm w-fit max-w-[85%] truncate ${!isViewingCommit ? 'cursor-pointer hover:bg-emerald-400 hover:scale-105 transition-all' : 'cursor-default'}`}
+                          title={!isViewingCommit ? "Click to edit answer" : shot.qaAnswer}
+                        >
+                          {shot.qaAnswer}
+                        </button>
+                      )}
+                      {!isViewingCommit && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFromTrake(shot);
+                          }}
+                          className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-[10px] text-white/70 hover:bg-rose-500 hover:text-white"
+                          title="Remove from staging"
+                        >
+                          <i className="fas fa-times"></i>
+                        </button>
+                      )}
+                      <div className="absolute bottom-1 right-1 z-10 flex items-center gap-1 pointer-events-none">
+                        {shot.similarityScore !== undefined && shot.similarityScore !== null && (
+                          <div className="px-1 py-0.5 rounded text-[8px] bg-black/50 text-white font-mono pointer-events-none">
+                            {(shot.similarityScore).toFixed(2)}
+                          </div>
+                        )}
+                        {shot.user?.name && (
+                          <div
+                            className="bg-slate-900/90 text-white px-1.5 py-0.5 rounded text-[8px] font-bold border-l-2 max-w-[80px] truncate shadow-sm pointer-events-none"
+                            style={{ borderLeftColor: shot.user.color || 'var(--accent-primary)' }}
+                            title={`Added by ${shot.user.name}`}
+                          >
+                            {shot.user.name}
+                          </div>
+                        )}
+                        {soloAIQueries[activeSoloQueryIndex]?.filename?.toLowerCase().includes('trake') && (
+                          <button
+                            type="button"
+                            draggable={false}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onPreviewTrakeFrame(shot);
+                            }}
+                            className="flex h-6 w-6 items-center justify-center rounded bg-slate-900/80 text-[10px] text-white shadow-sm border border-white/20 transition-all hover:scale-110 hover:border-transparent hover:bg-rose-500 cursor-pointer pointer-events-auto"
+                            title="Preview frames around this point"
+                          >
+                            <i className="fas fa-film"></i>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                });
+
+                return (
+                  <React.Fragment>
+                    {renderStaged()}
+                  </React.Fragment>
+                );
+              })()}
+            </div>
           </div>
-        </div>
         )}
       </div>
 
