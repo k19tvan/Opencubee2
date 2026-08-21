@@ -153,7 +153,7 @@ const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext,
                 <div className="absolute bottom-1.5 left-1.5 bg-black/70 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-sm">
                   {shot.video_id}
                 </div>
-                <div className="absolute bottom-1.5 right-1.5 bg-black/70 px-1.5 py-0.5 rounded text-xs font-mono font-bold text-white shadow-sm">
+                <div className="absolute bottom-1.5 right-1.5 bg-black/80 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-white shadow-sm">
                   {Number(shot.frame_id)}
                 </div>
               </div>
@@ -270,7 +270,7 @@ const ResultItem = React.memo(({
       </div>
       <div className="absolute top-1.5 right-1.5 flex items-center gap-1 z-20 pointer-events-none max-w-[80%]">
         {frameDisplayName && (
-          <span className="px-2 py-1 rounded bg-black/75 backdrop-blur-md text-white/95 font-mono text-sm border border-white/15 shadow-md truncate font-semibold" title={frameDisplayName}>
+          <span className="bg-black/80 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-white tracking-wide shadow-sm truncate" title={frameDisplayName}>
             {frameDisplayName}
           </span>
         )}
@@ -408,7 +408,7 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
             decoding="async"
           />
           {frameDisplayName && (
-            <div className="absolute top-1 right-1.5 z-10 px-2 py-1 rounded bg-black/75 backdrop-blur-md text-white/95 font-mono text-xs border border-white/15 shadow-sm pointer-events-none max-w-[70%] truncate font-semibold" title={frameDisplayName}>
+            <div className="absolute top-1.5 right-1.5 z-10 bg-black/80 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-white tracking-wide shadow-sm pointer-events-none max-w-[70%] truncate" title={frameDisplayName}>
               {frameDisplayName}
             </div>
           )}
