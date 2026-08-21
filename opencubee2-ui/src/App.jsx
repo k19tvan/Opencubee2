@@ -1359,7 +1359,12 @@ export default function App() {
 
     setTrakeFrames(prev => {
       const incomingKey = getShotKey(shotWithUrl);
-      if (incomingKey && prev.some(s => getShotKey(s) === incomingKey)) return prev;
+      const existingIdx = prev.findIndex(s => getShotKey(s) === incomingKey);
+      if (existingIdx !== -1) {
+        const next = [...prev];
+        next[existingIdx] = shotWithUrl;
+        return next;
+      }
       return [...prev, shotWithUrl];
     });
     setShowTrake(true);
@@ -2288,6 +2293,7 @@ export default function App() {
                 onRemoveFromTrake={handleRemoveFromTrake}
                 onPreviewTrakeFrame={setTrakePreviewShot}
                 correctSubmission={correctSubmission}
+                onEditQaAnswer={(shot) => setQaPromptShot({ ...shot, _ts: Date.now() })}
                 onZoom={setZoomedImage}
                 isClustered={isClustered}
                 isAmbiguous={resultIsAmbiguous}

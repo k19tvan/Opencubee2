@@ -444,6 +444,7 @@ export default function RightResultsPanel({
   onRemoveFromTrake = () => { },
   onPreviewTrakeFrame = () => { },
   correctSubmission = null,
+  onEditQaAnswer = () => { },
   onZoom = () => { },
   isClustered = false,
   isAmbiguous = false,
@@ -1118,9 +1119,20 @@ export default function RightResultsPanel({
                     </div>
                   )}
                   {shot.qaAnswer && (
-                    <div className="absolute bottom-1 left-1 z-10 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-bold shadow-sm w-fit max-w-[85%] truncate" title={shot.qaAnswer}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (!isViewingCommit) {
+                          onEditQaAnswer(shot);
+                        }
+                      }}
+                      className={`absolute bottom-1 left-1 z-10 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-bold shadow-sm w-fit max-w-[85%] truncate ${!isViewingCommit ? 'cursor-pointer hover:bg-emerald-400 hover:scale-105 transition-all' : 'cursor-default'}`} 
+                      title={!isViewingCommit ? "Click to edit answer" : shot.qaAnswer}
+                    >
                       {shot.qaAnswer}
-                    </div>
+                    </button>
                   )}
                   {!isViewingCommit && (
                     <button
