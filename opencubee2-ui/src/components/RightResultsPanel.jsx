@@ -413,7 +413,7 @@ const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmissi
             )}
             <div className="absolute bottom-1 right-1.5 z-10 flex items-center gap-1 pointer-events-none">
               <div
-                className="bg-slate-900/90 text-white px-2 py-0.5 rounded text-[9px] font-bold border-l-2 shadow-sm pointer-events-none"
+                className="bg-slate-900/90 text-white px-1.5 py-0.5 rounded text-[11px] font-bold border-l-2 shadow-sm pointer-events-none"
                 style={{ borderLeftColor: statusColor }}
               >
                 {frame.user?.name}
@@ -1145,7 +1145,7 @@ export default function RightResultsPanel({
                         )}
                         {shot.user?.name && (
                           <div
-                            className="bg-slate-900/90 text-white px-1.5 py-0.5 rounded text-[8px] font-bold border-l-2 max-w-[80px] truncate shadow-sm pointer-events-none"
+                            className="bg-slate-900/90 text-white px-1.5 py-0.5 rounded text-[11px] font-bold border-l-2 max-w-[100px] truncate shadow-sm pointer-events-none"
                             style={{ borderLeftColor: shot.user.color || 'var(--accent-primary)' }}
                             title={`Added by ${shot.user.name}`}
                           >
