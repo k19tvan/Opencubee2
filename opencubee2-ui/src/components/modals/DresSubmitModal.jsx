@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { DRES_BASE_URL } from '../../api';
 import { getImageUrl } from '../../utils/imageUrl';
+import { getDresFrameNumber } from '../../utils/frameNumber';
 
 export default function DresSubmitModal({ 
   onClose, 
@@ -19,7 +20,7 @@ export default function DresSubmitModal({
   const frameUrl = shot ? (getImageUrl(shot.url || shot.frame_name || shot.filepath) || shot.url) : null;
   const frameName = shot?.frame_name || shot?.name || shot?.video_id || 'Selected Frame';
   const videoId = shot?.video_id || '';
-  const frameIdx = shot?.frame_idx !== undefined ? shot?.frame_idx : shot?.frame_number;
+  const frameIdx = getDresFrameNumber(shot);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
