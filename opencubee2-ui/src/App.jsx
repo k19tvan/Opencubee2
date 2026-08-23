@@ -973,13 +973,15 @@ export default function App() {
     toast.success(`Welcome, ${name}!`);
   };
 
-  const handleInstantDresSubmit = useCallback(async (shot) => {
+  const handleInstantDresSubmit = useCallback(async (shot, forcedMode = null) => {
     if (!dresSessionId || !dresEvaluationId) {
       toast.error('DRES is not logged in.');
       return;
     }
 
-    if (dresMode === 'QA') {
+    const effectiveMode = forcedMode || dresMode;
+
+    if (effectiveMode === 'QA') {
       if (!shot) {
         toast.error('No frame selected for QA.');
         return;
@@ -988,7 +990,7 @@ export default function App() {
       return;
     }
 
-    if (dresMode === 'Trake') {
+    if (effectiveMode === 'Trake') {
       if (!trakeFrames || trakeFrames.length === 0) return;
       const loadingToast = toast.loading('Submitting Trake to DRES...');
       try {
@@ -1040,7 +1042,7 @@ export default function App() {
       return;
     }
 
-    if (dresMode === 'KIS') {
+    if (effectiveMode === 'KIS') {
       if (!shot) {
         toast.error('No frame selected for KIS.');
         return;
@@ -1106,7 +1108,7 @@ export default function App() {
         if (activeModal) return;
         e.preventDefault();
         if (isHoveringTrakePanel) {
-          handleInstantDresSubmit(null);
+          handleInstantDresSubmit(null, 'Trake');
         } else if (hoveredFrame) {
           handleInstantDresSubmit(hoveredFrame);
         }
