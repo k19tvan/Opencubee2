@@ -138,6 +138,7 @@ export default function App() {
   const [isSemanticAsr, setIsSemanticAsr] = useState(false);
   const [semanticAsrQuery, setSemanticAsrQuery] = useState('');
   const [semanticAsrSentenceLevel, setSemanticAsrSentenceLevel] = useState(false);
+  const [semanticAsrUnstrict, setSemanticAsrUnstrict] = useState(false);
 
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -991,24 +992,15 @@ export default function App() {
       if (!trakeFrames || trakeFrames.length === 0) return;
       const loadingToast = toast.loading('Submitting Trake to DRES...');
       try {
-        const { getVideoInfo } = await import('./api');
-        const fpsByVideo = new Map();
-        const answers = await Promise.all(trakeFrames.map(async (frame) => {
-          if (!fpsByVideo.has(frame.video_id)) {
-            const info = await getVideoInfo(frame.video_id);
-            fpsByVideo.set(frame.video_id, info?.fps || 25);
-          }
-          const ms = Math.floor((getDresFrameNumber(frame) / fpsByVideo.get(frame.video_id)) * 1000);
-          return {
-            mediaItemName: frame.video_id,
-            start: ms,
-            end: ms,
-          };
-        }));
+        const videoId = trakeFrames[0].video_id;
+        const frameIds = trakeFrames.map(frame => getDresFrameNumber(frame)).join(',');
+        const textPayload = `TR-${videoId}-${frameIds}`;
 
         const payload = {
           answerSets: [{
-            answers,
+            answers: [{
+              text: textPayload
+            }]
           }]
         };
 
@@ -1158,6 +1150,8 @@ export default function App() {
         page: 1,
         page_size: 50,
         sentence_level: semanticAsrSentenceLevel,
+        strict_accent: !semanticAsrUnstrict,
+        unstrict: semanticAsrUnstrict,
         ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
       };
       const response = await searchSemanticAsr(payload);
@@ -1661,6 +1655,8 @@ export default function App() {
                   onSemanticAsrSearch={executeSemanticAsrSearch}
                   semanticAsrSentenceLevel={semanticAsrSentenceLevel}
                   setSemanticAsrSentenceLevel={setSemanticAsrSentenceLevel}
+                  semanticAsrUnstrict={semanticAsrUnstrict}
+                  setSemanticAsrUnstrict={setSemanticAsrUnstrict}
                 />
               </div>
 

@@ -48,19 +48,22 @@ export default function DresSubmitModal({
       return;
     }
 
-    const payload = {
-      answerSets: [{
-        answers: [{
-          // QA accepts the answer verbatim; it must not be decorated with
-          // frame, timestamp, or mode metadata.
-          text: qaAnswer.trim()
-        }]
-      }]
-    };
-
     setLoading(true);
     const loadingToast = toast.loading('Submitting QA to DRES...');
     try {
+      const { getVideoInfo } = await import('../../api');
+      const info = await getVideoInfo(videoId);
+      const fps = info?.fps || 25;
+      const timeMs = Math.floor((frameIdx / fps) * 1000);
+      const formattedText = `QA-${qaAnswer.trim()}-${videoId}-${timeMs}`;
+
+      const payload = {
+        answerSets: [{
+          answers: [{
+            text: formattedText
+          }]
+        }]
+      };
       const res = await fetch(`${DRES_BASE_URL}/api/v2/submit/${evaluationId}?session=${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
