@@ -12,27 +12,28 @@ from fastapi import HTTPException
 from backend.core import runtime
 from backend.core.config import OCR_ASR_INDEX_NAME, VIDEO_DIR, VIDEO_EXTENSIONS
 
-@lru_cache(maxsize=2000)
+@lru_cache(maxsize=4000)
 def resolve_video_path(video_id: str) -> Path:
     if not video_id or any(part in video_id for part in ("..", "/", "\\")):
         raise HTTPException(status_code=400, detail="Invalid video id.")
 
-    candidates = []
     raw_path = VIDEO_DIR / video_id
-    if raw_path.suffix.lower() in VIDEO_EXTENSIONS:
-        candidates.append(raw_path)
-    else:
-        candidates.extend(VIDEO_DIR / f"{video_id}{ext}" for ext in VIDEO_EXTENSIONS)
-        candidates.extend(path for path in VIDEO_DIR.glob(f"{video_id}.*") if path.suffix.lower() in VIDEO_EXTENSIONS)
+    if raw_path.suffix.lower() in VIDEO_EXTENSIONS and raw_path.is_file():
+        return raw_path.resolve()
 
-    for candidate in candidates:
-        try:
-            resolved = candidate.resolve()
-            resolved.relative_to(VIDEO_DIR)
-        except ValueError:
-            continue
-        if resolved.is_file():
-            return resolved
+    # Direct extension check (O(1) stat calls, fast and NAS friendly)
+    for ext in VIDEO_EXTENSIONS:
+        candidate = VIDEO_DIR / f"{video_id}{ext}"
+        if candidate.is_file():
+            return candidate.resolve()
+        
+    # Check common subfolder prefix (e.g. K01/video_id.mp4)
+    prefix = video_id.split("_")[0] if "_" in video_id else None
+    if prefix:
+        for ext in VIDEO_EXTENSIONS:
+            candidate = VIDEO_DIR / prefix / f"{video_id}{ext}"
+            if candidate.is_file():
+                return candidate.resolve()
 
     raise HTTPException(status_code=404, detail=f"Video not found for id: {video_id}")
 
