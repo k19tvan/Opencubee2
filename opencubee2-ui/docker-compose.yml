@@ -3,17 +3,11 @@ services:
     build:
       context: .
       args:
-        VITE_BACKEND_BASE_URL: ${VITE_BACKEND_BASE_URL:-}
+        VITE_BACKEND_BASE_URL: ${VITE_BACKEND_BASE_URL:-http://localhost:21081}
         VITE_ASSET_BASE_URL: ${VITE_ASSET_BASE_URL:-/keyframes}
-        VITE_VIDEO_BACKEND_BASE_URL: ${VITE_VIDEO_BACKEND_BASE_URL:-}
+        VITE_VIDEO_BACKEND_BASE_URL: ${VITE_VIDEO_BACKEND_BASE_URL:-http://localhost:21081}
     image: opencubee2-ui-nginx
-    container_name: opencubee2_ui
-    restart: unless-stopped
     ports:
       - "2408:2408"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./public/keyframes:/usr/share/nginx/html/keyframes:ro
-      - /mlcv1/Datasets/HCMAI25:/mlcv1/Datasets/HCMAI25:ro
-      - /GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results:/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results:ro
