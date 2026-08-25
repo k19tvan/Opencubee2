@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
@@ -27,6 +28,47 @@ from backend.core.config import (
     VLLM_BASE_URL,
     VLLM_MODEL,
 )
+
+SPATIAL_REGION_VECTORS = {
+    "left": ("left",), "right": ("right",), "top": ("top",), "bottom": ("bottom",),
+    "top_left": ("left", "top"), "top_right": ("right", "top"),
+    "bottom_left": ("left", "bottom"), "bottom_right": ("right", "bottom"),
+}
+
+_SPATIAL_PATTERNS = (
+    ("top_left", (r"\b(?:top|upper)[ -]?left(?:\s+corner)?\b", r"\bgóc\s+trên\s+bên\s+trái\b")),
+    ("top_right", (r"\b(?:top|upper)[ -]?right(?:\s+corner)?\b", r"\bgóc\s+trên\s+bên\s+phải\b")),
+    ("bottom_left", (r"\b(?:bottom|lower)[ -]?left(?:\s+corner)?\b", r"\bgóc\s+dưới\s+bên\s+trái\b")),
+    ("bottom_right", (r"\b(?:bottom|lower)[ -]?right(?:\s+corner)?\b", r"\bgóc\s+dưới\s+bên\s+phải\b")),
+    ("left", (r"\b(?:on|at|in)\s+the\s+left(?:\s+(?:side|half))?\b", r"\b(?:bên|phía|ở)\s+trái\b", r"\bnửa\s+trái\b")),
+    ("right", (r"\b(?:on|at|in)\s+the\s+right(?:\s+(?:side|half))?\b", r"\b(?:bên|phía|ở)\s+phải\b", r"\bnửa\s+phải\b")),
+    ("top", (r"\b(?:at|in)\s+the\s+(?:top|upper)\s+(?:part|half|side)?\b", r"\bnửa\s+trên\b")),
+    ("bottom", (r"\b(?:at|in)\s+the\s+(?:bottom|lower)\s+(?:part|half|side)?\b", r"\bnửa\s+dưới\b")),
+)
+
+_OBJECT_RELATION_PATTERNS = (
+    r"\b(?:left|right)\s+(?:hand|arm|leg|foot|eye)\b",
+    r"\b(?:to|on|at)\s+the\s+(?:left|right|top|bottom)\s+of\b(?!\s+(?:the\s+)?(?:frame|image|picture|screen|video)\b)",
+    r"\b(?:left|right|top|bottom)\s+of\s+(?!the\s+)?(?!frame\b|image\b|picture\b|screen\b|video\b)",
+)
+
+
+def infer_spatial_query(query: Optional[str], requested_region: str = "auto") -> Dict[str, str]:
+    """Resolve per-stage spatial mode and keep object-relative phrases semantic."""
+    original_query = (query or "").strip()
+    requested_region = requested_region or "auto"
+    if requested_region != "auto":
+        return {"semantic_query": original_query, "spatial_region": requested_region, "source": "explicit"}
+    normalized = original_query.lower()
+    if not normalized or any(re.search(pattern, normalized, flags=re.IGNORECASE) for pattern in _OBJECT_RELATION_PATTERNS):
+        return {"semantic_query": original_query, "spatial_region": "full", "source": "none"}
+    for region, patterns in _SPATIAL_PATTERNS:
+        for pattern in patterns:
+            if re.search(pattern, normalized, flags=re.IGNORECASE):
+                semantic_query = re.sub(pattern, " ", original_query, flags=re.IGNORECASE)
+                semantic_query = re.sub(r"\s+", " ", semantic_query).strip(" ,.-")
+                return {"semantic_query": semantic_query or original_query, "spatial_region": region, "source": "rule"}
+    return {"semantic_query": original_query, "spatial_region": "full", "source": "none"}
 
 def search_text_on_meilisearch_sync(
     keyword: str,
@@ -299,8 +341,9 @@ async def search_qdrant(
     limit: int = 200,
     candidate_frame_names: Optional[List[str]] = None,
     video_ids: Optional[List[str]] = None,  # <--- Bổ sung video_ids
+    vector_name: Optional[str] = None,
 ) -> List[Dict]:
-    if not runtime.qdrant_client: return []
+    if not runtime.qdrant_client or q_models is None: return []
     try:
         allowed_frame_names = list(dict.fromkeys(candidate_frame_names or []))
         if candidate_frame_names is not None and not allowed_frame_names:
@@ -325,15 +368,17 @@ async def search_qdrant(
 
         query_filter = q_models.Filter(must=must_conditions) if must_conditions else None
 
-        response = await asyncio.to_thread(
-            runtime.qdrant_client.query_points,
-            collection_name=collection_name,
-            query=query_vector,
-            query_filter=query_filter,
-            limit=min(limit, len(allowed_frame_names)) if allowed_frame_names else limit,
-            with_payload=["frame_name", "video_id", "frame_id", "shot_id"],
-            timeout=300
-        )
+        query_kwargs = {
+            "collection_name": collection_name,
+            "query": query_vector,
+            "query_filter": query_filter,
+            "limit": min(limit, len(allowed_frame_names)) if allowed_frame_names else limit,
+            "with_payload": ["frame_name", "video_id", "frame_id", "shot_id"],
+            "timeout": 300,
+        }
+        if vector_name:
+            query_kwargs["using"] = vector_name
+        response = await asyncio.to_thread(runtime.qdrant_client.query_points, **query_kwargs)
         results = []
         for hit in response.points:
             payload = hit.payload
@@ -353,6 +398,47 @@ async def search_qdrant(
         print(f"Qdrant search error on collection {collection_name}: {e}")
         return []
 
+
+def weighted_rrf(
+    rankings: List[tuple[List[Dict[str, Any]], float]],
+    limit: int,
+    k: int = 60,
+) -> List[Dict[str, Any]]:
+    fused: Dict[str, Dict[str, Any]] = {}
+    scores: Dict[str, float] = defaultdict(float)
+    for results, weight in rankings:
+        if not results or weight <= 0:
+            continue
+        for rank, result in enumerate(results, start=1):
+            frame_name = result.get("frame_name")
+            if frame_name:
+                fused.setdefault(frame_name, result.copy())
+                scores[frame_name] += weight / (k + rank)
+    for frame_name, result in fused.items():
+        result["score"] = scores[frame_name]
+        result["url"] = f"/keyframes/{frame_name}"
+    return sorted(fused.values(), key=lambda result: result["score"], reverse=True)[:limit]
+
+
+async def search_spatial_qdrant(
+    query_vector: list,
+    collection_name: str,
+    spatial_region: str,
+    limit: int = MAX_FRAME_LIMIT,
+    candidate_frame_names: Optional[List[str]] = None,
+    video_ids: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    vector_names = SPATIAL_REGION_VECTORS.get(spatial_region)
+    if not vector_names:
+        return []
+    rankings = await asyncio.gather(*[
+        search_qdrant(query_vector, collection_name, limit=limit,
+                      candidate_frame_names=candidate_frame_names,
+                      video_ids=video_ids, vector_name=vector_name)
+        for vector_name in vector_names
+    ])
+    return weighted_rrf([(results, 1.0) for results in rankings], limit=limit)
+
 # --- Helper: Embed + Qdrant search cho MỘT model ---
 async def embed_and_search_model(
     model_name: str,
@@ -362,6 +448,8 @@ async def embed_and_search_model(
     limit: int = MAX_FRAME_LIMIT,
     candidate_frame_names: Optional[List[str]] = None,
     video_ids: Optional[List[str]] = None,  # <--- Bổ sung video_ids
+    spatial_region: str = "full",
+    spatial_only: bool = False,
 ):
     embedding = await get_embedding(
         model_name=model_name,
@@ -372,13 +460,24 @@ async def embed_and_search_model(
     if not embedding:
         return model_name, None
     config = MODEL_CONFIGS[model_name]
-    raw_results = await search_qdrant(
-        embedding,
-        config["collection"],
-        limit=limit,
-        candidate_frame_names=candidate_frame_names,
-        video_ids=video_ids,  # <--- Truyền video_ids vào
-    )
+    if model_name == "beit3" and spatial_region in SPATIAL_REGION_VECTORS:
+        spatial_results = await search_spatial_qdrant(
+            embedding, config["spatial_collection"], spatial_region, limit=limit,
+            candidate_frame_names=candidate_frame_names, video_ids=video_ids,
+        )
+        if spatial_only:
+            raw_results = spatial_results
+        else:
+            full_results = await search_qdrant(
+                embedding, config["collection"], limit=limit,
+                candidate_frame_names=candidate_frame_names, video_ids=video_ids,
+            )
+            raw_results = weighted_rrf([(spatial_results, 0.8), (full_results, 0.2)], limit=limit)
+    else:
+        raw_results = await search_qdrant(
+            embedding, config["collection"], limit=limit,
+            candidate_frame_names=candidate_frame_names, video_ids=video_ids,
+        )
     return model_name, raw_results
 
 async def search_all_models(
@@ -389,6 +488,8 @@ async def search_all_models(
     limit: int = MAX_FRAME_LIMIT,
     candidate_frame_names: Optional[List[str]] = None,
     video_ids: Optional[List[str]] = None,  # <--- Bổ sung video_ids
+    spatial_region: str = "full",
+    spatial_only: bool = False,
 ) -> Dict[str, List[Dict]]:
     tasks = [
         embed_and_search_model(
@@ -399,6 +500,8 @@ async def search_all_models(
             limit=limit,
             candidate_frame_names=candidate_frame_names,
             video_ids=video_ids,  # <--- Truyền video_ids vào
+            spatial_region=spatial_region,
+            spatial_only=spatial_only,
         )
         for m in models_to_use
     ]

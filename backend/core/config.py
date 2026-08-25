@@ -29,6 +29,7 @@ MODEL_CONFIGS = {
     "beit3": {
         "worker_url": os.getenv("BEIT3_WORKER_URL", 'http://127.0.0.1:2002/embed'),
         "collection": "beit3",
+        "spatial_collection": os.getenv("QDRANT_COLLECTION_BEIT3_SPATIAL", "beit3_spatial"),
     },
     "metaclip2": {
         "worker_url": os.getenv("METACLIP2_WORKER_URL", 'http://127.0.0.1:2208/embed'),

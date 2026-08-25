@@ -5,6 +5,13 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
+SpatialRegion = Literal[
+    "auto", "full",
+    "left", "right", "top", "bottom",
+    "top_left", "top_right", "bottom_left", "bottom_right",
+]
+
+
 class UnifiedSearchRequest(BaseModel):
     query_text: Optional[str] = None
     query_image_name: Optional[str] = None
@@ -18,6 +25,8 @@ class UnifiedSearchRequest(BaseModel):
     # When set, every retrieval mode is restricted to these keyframes.
     candidate_frame_names: Optional[List[str]] = None
     video_ids: Optional[List[str]] = None
+    spatial_region: SpatialRegion = "auto"
+    spatial_only: bool = False
 
 
 class StageData(BaseModel):
@@ -26,6 +35,8 @@ class StageData(BaseModel):
     image_search_text: Optional[str] = None
     ocr_query: Optional[str] = None
     asr_query: Optional[str] = None
+    spatial_region: SpatialRegion = "auto"
+    spatial_only: bool = False
 
 class TemporalSearchRequest(BaseModel):
     stages: List[StageData]

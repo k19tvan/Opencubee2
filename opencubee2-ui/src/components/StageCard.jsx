@@ -8,6 +8,13 @@ const MODES = [
   { key: 'image', icon: 'fas fa-image', label: 'Image' },
 ];
 
+const SPATIAL_OPTIONS = [
+  { key: 'left', shortcut: '1', label: 'Left' },
+  { key: 'right', shortcut: '2', label: 'Right' },
+  { key: 'top', shortcut: '3', label: 'Top' },
+  { key: 'bottom', shortcut: '4', label: 'Bottom' },
+];
+
 const getBackendUrl = (path) => {
   return `${BASE_URL.replace(/\/$/, '')}${path}`;
 };
@@ -40,6 +47,7 @@ export default function StageCard({
     enhance: !!stage.options?.enhance,
     bge_caption: false,
   });
+  const [spatialRegion, setSpatialRegion] = useState(stage.spatialRegion || stage.spatial_region || 'auto');
 
   const [shouldSearch, setShouldSearch] = useState(false);
 
@@ -68,12 +76,14 @@ export default function StageCard({
       imageText,
       imagePreview,
       options,
+      spatialRegion,
+      spatialOnly: spatialRegion !== 'auto',
     };
 
     lastFlushedRef.current = data;
     onChange(stage.id, data);
     return data;
-  }, [type, queryText, ocrActive, ocrText, asrActive, asrText, tempImageName, imageText, imagePreview, options, onChange, stage.id]);
+  }, [type, queryText, ocrActive, ocrText, asrActive, asrText, tempImageName, imageText, imagePreview, options, spatialRegion, onChange, stage.id]);
 
   useEffect(() => {
     flushRef.current = flushImmediate;
@@ -88,7 +98,7 @@ export default function StageCard({
 
   useEffect(() => {
     scheduleUpdate();
-  }, [type, queryText, ocrActive, ocrText, asrActive, asrText, tempImageName, imageText, imagePreview, options, scheduleUpdate]);
+  }, [type, queryText, ocrActive, ocrText, asrActive, asrText, tempImageName, imageText, imagePreview, options, spatialRegion, scheduleUpdate]);
 
   useEffect(() => {
     const last = lastFlushedRef.current;
@@ -120,7 +130,11 @@ export default function StageCard({
         bge_caption: !!stage.options?.bge_caption,
       });
     }
-  }, [stage.queryType, stage.queryText, stage.imageText, stage.tempImageName, stage.imagePreview, stage.ocrText, stage.asrText, stage.ocrActive, stage.asrActive, stage.options]);
+    const incomingSpatial = stage.spatialRegion || stage.spatial_region || 'auto';
+    if (incomingSpatial !== spatialRegion && incomingSpatial !== last.spatialRegion) {
+      setSpatialRegion(incomingSpatial);
+    }
+  }, [stage.queryType, stage.queryText, stage.imageText, stage.tempImageName, stage.imagePreview, stage.ocrText, stage.asrText, stage.ocrActive, stage.asrActive, stage.options, stage.spatialRegion, stage.spatial_region, spatialRegion]);
 
   useEffect(() => {
     if (shouldSearch) {
@@ -376,6 +390,18 @@ export default function StageCard({
         >
           <i className="fas fa-wand-magic-sparkles text-[11px]"></i>
         </button>
+        <span className="mx-0.5 h-5 w-px bg-[var(--border-color)]" aria-hidden="true" />
+        {SPATIAL_OPTIONS.map(({ key, shortcut, label }) => (
+          <button
+            key={key}
+            className={`${pillCls(spatialRegion === key)} flex-shrink-0`}
+            onClick={() => setSpatialRegion((current) => current === key ? 'auto' : key)}
+            title={`${label} spatial search (Alt + ${shortcut})`}
+            aria-label={`${label} spatial search`}
+          >
+            {shortcut}
+          </button>
+        ))}
       </div>
 
       <div className="space-y-2">
