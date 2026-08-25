@@ -64,7 +64,6 @@ class SemanticAsrSearchRequest(BaseModel):
     page_size: int = Field(default=50, ge=1, le=200)
     candidate_frame_names: Optional[List[str]] = None
     video_ids: Optional[List[str]] = None
-    sentence_level: bool = False
-    search_mode: str = "meilisearch"
+    search_mode: Literal["embedding", "meilisearch", "hybrid"] = "meilisearch"
     embedding_weight: float = Field(default=0.7, ge=0)
     meilisearch_weight: float = Field(default=0.3, ge=0)

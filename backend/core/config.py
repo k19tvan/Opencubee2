@@ -43,6 +43,10 @@ MODEL_CONFIGS = {
         "worker_url": os.getenv("JINA_V5_OMNI_WORKER_URL", 'http://127.0.0.1:2004/embed'),
         "collection": "jina_v5_omni",
     },
+    "qwen": {
+        "worker_url": os.getenv("QWEN_WORKER_URL", 'http://127.0.0.1:2006/embed'),
+        "collection": os.getenv("ASR_COLLECTION", "asr"),
+    },
 }
 
 MEILISEARCH_HOST = os.getenv("MEILISEARCH_HOST", "http://opencubee2_meilisearch:7700")

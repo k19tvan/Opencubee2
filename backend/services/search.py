@@ -867,31 +867,116 @@ def _semantic_meilisearch_filters(
     return filters
 
 
+_EXACT_HIGHLIGHT_START = "__MEILI_HIGHLIGHT_START__"
+_EXACT_HIGHLIGHT_END = "__MEILI_HIGHLIGHT_END__"
+_SEMANTIC_EXACT_CANDIDATE_LIMIT = 5000
+
+
+def _extract_exact_phrases(query_text: str) -> list[str]:
+    """Return non-empty phrases wrapped in straight or curly double quotes."""
+    normalized_query = (query_text or "").replace("“", '"').replace("”", '"')
+    phrases = []
+    for phrase in re.findall(r'"([^"\n]+)"', normalized_query):
+        normalized_phrase = " ".join(phrase.split())
+        if normalized_phrase and normalized_phrase not in phrases:
+            phrases.append(normalized_phrase)
+    return phrases
+
+
+def _extract_unquoted_query_text(query_text: str) -> str:
+    """Return the query portion which retains normal Meilisearch matching."""
+    normalized_query = (query_text or "").replace("“", '"').replace("”", '"')
+    unquoted = re.sub(r'"[^"\n]*"', " ", normalized_query)
+    return " ".join(unquoted.replace(",", " ").split())
+
+
+def _exact_phrase_pattern(phrase: str) -> re.Pattern[str]:
+    # Whitespace may vary in ASR text, but every word and its order must be
+    # exact. Unicode-aware word boundaries prevent partial-word matches.
+    words = [re.escape(word) for word in phrase.split()]
+    return re.compile(r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)", re.IGNORECASE)
+
+
+def _summary_matches_exact_phrases(summary: str, phrases: list[str]) -> bool:
+    return all(_exact_phrase_pattern(phrase).search(summary) for phrase in phrases)
+
+
+def _highlight_exact_and_meili_matches(
+    summary: str,
+    exact_phrases: list[str],
+    meili_formatted_summary: Optional[str],
+) -> str:
+    """Merge verified quoted spans with Meilisearch's unquoted highlights."""
+    spans = []
+    if isinstance(meili_formatted_summary, str):
+        cursor = 0
+        plain_parts = []
+        plain_length = 0
+        highlight_start = None
+        while cursor < len(meili_formatted_summary):
+            if meili_formatted_summary.startswith(_EXACT_HIGHLIGHT_START, cursor):
+                highlight_start = plain_length
+                cursor += len(_EXACT_HIGHLIGHT_START)
+            elif meili_formatted_summary.startswith(_EXACT_HIGHLIGHT_END, cursor):
+                if highlight_start is not None:
+                    spans.append((highlight_start, plain_length))
+                highlight_start = None
+                cursor += len(_EXACT_HIGHLIGHT_END)
+            else:
+                plain_parts.append(meili_formatted_summary[cursor])
+                plain_length += 1
+                cursor += 1
+        # The formatter must be based on this exact source summary, otherwise
+        # its offsets are not safe to apply.
+        if "".join(plain_parts) != summary:
+            spans.clear()
+
+    for phrase in exact_phrases:
+        spans.extend(match.span() for match in _exact_phrase_pattern(phrase).finditer(summary))
+    if not spans:
+        return summary
+
+    merged_spans = []
+    for start, end in sorted(spans):
+        if merged_spans and start <= merged_spans[-1][1]:
+            merged_spans[-1] = (merged_spans[-1][0], max(end, merged_spans[-1][1]))
+        else:
+            merged_spans.append((start, end))
+
+    highlighted = summary
+    for start, end in reversed(merged_spans):
+        highlighted = (
+            highlighted[:start]
+            + _EXACT_HIGHLIGHT_START
+            + highlighted[start:end]
+            + _EXACT_HIGHLIGHT_END
+            + highlighted[end:]
+        )
+    return highlighted
+
+
 def search_semantic_asr_on_meilisearch_sync(
     query_text: str,
     limit: int = 50,
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
-    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     """Search semantic scene summaries in the dedicated Meilisearch index."""
     if not runtime.meili_client:
         return [], 0
     try:
-        index_name = (
-            SEMANTIC_ASR_SENTENCE_LEVEL_INDEX_NAME
-            if sentence_level
-            else SEMANTIC_ASR_INDEX_NAME
-        )
-        scene_mapping = (
-            runtime.scene_frame_mapping_sentence_level
-            if sentence_level
-            else runtime.scene_frame_mapping
-        )
+        index_name = SEMANTIC_ASR_INDEX_NAME
+        scene_mapping = runtime.scene_frame_mapping
+        meilisearch_query = (query_text or "").replace("“", '"').replace("”", '"')
+        exact_phrases = _extract_exact_phrases(meilisearch_query)
+        unquoted_query_text = _extract_unquoted_query_text(meilisearch_query)
+        exact_phrase_search = bool(exact_phrases)
         params: Dict[str, Any] = {
-            "limit": limit,
-            "offset": offset,
+            # Exact phrases are post-filtered, so retrieve all likely scenes
+            # before applying local pagination.
+            "limit": _SEMANTIC_EXACT_CANDIDATE_LIMIT if exact_phrase_search else limit,
+            "offset": 0 if exact_phrase_search else offset,
             "showRankingScore": True,
             "attributesToSearchOn": ["summary"],
             "attributesToHighlight": ["summary"],
@@ -906,9 +991,27 @@ def search_semantic_asr_on_meilisearch_sync(
         filters = _semantic_meilisearch_filters(video_ids, candidate_frame_names)
         if filters:
             params["filter"] = filters
-        response = runtime.meili_client.index(index_name).search(query_text, params)
+        index = runtime.meili_client.index(index_name)
+        response = index.search(meilisearch_query, params)
+        unquoted_formatted_by_scene = {}
+        if exact_phrase_search and unquoted_query_text:
+            # This second formatting pass contains only unquoted terms. Thus a
+            # quoted term can never regain a fuzzy/typo highlight (e.g. "tàn"
+            # must not highlight "tận").
+            unquoted_response = index.search(unquoted_query_text, params)
+            for unquoted_hit in unquoted_response.get("hits", []):
+                unquoted_scene_id = unquoted_hit.get("scene_id") or unquoted_hit.get("id")
+                formatted = (unquoted_hit.get("_formatted") or {}).get("summary")
+                if isinstance(unquoted_scene_id, str) and isinstance(formatted, str):
+                    unquoted_formatted_by_scene[unquoted_scene_id] = formatted
         results = []
         for hit in response.get("hits", []):
+            summary = hit.get("summary")
+            if exact_phrase_search and (
+                not isinstance(summary, str)
+                or not _summary_matches_exact_phrases(summary, exact_phrases)
+            ):
+                continue
             scene_id = hit.get("scene_id") or hit.get("id")
             if not isinstance(scene_id, str) or not isinstance(hit.get("video_id"), str):
                 continue
@@ -927,10 +1030,19 @@ def search_semantic_asr_on_meilisearch_sync(
                 source_scores={"meilisearch": float(hit.get("_rankingScore", 0.0))},
             )
             if result:
-                formatted = (hit.get("_formatted") or {}).get("summary")
-                if isinstance(formatted, str):
-                    result["formatted_summary"] = formatted
+                if exact_phrase_search:
+                    result["formatted_summary"] = _highlight_exact_and_meili_matches(
+                        summary,
+                        exact_phrases,
+                        unquoted_formatted_by_scene.get(scene_id),
+                    )
+                else:
+                    formatted = (hit.get("_formatted") or {}).get("summary")
+                    if isinstance(formatted, str):
+                        result["formatted_summary"] = formatted
                 results.append(result)
+        if exact_phrase_search:
+            return results[offset:offset + limit], len(results)
         total = response.get("totalHits", response.get("estimatedTotalHits", len(results)))
         return results, int(total)
     except Exception as exc:
@@ -944,11 +1056,10 @@ async def search_semantic_asr_on_meilisearch(
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
-    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     return await asyncio.to_thread(
         search_semantic_asr_on_meilisearch_sync,
-        query_text, limit, offset, video_ids, candidate_frame_names, sentence_level,
+        query_text, limit, offset, video_ids, candidate_frame_names,
     )
 
 
@@ -959,12 +1070,95 @@ async def search_semantic_asr_qdrant(
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
 ) -> tuple[List[Dict[str, Any]], int]:
-    return [], 0
+    """Retrieve semantic ASR scenes and their exact mapped keyframes."""
+    if not runtime.qdrant_client or q_models is None:
+        return [], 0
+    try:
+        if not runtime.scene_frame_mapping:
+            print("Semantic ASR scene mapping is not loaded")
+            return [], 0
+
+        must_conditions = []
+        if video_ids:
+            must_conditions.append(
+                q_models.FieldCondition(
+                    key="video_id",
+                    match=q_models.MatchAny(any=video_ids),
+                )
+            )
+        if candidate_frame_names is not None:
+            scene_ids = sorted({
+                scene_id
+                for frame_name in candidate_frame_names
+                for scene_id in runtime.frame_scene_ids_map.get(frame_name, [])
+            })
+            if not scene_ids:
+                return [], 0
+            must_conditions.append(
+                q_models.FieldCondition(
+                    key="scene_id",
+                    match=q_models.MatchAny(any=scene_ids),
+                )
+            )
+        query_filter = q_models.Filter(must=must_conditions) if must_conditions else None
+        collection_name = MODEL_CONFIGS["qwen"]["collection"]
+
+        response, count_response = await asyncio.gather(
+            asyncio.to_thread(
+                runtime.qdrant_client.query_points,
+                collection_name=collection_name,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+                offset=offset,
+                with_payload=["scene_id", "video_id"],
+                timeout=60,
+            ),
+            asyncio.to_thread(
+                runtime.qdrant_client.count,
+                collection_name=collection_name,
+                count_filter=query_filter,
+                exact=True,
+            ),
+        )
+
+        results = []
+        for hit in response.points:
+            payload = hit.payload or {}
+            scene_id = payload.get("scene_id")
+            scene = runtime.scene_frame_mapping.get(scene_id)
+            if not isinstance(scene, dict):
+                continue
+            video_id = scene.get("video_id")
+            if not isinstance(video_id, str):
+                continue
+            shots = keyframes_from_scene(
+                video_id,
+                scene.get("frame_inside", []),
+                candidate_frame_names=candidate_frame_names,
+            )
+            if candidate_frame_names and not shots:
+                continue
+            results.append({
+                "chunk_id": scene_id,
+                "scene_id": scene_id,
+                "score": hit.score,
+                "video_id": video_id,
+                "start_id": scene.get("start_id", 0),
+                "end_id": scene.get("end_id", 0),
+                "summary": scene.get("summary", ""),
+                "frame_inside": [shot["frame_name"] for shot in shots],
+                "shots": shots,
+            })
+        return results, count_response.count
+    except Exception as exc:
+        print(f"Error searching semantic ASR collection: {exc}")
+        return [], 0
 
 
 async def search_semantic_asr(
     query_text: str,
-    query_vector: Optional[list] = None,
+    query_vector: Optional[list],
     search_mode: str = "meilisearch",
     embedding_weight: float = 0.7,
     meilisearch_weight: float = 0.3,
@@ -972,14 +1166,72 @@ async def search_semantic_asr(
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
-    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
-    """Search semantic ASR scenes with Meilisearch (paragraph or sentence level)."""
-    return await search_semantic_asr_on_meilisearch(
-        query_text=query_text,
-        limit=limit,
-        offset=offset,
-        video_ids=video_ids,
-        candidate_frame_names=candidate_frame_names,
-        sentence_level=sentence_level,
+    """Search semantic ASR scenes with Meilisearch, Qdrant, or both."""
+    if search_mode == "embedding":
+        if not query_vector:
+            return [], 0
+        return await search_semantic_asr_qdrant(
+            query_vector, limit, offset, video_ids, candidate_frame_names
+        )
+
+    if search_mode == "meilisearch":
+        return await search_semantic_asr_on_meilisearch(
+            query_text, limit, offset, video_ids, candidate_frame_names
+        )
+
+    if not query_vector:
+        return [], 0
+    candidate_limit = max(200, (offset + limit) * 5)
+    (meili_results, _), (vector_results, _) = await asyncio.gather(
+        search_semantic_asr_on_meilisearch(
+            query_text, candidate_limit, 0, video_ids, candidate_frame_names
+        ),
+        search_semantic_asr_qdrant(
+            query_vector, candidate_limit, 0, video_ids, candidate_frame_names
+        ),
     )
+    weight_total = embedding_weight + meilisearch_weight
+    if weight_total <= 0:
+        raise ValueError("At least one semantic ASR search weight must be greater than zero.")
+    embedding_weight /= weight_total
+    meilisearch_weight /= weight_total
+
+    max_meili_score = max((float(item["score"]) for item in meili_results), default=1.0) or 1.0
+    by_scene: Dict[str, Dict[str, Any]] = {}
+    meili_by_scene: Dict[str, Dict[str, Any]] = {}
+    for item in meili_results:
+        scene_id = item.get("scene_id")
+        if isinstance(scene_id, str):
+            meili_by_scene[scene_id] = item
+    for item in vector_results + meili_results:
+        scene_id = item.get("scene_id")
+        if isinstance(scene_id, str):
+            by_scene.setdefault(scene_id, item)
+    vector_scores = {
+        item["scene_id"]: max(0.0, min(1.0, float(item["score"])))
+        for item in vector_results
+        if isinstance(item.get("scene_id"), str)
+    }
+    meili_scores = {
+        item["scene_id"]: float(item["score"]) / max_meili_score
+        for item in meili_results
+        if isinstance(item.get("scene_id"), str)
+    }
+
+    ranked = []
+    for scene_id, result in by_scene.items():
+        embedding_score = vector_scores.get(scene_id, 0.0)
+        meili_score = meili_scores.get(scene_id, 0.0)
+        result = result.copy()
+        result["score"] = embedding_weight * embedding_score + meilisearch_weight * meili_score
+        result["source_scores"] = {
+            "embedding": embedding_score,
+            "meilisearch": meili_score,
+        }
+        formatted_summary = meili_by_scene.get(scene_id, {}).get("formatted_summary")
+        if isinstance(formatted_summary, str):
+            result["formatted_summary"] = formatted_summary
+        ranked.append(result)
+    ranked.sort(key=lambda result: result["score"], reverse=True)
+    return ranked[offset:offset + limit], len(ranked)

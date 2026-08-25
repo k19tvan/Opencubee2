@@ -17,8 +17,12 @@ export default function LeftSearchPanel({
   semanticAsrQuery = '',
   setSemanticAsrQuery = () => { },
   onSemanticAsrSearch = () => { },
-  semanticAsrSentenceLevel = false,
-  setSemanticAsrSentenceLevel = () => { },
+  semanticAsrSearchMode = 'meilisearch',
+  setSemanticAsrSearchMode = () => { },
+  semanticAsrEmbeddingWeight = 0.7,
+  setSemanticAsrEmbeddingWeight = () => { },
+  semanticAsrMeilisearchWeight = 0.3,
+  setSemanticAsrMeilisearchWeight = () => { },
 }) {
   const [googleQuery, setGoogleQuery] = useState('');
   const [googleResults, setGoogleResults] = useState([]);
@@ -214,30 +218,11 @@ export default function LeftSearchPanel({
         {isSemanticAsr ? (
           <div className="space-y-4 animate-fadeIn">
             <div className="pb-3 border-b border-[var(--border-color)]">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2 text-xs font-bold text-[var(--accent-primary)] uppercase tracking-wider">
-                  <i className="fas fa-closed-captioning text-base"></i> Semantic ASR
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSemanticAsrSentenceLevel(!semanticAsrSentenceLevel)}
-                  data-active={semanticAsrSentenceLevel ? 'true' : 'false'}
-                  data-topbar-button="true"
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer select-none active:scale-95 ${
-                    semanticAsrSentenceLevel
-                      ? 'bg-[var(--text-primary)] text-[var(--bg-primary)] border-[var(--text-primary)] shadow-sm'
-                      : 'bg-[var(--glass-bg)] text-[var(--text-secondary)] border-[var(--border-color)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]'
-                  }`}
-                  title={semanticAsrSentenceLevel ? 'Switch to paragraph level' : 'Switch to sentence level'}
-                >
-                  <i className={`fas ${semanticAsrSentenceLevel ? 'fa-check-circle' : 'fa-circle-dot'} text-[10px]`}></i>
-                  <span>Sentence level</span>
-                </button>
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--accent-primary)] uppercase tracking-wider mb-1.5">
+                <i className="fas fa-closed-captioning text-base"></i> Semantic ASR Search
               </div>
               <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                {semanticAsrSentenceLevel
-                  ? 'Tìm kiếm theo câu thoại với index semantic_asr_sentence_level.'
-                  : 'Tìm kiếm tóm tắt đoạn thoại với index semantic_asr.'}
+                Search transcript summaries with Meilisearch text search, semantic embedding, or both.
               </p>
             </div>
 
@@ -246,7 +231,7 @@ export default function LeftSearchPanel({
                 ref={semanticAsrRef}
                 autoFocus
                 className="w-full p-3 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] focus:ring-1 focus:ring-white/10 transition-all min-h-[120px] resize-y placeholder:text-[var(--text-secondary)]"
-                placeholder={semanticAsrSentenceLevel ? "Nhập câu thoại cần tìm (Sentence Level)..." : "Nhập nội dung thoại hoặc tóm tắt cần tìm..."}
+                placeholder="Nhập nội dung thoại hoặc tóm tắt cần tìm (Ví dụ: Vụ tai nạn giao thông xe container đâm vào xe tải...)..."
                 rows="5"
                 value={semanticAsrDraft}
                 onChange={(e) => setSemanticAsrDraft(e.target.value)}
@@ -258,6 +243,44 @@ export default function LeftSearchPanel({
                   }
                 }}
               />
+
+              <div className="space-y-2 rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] p-2.5">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
+                  Search method
+                </label>
+                <select
+                  value={semanticAsrSearchMode}
+                  onChange={(e) => setSemanticAsrSearchMode(e.target.value)}
+                  className="w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none"
+                >
+                  <option value="meilisearch">Meilisearch text</option>
+                  <option value="embedding">Embedding (Qwen)</option>
+                  <option value="hybrid">Hybrid (weighted)</option>
+                </select>
+
+                {semanticAsrSearchMode === 'meilisearch' && (
+                  <p className="text-[10px] leading-relaxed text-[var(--text-secondary)]">
+                    Use <code>"exact phrase"</code> to require that full phrase and highlight only its exact match.
+                  </p>
+                )}
+
+                {semanticAsrSearchMode === 'hybrid' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] text-[var(--text-secondary)]">
+                      Embedding weight
+                      <input type="number" min="0" step="0.1" value={semanticAsrEmbeddingWeight}
+                        onChange={(e) => setSemanticAsrEmbeddingWeight(Number(e.target.value))}
+                        className="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] px-2 py-1 text-xs text-[var(--text-primary)]" />
+                    </label>
+                    <label className="text-[10px] text-[var(--text-secondary)]">
+                      Meilisearch weight
+                      <input type="number" min="0" step="0.1" value={semanticAsrMeilisearchWeight}
+                        onChange={(e) => setSemanticAsrMeilisearchWeight(Number(e.target.value))}
+                        className="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--card-bg)] px-2 py-1 text-xs text-[var(--text-primary)]" />
+                    </label>
+                  </div>
+                )}
+              </div>
 
               <button
                 className="w-full flex items-center justify-center gap-2 bg-[var(--text-primary)] text-[var(--bg-primary)] px-4 py-2.5 rounded-lg font-bold text-xs tracking-wide hover:bg-[var(--accent-secondary)] transition-all duration-200 cursor-pointer disabled:opacity-50 shadow-sm"

@@ -159,8 +159,9 @@ export default function App() {
   // Semantic ASR State
   const [isSemanticAsr, setIsSemanticAsr] = useState(false);
   const [semanticAsrQuery, setSemanticAsrQuery] = useState('');
-  const [semanticAsrSentenceLevel, setSemanticAsrSentenceLevel] = useState(false);
-  const [semanticAsrUnstrict, setSemanticAsrUnstrict] = useState(false);
+  const [semanticAsrSearchMode, setSemanticAsrSearchMode] = useState('meilisearch');
+  const [semanticAsrEmbeddingWeight, setSemanticAsrEmbeddingWeight] = useState(0.7);
+  const [semanticAsrMeilisearchWeight, setSemanticAsrMeilisearchWeight] = useState(0.3);
 
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1219,9 +1220,9 @@ export default function App() {
         query_text: queryText.trim(),
         page: 1,
         page_size: 50,
-        sentence_level: semanticAsrSentenceLevel,
-        strict_accent: !semanticAsrUnstrict,
-        unstrict: semanticAsrUnstrict,
+        search_mode: semanticAsrSearchMode,
+        embedding_weight: semanticAsrEmbeddingWeight,
+        meilisearch_weight: semanticAsrMeilisearchWeight,
         ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
       };
       const response = await searchSemanticAsr(payload);
@@ -1730,10 +1731,12 @@ export default function App() {
                   semanticAsrQuery={semanticAsrQuery}
                   setSemanticAsrQuery={setSemanticAsrQuery}
                   onSemanticAsrSearch={executeSemanticAsrSearch}
-                  semanticAsrSentenceLevel={semanticAsrSentenceLevel}
-                  setSemanticAsrSentenceLevel={setSemanticAsrSentenceLevel}
-                  semanticAsrUnstrict={semanticAsrUnstrict}
-                  setSemanticAsrUnstrict={setSemanticAsrUnstrict}
+                  semanticAsrSearchMode={semanticAsrSearchMode}
+                  setSemanticAsrSearchMode={setSemanticAsrSearchMode}
+                  semanticAsrEmbeddingWeight={semanticAsrEmbeddingWeight}
+                  setSemanticAsrEmbeddingWeight={setSemanticAsrEmbeddingWeight}
+                  semanticAsrMeilisearchWeight={semanticAsrMeilisearchWeight}
+                  setSemanticAsrMeilisearchWeight={setSemanticAsrMeilisearchWeight}
                 />
               </div>
 
