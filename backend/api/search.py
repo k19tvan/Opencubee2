@@ -21,6 +21,7 @@ from backend.services.search import (
     get_embedding,
     process_and_cluster_results,
     search_all_models,
+    infer_spatial_query,
     search_ocr_asr_on_meilisearch_async,
     attach_similarity_labels,
     find_similar_frames,
@@ -110,6 +111,11 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
         search_model.models or ["beit3"],
     )
     if not models_to_use: models_to_use = ["beit3"]
+
+    spatial = infer_spatial_query(search_model.query_text, search_model.spatial_region)
+    spatial_only = bool(search_model.spatial_only and spatial["spatial_region"] != "full")
+    if spatial_only:
+        models_to_use = ["beit3"]
         
     weights = ({IMAGE_SEARCH_MODEL: 1.0} if models_to_use == [IMAGE_SEARCH_MODEL]
                else search_model.model_weights or {"beit3": 1.0})
@@ -122,12 +128,14 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
             return []
         results_by_model = await search_all_models(
             models_to_use,
-            text=search_model.query_text,
+            text=spatial["semantic_query"],
             image_name=image_name,
             image_text=search_model.image_search_text,
             limit=MAX_FRAME_LIMIT,
             candidate_frame_names=search_model.candidate_frame_names,
             video_ids=search_model.video_ids,  
+            spatial_region=spatial["spatial_region"],
+            spatial_only=spatial_only,
         )
         return fuse_results(results_by_model, {m: weights.get(m, 1.0) for m in models_to_use})
 
@@ -171,7 +179,8 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
     return {
         "results": paginated,
         "total_results": total_results,
-        "timing_info": timings
+        "timing_info": timings,
+        "spatial_interpretation": spatial,
     }
 
 # --- Corrected Enhance Query Endpoint (Direct calls to LangChain base structures and Async helper) ---
@@ -267,15 +276,21 @@ async def _temporal_search_legacy(request_data: TemporalSearchRequest):
                 stg.image_search_text or stg.query,
                 models_to_use,
             ) or ["beit3"]
+            spatial = infer_spatial_query(stg.query, stg.spatial_region)
+            stage_spatial_only = bool(stg.spatial_only and spatial["spatial_region"] != "full")
+            if stage_spatial_only:
+                stage_models = ["beit3"]
             stage_weights = ({IMAGE_SEARCH_MODEL: 1.0}
                              if stage_models == [IMAGE_SEARCH_MODEL]
                              else {model: weights.get(model, 1.0) for model in stage_models})
             results_by_model = await search_all_models(
                 stage_models,
-                text=stg.query,
+                text=spatial["semantic_query"],
                 image_name=stg.query_image_name,
                 image_text=stg.image_search_text,
                 limit=MAX_FRAME_LIMIT,
+                spatial_region=spatial["spatial_region"],
+                spatial_only=stage_spatial_only,
             )
             return fuse_results(results_by_model, stage_weights)
 
@@ -418,7 +433,10 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
         has_vector_query = bool(stage.query or stage.query_image_name or stage.image_search_text)
         has_filter_query = bool(stage.ocr_query or stage.asr_query)
         if not has_vector_query and not has_filter_query:
-            return index, [], "Empty Stage"
+            return index, [], "Empty Stage", {"semantic_query": "", "spatial_region": "full", "source": "none"}
+
+        spatial = infer_spatial_query(stage.query, stage.spatial_region)
+        stage_spatial_only = bool(stage.spatial_only and spatial["spatial_region"] != "full")
 
         async def vector_search():
             if not has_vector_query:
@@ -428,17 +446,21 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
                 stage.image_search_text or stage.query,
                 models_to_use,
             ) or ["beit3"]
+            if stage_spatial_only:
+                stage_models = ["beit3"]
             stage_weights = ({IMAGE_SEARCH_MODEL: 1.0}
                              if stage_models == [IMAGE_SEARCH_MODEL]
                              else {model: weights.get(model, 1.0) for model in stage_models})
             results_by_model = await search_all_models(
                 stage_models,
-                text=stage.query,
+                text=spatial["semantic_query"],
                 image_name=stage.query_image_name,
                 image_text=stage.image_search_text,
                 limit=MAX_FRAME_LIMIT,
                 candidate_frame_names=candidate_frame_names,
                 video_ids=list(specified_videos) if specified_videos else None,
+                spatial_region=spatial["spatial_region"],
+                spatial_only=stage_spatial_only,
             )
             return fuse_results(
                 results_by_model,
@@ -475,7 +497,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
             )
 
         display_query = stage.query or stage.ocr_query or stage.asr_query or f"Stage {index + 1} Input"
-        return index, stage_results, display_query
+        return index, stage_results, display_query, spatial
 
     stage_started = time.time()
     gathered_stages = await asyncio.gather(
@@ -501,6 +523,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
 
     ordered_stages = sorted(gathered_stages, key=lambda result: result[0])
     processed_queries = [result[2] for result in ordered_stages]
+    spatial_interpretations = [result[3] for result in ordered_stages]
     stage_candidates = [result[1] for result in ordered_stages]
     stage_candidate_counts = [len(candidates) for candidates in stage_candidates]
 
@@ -676,6 +699,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
         "total_results": total_results,
         "timing_info": timings,
         "temporal_debug": temporal_debug,
+        "spatial_interpretations": spatial_interpretations,
     }
 
 @router.get("/similar")

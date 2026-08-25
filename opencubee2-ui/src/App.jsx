@@ -26,7 +26,28 @@ const createEmptyStage = () => ({
   asrActive: true,
   queryType: 'text',
   options: { enhance: false, bge_caption: false },
+  spatialRegion: 'auto',
+  spatialOnly: false,
 });
+
+const SPATIAL_SHORTCUTS = {
+  Digit1: { region: 'left', label: 'Left' },
+  Numpad1: { region: 'left', label: 'Left' },
+  Digit2: { region: 'right', label: 'Right' },
+  Numpad2: { region: 'right', label: 'Right' },
+  Digit3: { region: 'top', label: 'Top' },
+  Numpad3: { region: 'top', label: 'Top' },
+  Digit4: { region: 'bottom', label: 'Bottom' },
+  Numpad4: { region: 'bottom', label: 'Bottom' },
+};
+
+const getStageSpatialRegion = (stage = {}) => {
+  const region = stage.spatialRegion || stage.spatial_region || 'auto';
+  return ['left', 'right', 'top', 'bottom', 'top_left', 'top_right', 'bottom_left', 'bottom_right'].includes(region)
+    ? region : 'auto';
+};
+
+const isStageSpatialOnly = (stage = {}) => stage.spatialOnly === true && getStageSpatialRegion(stage) !== 'auto';
 
 const formatFinalQuery = (stage = {}) => {
   const primary = stage.queryType === 'image'
@@ -264,7 +285,16 @@ export default function App() {
   const restoreWorkspaceSnapshot = (snapshot) => {
     const restoredStages = snapshot.stages || [createEmptyStage()];
     const stagesWithDefaultOcr = restoredStages.map((stage) => {
-      return { ...stage, ocrActive: true, asrActive: true };
+      const legacyRegion = snapshot.spatialShortcutRegion && snapshot.spatialShortcutRegion !== 'full'
+        ? snapshot.spatialShortcutRegion : null;
+      const spatialRegion = stage.spatialRegion || stage.spatial_region || legacyRegion || 'auto';
+      return {
+        ...stage,
+        ocrActive: true,
+        asrActive: true,
+        spatialRegion,
+        spatialOnly: stage.spatialOnly === true || Boolean(legacyRegion),
+      };
     });
     setStages(stagesWithDefaultOcr);
     submittedStagesRef.current = snapshot.submittedStages || snapshot.stages || null;
@@ -572,6 +602,29 @@ export default function App() {
       }
 
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+      const spatialShortcut = SPATIAL_SHORTCUTS[event.code];
+      if (spatialShortcut) {
+        event.preventDefault();
+        const focusedStage = document.activeElement?.closest('[data-stage-index]');
+        const focusedIndex = focusedStage ? Number.parseInt(focusedStage.dataset.stageIndex, 10) : -1;
+        const targetIndex = Number.isInteger(focusedIndex) && focusedIndex >= 0
+          ? focusedIndex
+          : (latestWorkspaceRef.current?.stages?.length || 1) - 1;
+        setStagesWithHistory((prev) => prev.map((stage, index) => {
+          if (index !== targetIndex) return stage;
+          const current = getStageSpatialRegion(stage);
+          const nextRegion = current === spatialShortcut.region ? 'auto' : spatialShortcut.region;
+          return { ...stage, spatialRegion: nextRegion, spatialOnly: nextRegion !== 'auto' };
+        }));
+        const currentTarget = latestWorkspaceRef.current?.stages?.[targetIndex];
+        const isTurningOff = getStageSpatialRegion(currentTarget) === spatialShortcut.region;
+        toast.success(isTurningOff
+          ? `Spatial search OFF for box ${targetIndex + 1}`
+          : `${spatialShortcut.label} spatial search for box ${targetIndex + 1}`,
+        { position: 'top-right' });
+        return;
+      }
 
       const key = event.key.toLowerCase();
       if (key === 'l') {
@@ -1206,6 +1259,8 @@ export default function App() {
         ? await enhanceStagesForSearch(sourceStages, requestedSearchModel)
         : submittedStagesRef.current || sourceStages;
 
+      // Spatial stages are forced to BEiT-3 by the backend per stage; keep the
+      // selected model set intact for other temporal stages.
       const activeSearchModel = options.forceModel || requestedSearchModel;
       const modelPayload = buildSearchModelPayload(activeSearchModel);
       const hasScopeOverride = Object.prototype.hasOwnProperty.call(options, 'similarityScope');
@@ -1229,6 +1284,8 @@ export default function App() {
           image_search_text: stage.queryType === 'image' && stage.imageText?.trim() ? stage.imageText.trim() : null,
           ocr_query: stage.ocrActive && stage.ocrText?.trim() ? stage.ocrText.trim() : null,
           asr_query: stage.asrActive && stage.asrText?.trim() ? stage.asrText.trim() : null,
+          spatial_region: getStageSpatialRegion(stage),
+          spatial_only: isStageSpatialOnly(stage),
           use_bge_caption: stage.options?.bge_caption || false,
           page: pageNumber,
           page_size: pageSize,
@@ -1245,6 +1302,8 @@ export default function App() {
             image_search_text: s.queryType === 'image' && s.imageText?.trim() ? s.imageText.trim() : null,
             ocr_query: s.ocrActive && s.ocrText?.trim() ? s.ocrText.trim() : null,
             asr_query: s.asrActive && s.asrText?.trim() ? s.asrText.trim() : null,
+            spatial_region: getStageSpatialRegion(s),
+            spatial_only: isStageSpatialOnly(s),
           })),
           ...modelPayload,
           cluster: isClustered,
