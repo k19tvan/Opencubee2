@@ -4,8 +4,7 @@ import os
 import warnings
 
 
-# Bind to localhost/internal interface to isolate from direct public network traffic
-bind = os.getenv("BACKEND_BIND", "127.0.0.1:2108")
+bind = os.getenv("BACKEND_BIND", "0.0.0.0:3108")
 # Realtime collaboration state currently lives in process memory. Running more
 # than one worker splits WebSocket clients and panel state between processes.
 requested_workers = int(os.getenv("GUNICORN_WORKERS", "1"))

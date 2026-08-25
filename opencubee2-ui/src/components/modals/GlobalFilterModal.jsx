@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { getSimilarFrames } from '../../api';
+import { getSimilarFrames, BASE_URL } from '../../api';
 import { getImageUrl } from '../../utils/imageUrl';
 
 export default function GlobalFilterModal({ onClose, onAddClick, onUpdate }) {
@@ -14,7 +14,7 @@ export default function GlobalFilterModal({ onClose, onAddClick, onUpdate }) {
 
   const fetchBlacklist = async () => {
     try {
-      const baseUrl = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:2108';
+      const baseUrl = BASE_URL || '';
       const res = await fetch(`${baseUrl}/blacklist`, { cache: 'no-store' });
       const data = await res.json();
       if (res.ok) {
@@ -34,7 +34,7 @@ export default function GlobalFilterModal({ onClose, onAddClick, onUpdate }) {
   const handleDelete = async (e, frameName) => {
     e.stopPropagation();
     try {
-      const baseUrl = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:2108';
+      const baseUrl = BASE_URL || '';
       const res = await fetch(`${baseUrl}/blacklist/${encodeURIComponent(frameName)}`, {
         method: 'DELETE'
       });

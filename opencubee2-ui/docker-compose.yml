@@ -15,5 +15,5 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./public/keyframes:/usr/share/nginx/html/keyframes:ro
-      - /mlcv1/Datasets/HCMAI25/full/:/mlcv1/Datasets/HCMAI25/full/:ro
-      - /GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096:/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096:ro
+      - /mlcv1/Datasets/HCMAI25:/mlcv1/Datasets/HCMAI25:ro
+      - /GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results:/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results:ro

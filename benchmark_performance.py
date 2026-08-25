@@ -11,7 +11,7 @@ Measures and compares:
 
 Usage:
   python3 benchmark_performance.py --help
-  python3 benchmark_performance.py --backend http://localhost:2108 --nginx http://localhost:2408
+  python3 benchmark_performance.py --backend http://localhost:3108 --nginx http://localhost:2408
 """
 
 import argparse
@@ -298,7 +298,7 @@ def print_comparison_table(res_before: Dict[str, Any], res_after: Dict[str, Any]
 
 async def main():
     parser = argparse.ArgumentParser(description="OpenCubee2 Video & Media Performance Benchmark Tool")
-    parser.add_argument("--backend", default="http://localhost:2108", help="Direct FastAPI backend URL (e.g., http://localhost:2108)")
+    parser.add_argument("--backend", default="http://localhost:3108", help="Direct FastAPI backend URL (e.g., http://localhost:3108)")
     parser.add_argument("--nginx", default="http://localhost:2408", help="Nginx Gateway URL (e.g., http://localhost:2408)")
     parser.add_argument("--video-id", default="K01_V001", help="Sample Video ID to benchmark")
     parser.add_argument("--concurrency", type=int, default=20, help="Concurrency for burst requests")
@@ -316,7 +316,7 @@ async def main():
     print(f"Target B (After - Nginx Gateway):   {args.nginx}")
     print(f"Test Video: {args.video_id}")
 
-    runner_a = BenchmarkRunner(base_url=args.backend, name="Direct FastAPI (Port 2108)", video_id=args.video_id, concurrency=args.concurrency)
+    runner_a = BenchmarkRunner(base_url=args.backend, name="Direct FastAPI (Port 3108)", video_id=args.video_id, concurrency=args.concurrency)
     res_a = await runner_a.run_all()
 
     runner_b = BenchmarkRunner(base_url=args.nginx, name="Nginx Zero-Copy Gateway (Port 2408)", video_id=args.video_id, concurrency=args.concurrency)
