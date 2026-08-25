@@ -64,6 +64,7 @@ const formatFinalQuery = (stage = {}) => {
 const MAX_GO_BACK_STEPS = 10;
 const WORKSPACE_HISTORY_STORAGE_KEY = 'opencubee2.workspaceHistory';
 const WORKSPACE_HISTORY_STATE_KEY = 'opencubee2WorkspaceId';
+const AMBIGUOUS_DEFAULT_MIGRATION_KEY = 'opencubee2.ambiguousDefault.v1';
 
 const getShotKey = (shot = {}) => shot.filepath || shot.frame_name || shot.url || '';
 
@@ -153,7 +154,7 @@ export default function App() {
   const [showTrake, setShowTrake] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
   const [isClustered, setIsClustered] = useState(false);
-  const [isAmbiguous, setIsAmbiguous] = useState(false);
+  const [isAmbiguous, setIsAmbiguous] = useState(true);
 
   // Semantic ASR State
   const [isSemanticAsr, setIsSemanticAsr] = useState(false);
@@ -313,7 +314,7 @@ export default function App() {
     setLastFinalQueries(snapshot.lastFinalQueries || []);
     setResultIsAmbiguous(snapshot.resultIsAmbiguous || false);
     setIsClustered(snapshot.isClustered || false);
-    setIsAmbiguous(snapshot.isAmbiguous || false);
+    setIsAmbiguous(snapshot.isAmbiguous ?? true);
     setTimingInfo(snapshot.timingInfo || null);
     setPage(snapshot.page || 1);
     setHasMore(snapshot.hasMore || false);
@@ -512,6 +513,20 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    // History from before ambiguous mode became the default stored `false`.
+    // Migrate it once so an old browser session cannot override the new default.
+    if (sessionStorage.getItem(AMBIGUOUS_DEFAULT_MIGRATION_KEY) !== 'done') {
+      const existingStore = readWorkspaceHistory();
+      writeWorkspaceHistory({
+        ...existingStore,
+        entries: existingStore.entries.map((entry) => ({
+          ...entry,
+          snapshot: { ...entry.snapshot, isAmbiguous: true },
+        })),
+      });
+      sessionStorage.setItem(AMBIGUOUS_DEFAULT_MIGRATION_KEY, 'done');
+    }
+
     const currentId = window.history.state?.[WORKSPACE_HISTORY_STATE_KEY] || null;
     const store = readWorkspaceHistory();
     const currentEntry = store.entries.find((entry) => entry.id === currentId);
@@ -1522,6 +1537,7 @@ export default function App() {
     setSearchResults([]);
     setLastFinalQueries([]);
     setResultIsAmbiguous(false);
+    setIsAmbiguous(true);
     setTimingInfo(null);
     setPage(1);
     setHasMore(false);
