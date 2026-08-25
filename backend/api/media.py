@@ -24,10 +24,10 @@ class TemporalFrameRequest(BaseModel):
 
 IMAGE_BASE_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"
 CONTEXT_FRAME_RADIUS = 20
-PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25")
-WORD_LEVEL_DIR = PROJECT_ROOT / "results/asr/transcription/word_level"
-FPS_MAPPING_PATH = PROJECT_ROOT / "repo/Enn/Opencubee2/storage/fps_mapping.json"
-VIDEO_FRAME_MAPPING_PATH = PROJECT_ROOT / "repo/Enn/Opencubee2/storage/video_frame_mapping.json"
+PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/OpenCubee2")
+WORD_LEVEL_DIR = PROJECT_ROOT / "storage/asr/word_level"
+FPS_MAPPING_PATH = PROJECT_ROOT / "storage/fps_mapping.json"
+VIDEO_FRAME_MAPPING_PATH = PROJECT_ROOT / "storage/video_frame_mapping.json"
 
 from backend.core import runtime
 from backend.core.config import MODEL_CONFIGS, OCR_ASR_INDEX_NAME, TEMP_UPLOAD_DIR
@@ -257,16 +257,35 @@ async def get_models_status():
             status[name] = False
     return status
 
+from fastapi import APIRouter, File, HTTPException, UploadFile, Body, Header
+
 # --- Endpoint API tìm kiếm chính (Đơn tầng) ---
 @router.get("/videos/{video_id}")
-async def get_video(video_id: str):
+async def get_video(
+    video_id: str,
+    x_accel_supported: Optional[str] = Header(None, alias="X-Accel-Supported"),
+):
     video_path = resolve_video_path(video_id)
     media_type = mimetypes.guess_type(video_path.name)[0] or "video/mp4"
+
+    # Offload directly to Nginx kernel-level sendfile if running behind reverse proxy
+    if x_accel_supported == "1" or os.getenv("FORCE_X_ACCEL", "0") == "1":
+        return Response(
+            content=b"",
+            media_type=media_type,
+            headers={
+                "X-Accel-Redirect": f"/_internal_fs{video_path.resolve()}",
+                "Content-Type": media_type,
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=31536000, immutable",
+            },
+        )
+
     return FileResponse(
         video_path,
         media_type=media_type,
         filename=video_path.name,
-        headers={"Cache-Control": "public, max-age=31536000"}
+        headers={"Cache-Control": "public, max-age=31536000"},
     )
 
 @router.get("/video_info/{video_id}")
@@ -305,37 +324,64 @@ async def get_video_thumbnail(video_id: str, frame: int = 0, width: int = 160):
 
 # --- Endpoint Phục vụ Keyframes Phân đoạn và Vạn năng ---
 @router.get("/keyframes/{frame_name}")
-async def get_keyframe(frame_name: str):
+async def get_keyframe(
+    frame_name: str,
+    x_accel_supported: Optional[str] = Header(None, alias="X-Accel-Supported"),
+):
     target_path = resolve_keyframe_path_sync(frame_name)
-    if target_path:
-        return FileResponse(
-            target_path,
-            media_type="image/jpeg",
-            headers={"Cache-Control": "public, max-age=31536000"}
+    if not target_path:
+        raise HTTPException(status_code=404, detail=f"Keyframe {frame_name} not found")
+
+    media_type = mimetypes.guess_type(target_path.name)[0] or "image/jpeg"
+    if x_accel_supported == "1" or os.getenv("FORCE_X_ACCEL", "0") == "1":
+        return Response(
+            content=b"",
+            media_type=media_type,
+            headers={
+                "X-Accel-Redirect": f"/_internal_fs{target_path.resolve()}",
+                "Content-Type": media_type,
+                "Cache-Control": "public, max-age=31536000, immutable",
+            },
         )
-    raise HTTPException(status_code=404, detail=f"Keyframe {frame_name} not found")
+
+    return FileResponse(
+        target_path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=31536000"},
+    )
 
 @router.get("/image/{video_id}/{frame_id}")
-async def get_image(video_id: str, frame_id: str):
+async def get_image(
+    video_id: str,
+    frame_id: str,
+    x_accel_supported: Optional[str] = Header(None, alias="X-Accel-Supported"),
+):
     # DRES format expects something like K01_V001_0001/000000
     frame_name = f"{video_id}_{frame_id}.webp"
     target_path = resolve_keyframe_path_sync(frame_name)
-    if target_path:
-        return FileResponse(
-            target_path,
-            media_type="image/webp",
-            headers={"Cache-Control": "public, max-age=31536000"}
+    if not target_path:
+        target_path = resolve_keyframe_path_sync(f"{video_id}_{frame_id}")
+
+    if not target_path:
+        raise HTTPException(status_code=404, detail=f"Image {video_id}/{frame_id} not found")
+
+    media_type = mimetypes.guess_type(target_path.name)[0] or "image/webp"
+    if x_accel_supported == "1" or os.getenv("FORCE_X_ACCEL", "0") == "1":
+        return Response(
+            content=b"",
+            media_type=media_type,
+            headers={
+                "X-Accel-Redirect": f"/_internal_fs{target_path.resolve()}",
+                "Content-Type": media_type,
+                "Cache-Control": "public, max-age=31536000, immutable",
+            },
         )
-    
-    # Fallback without extension
-    target_path = resolve_keyframe_path_sync(f"{video_id}_{frame_id}")
-    if target_path:
-        return FileResponse(
-            target_path,
-            media_type="image/jpeg",
-            headers={"Cache-Control": "public, max-age=31536000"}
-        )
-    raise HTTPException(status_code=404, detail=f"Image {video_id}/{frame_id} not found")
+
+    return FileResponse(
+        target_path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=31536000"},
+    )
 
 @router.post("/check_temporal_frames")
 async def check_temporal_frames(request: TemporalFrameRequest):

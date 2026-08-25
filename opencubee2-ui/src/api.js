@@ -1,6 +1,8 @@
 // src/api.js
 
-export const BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL || `http://${window.location.hostname}:2108`;
+export const BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL !== undefined 
+  ? import.meta.env.VITE_BACKEND_BASE_URL 
+  : (typeof window !== 'undefined' && (window.location.port === '2408' || window.location.port === '80' || window.location.port === '443' || !window.location.port) ? '' : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:2108`);
 export const VIDEO_BACKEND_BASE_URL = import.meta.env.VITE_VIDEO_BACKEND_BASE_URL || BASE_URL;
 export const DRES_BASE_URL = import.meta.env.VITE_DRES_BASE_URL || 'http://192.168.28.151:5000';
 
