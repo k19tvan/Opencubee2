@@ -22,12 +22,12 @@ class TemporalFrameRequest(BaseModel):
     base_frame_name: str
     mode: str = "all"  # "all" or "shot"
 
-IMAGE_BASE_PATH = "/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"
+IMAGE_BASE_PATH = "/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/results/keyframes/beit3_096_filtered"
 CONTEXT_FRAME_RADIUS = 20
-PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/OpenCubee2")
-WORD_LEVEL_DIR = PROJECT_ROOT / "storage/asr/word_level"
-FPS_MAPPING_PATH = PROJECT_ROOT / "storage/fps_mapping.json"
-VIDEO_FRAME_MAPPING_PATH = PROJECT_ROOT / "storage/video_frame_mapping.json"
+PROJECT_ROOT = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25")
+WORD_LEVEL_DIR = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/Opencubee2/storage/asr/word_level")
+FPS_MAPPING_PATH = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/Opencubee2/storage/fps_mapping.json")
+VIDEO_FRAME_MAPPING_PATH = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/Opencubee2/storage/video_frame_mapping.json")
 
 from backend.core import runtime
 from backend.core.config import MODEL_CONFIGS, OCR_ASR_INDEX_NAME, TEMP_UPLOAD_DIR
