@@ -1068,10 +1068,8 @@ def search_semantic_asr_on_meilisearch_sync(
             scene_id = hit.get("scene_id") or hit.get("id")
             if not isinstance(scene_id, str) or not isinstance(hit.get("video_id"), str):
                 continue
-            frame_inside = hit.get("frame_inside")
-            if not isinstance(frame_inside, list):
-                scene_info = scene_mapping.get(scene_id) or {}
-                frame_inside = scene_info.get("frame_inside", [])
+            scene_info = scene_mapping.get(scene_id) or {}
+            frame_inside = scene_info.get("frame_inside") or hit.get("frame_inside") or []
             hit_data = dict(hit)
             hit_data["frame_inside"] = frame_inside
 

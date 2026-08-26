@@ -153,6 +153,7 @@ def resolve_keyframe_path_sync(frame_name: str) -> Optional[Path]:
          return None
 
     candidate_dirs = [
+        Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/results/keyframes/beit3_096_filtered"),
         Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/keyframes_beit3_096"),
         Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/results/ocr_vlm_keyframes_full"),
         Path("/mlcv1/Datasets/HCMAI25/keyframes"),
