@@ -883,10 +883,31 @@ def _extract_exact_phrases(query_text: str) -> list[str]:
     return phrases
 
 
+def _extract_exact_words(query_text: str) -> list[str]:
+    """Return individual words wrapped in straight or curly single quotes."""
+    normalized_query = (query_text or "").replace("‘", "'").replace("’", "'")
+    # Exclude content inside double quotes first so single quotes inside double quotes aren't misparsed
+    query_without_double_quotes = re.sub(r'"[^"\n]*"', " ", normalized_query)
+    words = []
+    for phrase in re.findall(r"'([^'\n]+)'", query_without_double_quotes):
+        for word in phrase.split():
+            clean_word = word.strip()
+            if clean_word and clean_word not in words:
+                words.append(clean_word)
+    return words
+
+
 def _extract_unquoted_query_text(query_text: str) -> str:
     """Return the query portion which retains normal Meilisearch matching."""
-    normalized_query = (query_text or "").replace("“", '"').replace("”", '"')
+    normalized_query = (
+        (query_text or "")
+        .replace("“", '"')
+        .replace("”", '"')
+        .replace("‘", "'")
+        .replace("’", "'")
+    )
     unquoted = re.sub(r'"[^"\n]*"', " ", normalized_query)
+    unquoted = re.sub(r"'[^'\n]*'", " ", unquoted)
     return " ".join(unquoted.replace(",", " ").split())
 
 
@@ -897,13 +918,25 @@ def _exact_phrase_pattern(phrase: str) -> re.Pattern[str]:
     return re.compile(r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)", re.IGNORECASE)
 
 
-def _summary_matches_exact_phrases(summary: str, phrases: list[str]) -> bool:
-    return all(_exact_phrase_pattern(phrase).search(summary) for phrase in phrases)
+def _exact_word_pattern(word: str) -> re.Pattern[str]:
+    return re.compile(r"(?<!\w)" + re.escape(word) + r"(?!\w)", re.IGNORECASE)
+
+
+def _summary_matches_exact_requirements(
+    summary: str,
+    phrases: list[str],
+    words: list[str],
+) -> bool:
+    phrase_match = all(_exact_phrase_pattern(phrase).search(summary) for phrase in phrases)
+    if not phrase_match:
+        return False
+    return all(_exact_word_pattern(word).search(summary) for word in words)
 
 
 def _highlight_exact_and_meili_matches(
     summary: str,
     exact_phrases: list[str],
+    exact_words: list[str],
     meili_formatted_summary: Optional[str],
 ) -> str:
     """Merge verified quoted spans with Meilisearch's unquoted highlights."""
@@ -933,6 +966,10 @@ def _highlight_exact_and_meili_matches(
 
     for phrase in exact_phrases:
         spans.extend(match.span() for match in _exact_phrase_pattern(phrase).finditer(summary))
+
+    for word in exact_words:
+        spans.extend(match.span() for match in _exact_word_pattern(word).finditer(summary))
+
     if not spans:
         return summary
 
@@ -968,15 +1005,22 @@ def search_semantic_asr_on_meilisearch_sync(
     try:
         index_name = SEMANTIC_ASR_INDEX_NAME
         scene_mapping = runtime.scene_frame_mapping
-        meilisearch_query = (query_text or "").replace("“", '"').replace("”", '"')
+        meilisearch_query = (
+            (query_text or "")
+            .replace("“", '"')
+            .replace("”", '"')
+            .replace("‘", "'")
+            .replace("’", "'")
+        )
         exact_phrases = _extract_exact_phrases(meilisearch_query)
+        exact_words = _extract_exact_words(meilisearch_query)
         unquoted_query_text = _extract_unquoted_query_text(meilisearch_query)
-        exact_phrase_search = bool(exact_phrases)
+        has_exact_requirement = bool(exact_phrases or exact_words)
         params: Dict[str, Any] = {
-            # Exact phrases are post-filtered, so retrieve all likely scenes
+            # Exact phrases/words are post-filtered, so retrieve all likely scenes
             # before applying local pagination.
-            "limit": _SEMANTIC_EXACT_CANDIDATE_LIMIT if exact_phrase_search else limit,
-            "offset": 0 if exact_phrase_search else offset,
+            "limit": _SEMANTIC_EXACT_CANDIDATE_LIMIT if has_exact_requirement else limit,
+            "offset": 0 if has_exact_requirement else offset,
             "showRankingScore": True,
             "attributesToSearchOn": ["summary"],
             "attributesToHighlight": ["summary"],
@@ -994,7 +1038,7 @@ def search_semantic_asr_on_meilisearch_sync(
         index = runtime.meili_client.index(index_name)
         response = index.search(meilisearch_query, params)
         unquoted_formatted_by_scene = {}
-        if exact_phrase_search and unquoted_query_text:
+        if has_exact_requirement and unquoted_query_text:
             # This second formatting pass contains only unquoted terms. Thus a
             # quoted term can never regain a fuzzy/typo highlight (e.g. "tàn"
             # must not highlight "tận").
@@ -1007,9 +1051,9 @@ def search_semantic_asr_on_meilisearch_sync(
         results = []
         for hit in response.get("hits", []):
             summary = hit.get("summary")
-            if exact_phrase_search and (
+            if has_exact_requirement and (
                 not isinstance(summary, str)
-                or not _summary_matches_exact_phrases(summary, exact_phrases)
+                or not _summary_matches_exact_requirements(summary, exact_phrases, exact_words)
             ):
                 continue
             scene_id = hit.get("scene_id") or hit.get("id")
@@ -1030,10 +1074,11 @@ def search_semantic_asr_on_meilisearch_sync(
                 source_scores={"meilisearch": float(hit.get("_rankingScore", 0.0))},
             )
             if result:
-                if exact_phrase_search:
+                if has_exact_requirement:
                     result["formatted_summary"] = _highlight_exact_and_meili_matches(
                         summary,
                         exact_phrases,
+                        exact_words,
                         unquoted_formatted_by_scene.get(scene_id),
                     )
                 else:
@@ -1041,7 +1086,7 @@ def search_semantic_asr_on_meilisearch_sync(
                     if isinstance(formatted, str):
                         result["formatted_summary"] = formatted
                 results.append(result)
-        if exact_phrase_search:
+        if has_exact_requirement:
             return results[offset:offset + limit], len(results)
         total = response.get("totalHits", response.get("estimatedTotalHits", len(results)))
         return results, int(total)
