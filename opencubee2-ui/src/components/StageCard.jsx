@@ -437,22 +437,22 @@ export default function StageCard({
           </div>
         )}
         <input
-            ref={ocrRef}
-            type="text"
-            className="w-full px-3 py-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] transition-all placeholder:text-[var(--text-secondary)]"
-            placeholder="Filter by OCR..."
-            value={ocrText}
-            onChange={(e) => setOcrText(e.target.value)}
-            onKeyDown={handleKeyDown}
+          ref={ocrRef}
+          type="text"
+          className="w-full px-3 py-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] transition-all placeholder:text-[var(--text-secondary)]"
+          placeholder="Filter by OCR..."
+          value={ocrText}
+          onChange={(e) => setOcrText(e.target.value)}
+          onKeyDown={handleKeyDown}
         />
         <input
-            ref={asrRef}
-            type="text"
-            className="w-full px-3 py-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] transition-all placeholder:text-[var(--text-secondary)]"
-            placeholder='Search ASR'
-            value={asrText}
-            onChange={(e) => setAsrText(e.target.value)}
-            onKeyDown={handleKeyDown}
+          ref={asrRef}
+          type="text"
+          className="w-full px-3 py-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] transition-all placeholder:text-[var(--text-secondary)]"
+          placeholder='Search ASR'
+          value={asrText}
+          onChange={(e) => setAsrText(e.target.value)}
+          onKeyDown={handleKeyDown}
         />
         <div className="rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] px-3 py-2">
           <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
