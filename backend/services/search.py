@@ -998,13 +998,22 @@ def search_semantic_asr_on_meilisearch_sync(
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
+    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     """Search semantic scene summaries in the dedicated Meilisearch index."""
     if not runtime.meili_client:
         return [], 0
     try:
-        index_name = SEMANTIC_ASR_INDEX_NAME
-        scene_mapping = runtime.scene_frame_mapping
+        index_name = (
+            SEMANTIC_ASR_SENTENCE_LEVEL_INDEX_NAME
+            if sentence_level
+            else SEMANTIC_ASR_INDEX_NAME
+        )
+        scene_mapping = (
+            runtime.scene_frame_mapping_sentence_level
+            if sentence_level
+            else runtime.scene_frame_mapping
+        )
         meilisearch_query = (
             (query_text or "")
             .replace("“", '"')
@@ -1101,10 +1110,11 @@ async def search_semantic_asr_on_meilisearch(
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
+    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     return await asyncio.to_thread(
         search_semantic_asr_on_meilisearch_sync,
-        query_text, limit, offset, video_ids, candidate_frame_names,
+        query_text, limit, offset, video_ids, candidate_frame_names, sentence_level,
     )
 
 
@@ -1114,12 +1124,23 @@ async def search_semantic_asr_qdrant(
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
+    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     """Retrieve semantic ASR scenes and their exact mapped keyframes."""
     if not runtime.qdrant_client or q_models is None:
         return [], 0
     try:
-        if not runtime.scene_frame_mapping:
+        scene_mapping = (
+            runtime.scene_frame_mapping_sentence_level
+            if sentence_level
+            else runtime.scene_frame_mapping
+        )
+        frame_scene_ids_map = (
+            runtime.frame_scene_ids_map_sentence_level
+            if sentence_level
+            else runtime.frame_scene_ids_map
+        )
+        if not scene_mapping:
             print("Semantic ASR scene mapping is not loaded")
             return [], 0
 
@@ -1135,7 +1156,7 @@ async def search_semantic_asr_qdrant(
             scene_ids = sorted({
                 scene_id
                 for frame_name in candidate_frame_names
-                for scene_id in runtime.frame_scene_ids_map.get(frame_name, [])
+                for scene_id in frame_scene_ids_map.get(frame_name, [])
             })
             if not scene_ids:
                 return [], 0
@@ -1152,8 +1173,7 @@ async def search_semantic_asr_qdrant(
             asyncio.to_thread(
                 runtime.qdrant_client.query_points,
                 collection_name=collection_name,
-                query=query_vector,
-                query_filter=query_filter,
+                query=query_filter,
                 limit=limit,
                 offset=offset,
                 with_payload=["scene_id", "video_id"],
@@ -1171,7 +1191,7 @@ async def search_semantic_asr_qdrant(
         for hit in response.points:
             payload = hit.payload or {}
             scene_id = payload.get("scene_id")
-            scene = runtime.scene_frame_mapping.get(scene_id)
+            scene = scene_mapping.get(scene_id)
             if not isinstance(scene, dict):
                 continue
             video_id = scene.get("video_id")
@@ -1211,18 +1231,19 @@ async def search_semantic_asr(
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
+    sentence_level: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     """Search semantic ASR scenes with Meilisearch, Qdrant, or both."""
     if search_mode == "embedding":
         if not query_vector:
             return [], 0
         return await search_semantic_asr_qdrant(
-            query_vector, limit, offset, video_ids, candidate_frame_names
+            query_vector, limit, offset, video_ids, candidate_frame_names, sentence_level
         )
 
     if search_mode == "meilisearch":
         return await search_semantic_asr_on_meilisearch(
-            query_text, limit, offset, video_ids, candidate_frame_names
+            query_text, limit, offset, video_ids, candidate_frame_names, sentence_level
         )
 
     if not query_vector:
@@ -1230,10 +1251,10 @@ async def search_semantic_asr(
     candidate_limit = max(200, (offset + limit) * 5)
     (meili_results, _), (vector_results, _) = await asyncio.gather(
         search_semantic_asr_on_meilisearch(
-            query_text, candidate_limit, 0, video_ids, candidate_frame_names
+            query_text, candidate_limit, 0, video_ids, candidate_frame_names, sentence_level
         ),
         search_semantic_asr_qdrant(
-            query_vector, candidate_limit, 0, video_ids, candidate_frame_names
+            query_vector, candidate_limit, 0, video_ids, candidate_frame_names, sentence_level
         ),
     )
     weight_total = embedding_weight + meilisearch_weight

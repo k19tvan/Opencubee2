@@ -67,3 +67,4 @@ class SemanticAsrSearchRequest(BaseModel):
     search_mode: Literal["embedding", "meilisearch", "hybrid"] = "meilisearch"
     embedding_weight: float = Field(default=0.7, ge=0)
     meilisearch_weight: float = Field(default=0.3, ge=0)
+    sentence_level: bool = False

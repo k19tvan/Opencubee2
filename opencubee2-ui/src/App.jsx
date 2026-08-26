@@ -155,13 +155,7 @@ export default function App() {
   const [showChatbot, setShowChatbot] = useState(false);
   const [isClustered, setIsClustered] = useState(false);
   const [isAmbiguous, setIsAmbiguous] = useState(true);
-
-  // Semantic ASR State
-  const [isSemanticAsr, setIsSemanticAsr] = useState(false);
-  const [semanticAsrQuery, setSemanticAsrQuery] = useState('');
-  const [semanticAsrSearchMode, setSemanticAsrSearchMode] = useState('meilisearch');
-  const [semanticAsrEmbeddingWeight, setSemanticAsrEmbeddingWeight] = useState(0.7);
-  const [semanticAsrMeilisearchWeight, setSemanticAsrMeilisearchWeight] = useState(0.3);
+  const [sentenceLevel, setSentenceLevel] = useState(false);
 
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1184,6 +1178,16 @@ export default function App() {
         return;
       }
 
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyQ') {
+        e.preventDefault();
+        setSentenceLevel(prev => {
+          const next = !prev;
+          toast.success(`Sentence level ASR: ${next ? 'ON' : 'OFF'}`, { id: 'sentence-level-toast' });
+          return next;
+        });
+        return;
+      }
+
       if (isTypingInField) return;
 
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'KeyG') {
@@ -1208,46 +1212,7 @@ export default function App() {
     return () => window.removeEventListener('dres-qa-correct', handleQaCorrect);
   }, [username, userColor]);
 
-  const executeSemanticAsrSearch = async (queryText = semanticAsrQuery) => {
-    if (!queryText.trim()) {
-      toast.error('Please enter a Semantic ASR query.');
-      return;
-    }
-    setLoading(true);
-    setTimingInfo(null);
-    try {
-      const payload = {
-        query_text: queryText.trim(),
-        page: 1,
-        page_size: 50,
-        search_mode: semanticAsrSearchMode,
-        embedding_weight: semanticAsrEmbeddingWeight,
-        meilisearch_weight: semanticAsrMeilisearchWeight,
-        ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
-      };
-      const response = await searchSemanticAsr(payload);
-      const mappedResults = (response.results || []).map(chunk => ({
-        ...chunk,
-        shots: (chunk.shots || []).map(shot => ({
-          ...shot,
-          url: getImageUrl(shot.frame_name || shot.url)
-        }))
-      }));
-      setSearchResults(filterByLockedVideos(mappedResults));
-      setTimingInfo(response.timing_info);
-    } catch (err) {
-      toast.error('Semantic ASR Search failed: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const performSearch = async (pageNumber = 1, overrideStages = null, captureHistory = true, options = {}) => {
-    if (isSemanticAsr) {
-      await executeSemanticAsrSearch();
-      return;
-    }
-
     const selectedSearchModel = pageNumber === 1
       ? normalizeSearchModel(searchModel)
       : submittedSearchModelRef.current || normalizeSearchModel(searchModel);
@@ -1291,71 +1256,150 @@ export default function App() {
         submittedSimilarityScopeRef.current = activeSimilarityScope;
       }
 
-      if (activeStages.length === 1) {
-        const stage = activeStages[0];
-        const searchData = {
-          ...modelPayload,
-          query_text: stage.queryType === 'text' && stage.queryText?.trim() ? stage.queryText.trim() : null,
-          query_image_name: stage.queryType === 'image' ? (stage.tempImageName || null) : null,
-          image_search_text: stage.queryType === 'image' && stage.imageText?.trim() ? stage.imageText.trim() : null,
-          ocr_query: stage.ocrActive && stage.ocrText?.trim() ? stage.ocrText.trim() : null,
-          asr_query: stage.asrActive && stage.asrText?.trim() ? stage.asrText.trim() : null,
-          spatial_region: getStageSpatialRegion(stage),
-          spatial_only: isStageSpatialOnly(stage),
-          use_bge_caption: stage.options?.bge_caption || false,
+      // Check if any stage has ASR query (Semantic ASR)
+      const asrStage = activeStages.find(s => s.asrActive && s.asrText?.trim());
+      const hasAsrQuery = !!asrStage;
+      const asrQueryText = hasAsrQuery ? asrStage.asrText.trim() : null;
+
+      // Check if there are visual/text/OCR queries alongside ASR
+      const hasVisualOrTextOrOcr = activeStages.some(s =>
+        (s.queryType === 'text' && s.queryText?.trim()) ||
+        (s.queryType === 'image' && (s.tempImageName || s.imageText?.trim())) ||
+        (s.ocrActive && s.ocrText?.trim())
+      );
+
+      let localResults = [];
+
+      if (hasAsrQuery && !hasVisualOrTextOrOcr) {
+        // Pure Semantic ASR search
+        const payload = {
+          query_text: asrQueryText,
+          search_mode: 'meilisearch',
+          sentence_level: sentenceLevel,
           page: pageNumber,
           page_size: pageSize,
           ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
           ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
         };
-
-        response = await searchSingle(searchData);
-      } else {
-        const payload = {
-          stages: activeStages.map(s => ({
-            query: s.queryType === 'text' && s.queryText?.trim() ? s.queryText.trim() : null,
-            query_image_name: s.queryType === 'image' ? (s.tempImageName || null) : null,
-            image_search_text: s.queryType === 'image' && s.imageText?.trim() ? s.imageText.trim() : null,
-            ocr_query: s.ocrActive && s.ocrText?.trim() ? s.ocrText.trim() : null,
-            asr_query: s.asrActive && s.asrText?.trim() ? s.asrText.trim() : null,
-            spatial_region: getStageSpatialRegion(s),
-            spatial_only: isStageSpatialOnly(s),
-          })),
-          ...modelPayload,
-          cluster: isClustered,
-          ambiguous: isAmbiguous,
-          page: pageNumber,
-          page_size: pageSize,
-          ...(lockedVideos.length > 0 ? {
-            video_ids: lockedVideos.map(v => v.videoId),
-            specified_videos: lockedVideos.map(v => v.videoId)
-          } : {}),
-          ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
-        };
-
-        response = await searchTemporal(payload);
-        if (response.temporal_debug) {
-          console.info('Temporal search debug:', response.temporal_debug);
-        }
-      }
-
-      let localResults = [];
-      if (activeStages.length === 1) {
-        localResults = (response.results || []).map(cluster => ({
-          ...cluster,
-          best_shot: { ...cluster.best_shot, url: getImageUrl(cluster.best_shot.frame_name) },
-          shots: (cluster.shots || []).map(shot => ({ ...shot, url: getImageUrl(shot.frame_name) }))
+        const asrResponse = await searchSemanticAsr(payload);
+        localResults = (asrResponse.results || []).map(chunk => ({
+          ...chunk,
+          shots: (chunk.shots || []).map(shot => ({
+            ...shot,
+            url: getImageUrl(shot.frame_name || shot.url)
+          }))
         }));
+        response = {
+          results: localResults,
+          timing_info: asrResponse.timing_info,
+          is_ambiguous_search: false,
+          total_results: asrResponse.total_results || localResults.length,
+        };
       } else {
-        localResults = (response.results || []).map(seq => ({
-          ...seq,
-          shots: (seq.shots || []).map(shot => ({ ...shot, url: getImageUrl(shot.frame_name) })),
-          clusters: (seq.clusters || []).map(cluster => ({
+        // Perform standard single/temporal search for visual/text/OCR queries.
+        // Set asr_query to null so searchSingle does not union keyframe ASR results
+        // into the visual candidates.
+        if (activeStages.length === 1) {
+          const stage = activeStages[0];
+          const searchData = {
+            ...modelPayload,
+            query_text: stage.queryType === 'text' && stage.queryText?.trim() ? stage.queryText.trim() : null,
+            query_image_name: stage.queryType === 'image' ? (stage.tempImageName || null) : null,
+            image_search_text: stage.queryType === 'image' && stage.imageText?.trim() ? stage.imageText.trim() : null,
+            ocr_query: stage.ocrActive && stage.ocrText?.trim() ? stage.ocrText.trim() : null,
+            asr_query: hasAsrQuery ? null : (stage.asrActive && stage.asrText?.trim() ? stage.asrText.trim() : null),
+            spatial_region: getStageSpatialRegion(stage),
+            spatial_only: isStageSpatialOnly(stage),
+            use_bge_caption: stage.options?.bge_caption || false,
+            page: pageNumber,
+            page_size: pageSize,
+            ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
+            ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
+          };
+
+          response = await searchSingle(searchData);
+        } else {
+          const payload = {
+            stages: activeStages.map(s => ({
+              query: s.queryType === 'text' && s.queryText?.trim() ? s.queryText.trim() : null,
+              query_image_name: s.queryType === 'image' ? (s.tempImageName || null) : null,
+              image_search_text: s.queryType === 'image' && s.imageText?.trim() ? s.imageText.trim() : null,
+              ocr_query: s.ocrActive && s.ocrText?.trim() ? s.ocrText.trim() : null,
+              asr_query: hasAsrQuery ? null : (s.asrActive && s.asrText?.trim() ? s.asrText.trim() : null),
+              spatial_region: getStageSpatialRegion(s),
+              spatial_only: isStageSpatialOnly(s),
+            })),
+            ...modelPayload,
+            cluster: isClustered,
+            ambiguous: isAmbiguous,
+            page: pageNumber,
+            page_size: pageSize,
+            ...(lockedVideos.length > 0 ? {
+              video_ids: lockedVideos.map(v => v.videoId),
+              specified_videos: lockedVideos.map(v => v.videoId)
+            } : {}),
+            ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
+          };
+
+          response = await searchTemporal(payload);
+          if (response.temporal_debug) {
+            console.info('Temporal search debug:', response.temporal_debug);
+          }
+        }
+
+        if (activeStages.length === 1) {
+          localResults = (response.results || []).map(cluster => ({
             ...cluster,
             best_shot: { ...cluster.best_shot, url: getImageUrl(cluster.best_shot.frame_name) },
             shots: (cluster.shots || []).map(shot => ({ ...shot, url: getImageUrl(shot.frame_name) }))
-          }))
-        }));
+          }));
+        } else {
+          localResults = (response.results || []).map(seq => ({
+            ...seq,
+            shots: (seq.shots || []).map(shot => ({ ...shot, url: getImageUrl(shot.frame_name) })),
+            clusters: (seq.clusters || []).map(cluster => ({
+              ...cluster,
+              best_shot: { ...cluster.best_shot, url: getImageUrl(cluster.best_shot.frame_name) },
+              shots: (cluster.shots || []).map(shot => ({ ...shot, url: getImageUrl(shot.frame_name) }))
+            }))
+          }));
+        }
+
+        // If both ASR and Visual/Text queries are present, filter ASR results with candidate keyframes
+        if (hasAsrQuery) {
+          const candidateFrames = Array.from(new Set(
+            localResults.flatMap(cluster =>
+              (cluster.shots || (cluster.best_shot ? [cluster.best_shot] : [])).map(s => s?.frame_name).filter(Boolean)
+            )
+          ));
+
+          if (candidateFrames.length > 0) {
+            const payload = {
+              query_text: asrQueryText,
+              search_mode: 'meilisearch',
+              sentence_level: sentenceLevel,
+              candidate_frame_names: candidateFrames,
+              page: pageNumber,
+              page_size: pageSize,
+              ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
+            };
+            const asrResponse = await searchSemanticAsr(payload);
+            if (asrResponse.results && asrResponse.results.length > 0) {
+              localResults = asrResponse.results.map(chunk => ({
+                ...chunk,
+                shots: (chunk.shots || []).map(shot => ({
+                  ...shot,
+                  url: getImageUrl(shot.frame_name || shot.url)
+                }))
+              }));
+            } else {
+              localResults = [];
+            }
+          } else {
+            localResults = [];
+          }
+          response.results = localResults;
+        }
       }
 
       let nextSimilarityScope = activeSimilarityScope;
@@ -1533,8 +1577,6 @@ export default function App() {
     submittedSimilarityScopeRef.current = null;
     setSimilarityScope(null);
     setStages(nextStages);
-    setIsSemanticAsr(false);
-    setSemanticAsrQuery('');
     setSearchResults([]);
     setLastFinalQueries([]);
     setResultIsAmbiguous(false);
@@ -1671,14 +1713,14 @@ export default function App() {
             setIsClustered={setIsClusteredWithHistory}
             isAmbiguous={isAmbiguous}
             setIsAmbiguous={setIsAmbiguousWithHistory}
-            isSemanticAsr={isSemanticAsr}
-            setIsSemanticAsr={setIsSemanticAsr}
             searchModel={searchModel}
             setSearchModel={setSearchModel}
             metaClipOnly={metaClipOnly}
             setMetaClipOnly={setMetaClipOnly}
             autoTranslate={autoTranslate}
             setAutoTranslate={setAutoTranslate}
+            sentenceLevel={sentenceLevel}
+            setSentenceLevel={setSentenceLevel}
             dresMode={dresMode}
             setDresMode={setDresMode}
             dresSessionId={dresSessionId}
@@ -1727,16 +1769,6 @@ export default function App() {
                   onQuickSearch={handleQuickImageSearch}
                   loading={loading}
                   theme={effectiveTheme}
-                  isSemanticAsr={isSemanticAsr}
-                  semanticAsrQuery={semanticAsrQuery}
-                  setSemanticAsrQuery={setSemanticAsrQuery}
-                  onSemanticAsrSearch={executeSemanticAsrSearch}
-                  semanticAsrSearchMode={semanticAsrSearchMode}
-                  setSemanticAsrSearchMode={setSemanticAsrSearchMode}
-                  semanticAsrEmbeddingWeight={semanticAsrEmbeddingWeight}
-                  setSemanticAsrEmbeddingWeight={setSemanticAsrEmbeddingWeight}
-                  semanticAsrMeilisearchWeight={semanticAsrMeilisearchWeight}
-                  setSemanticAsrMeilisearchWeight={setSemanticAsrMeilisearchWeight}
                 />
               </div>
 

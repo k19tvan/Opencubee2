@@ -449,7 +449,7 @@ export default function StageCard({
             ref={asrRef}
             type="text"
             className="w-full px-3 py-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] text-xs focus:outline-none focus:border-[var(--border-hover)] transition-all placeholder:text-[var(--text-secondary)]"
-            placeholder="Filter by ASR..."
+            placeholder='Search ASR'
             value={asrText}
             onChange={(e) => setAsrText(e.target.value)}
             onKeyDown={handleKeyDown}

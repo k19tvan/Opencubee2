@@ -62,8 +62,6 @@ export default function TopToolbar({
   setIsClustered,
   isAmbiguous,
   setIsAmbiguous,
-  isSemanticAsr,
-  setIsSemanticAsr,
   onOpenModal,
   onReset,
   onToggleMobileMenu,
@@ -74,6 +72,8 @@ export default function TopToolbar({
   setMetaClipOnly = () => { },
   autoTranslate,
   setAutoTranslate,
+  sentenceLevel = false,
+  setSentenceLevel = () => { },
   dresUsername,
   isMuted,
   setIsMuted,
@@ -233,22 +233,18 @@ export default function TopToolbar({
           title={autoTranslate ? "Auto Translate: ON (Alt + A)" : "Auto Translate: OFF (Alt + A)"}
           theme={theme}
         />
-        <ToolBtn
-          onClick={() => {
-            const next = !isSemanticAsr;
-            setIsSemanticAsr(next);
-            toast.success(next ? 'Semantic ASR Mode: ON (Ctrl+Q)' : 'Semantic ASR Mode: OFF');
-          }}
-          icon="fas fa-closed-captioning"
-          label="Semantic ASR"
-          active={isSemanticAsr}
-          title="Toggle Semantic ASR Search (Ctrl + Q)"
-          theme={theme}
-        />
 
         <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
         {/* Search Mode Toggles */}
+        <ToolBtn
+          onClick={() => setSentenceLevel(!sentenceLevel)}
+          icon="fas fa-align-left"
+          label="Sentence level"
+          active={sentenceLevel}
+          title={sentenceLevel ? "Sentence level Semantic ASR: ON (Ctrl + Q)" : "Sentence level Semantic ASR: OFF (Ctrl + Q)"}
+          theme={theme}
+        />
         <ToolBtn onClick={() => setShowTrake(!showTrake)} icon="fas fa-stream" label="Trake" active={showTrake} theme={theme} />
         <ToolBtn
           onClick={onToggleSimilarityScope}

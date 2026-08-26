@@ -757,6 +757,7 @@ async def search_semantic_asr_endpoint(request_data: SemanticAsrSearchRequest):
         offset=offset,
         video_ids=request_data.video_ids,
         candidate_frame_names=request_data.candidate_frame_names,
+        sentence_level=request_data.sentence_level,
     )
 
     timings["total_request_s"] = time.time() - start_time
