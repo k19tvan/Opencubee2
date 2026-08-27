@@ -33,9 +33,11 @@ const parseCsvContent = (csvString, mode, currentData = []) => {
     const url = getAbsoluteThumbnailUrl(video_id, frame_id);
     const baseShot = { video_id, frame_id, url };
     
+    baseShot.frame_name = `${video_id}_${frame_id.toString().padStart(6, '0')}.webp`;
+    
     const existingShot = metaMap.get(`${video_id}_${frame_id}`) || globalMetaMap.get(`${video_id}_${frame_id}`);
     if (existingShot) {
-      return { ...baseShot, frame_name: existingShot.frame_name, similarity_labels: existingShot.similarity_labels, username: existingShot.username };
+      return { ...baseShot, frame_name: existingShot.frame_name || baseShot.frame_name, similarity_labels: existingShot.similarity_labels, username: existingShot.username };
     }
     return baseShot;
   };
@@ -229,11 +231,22 @@ export default function SubmissionPanel({
   onPreview,
   username
 }) {
-  const [localData, setLocalData] = useState([]);
+  const [draftsByFile, setDraftsByFile] = useState({});
+  const localData = (activeQueryFilename && draftsByFile[activeQueryFilename]) || [];
+  
+  const [viewMode, setViewMode] = useState('draft');
   const [mode, setMode] = useState('kis');
   const [hoveredPanelItem, setHoveredPanelItem] = useState(null);
   const [qaModalShot, setQaModalShot] = useState(null);
   const [qaModalTrigger, setQaModalTrigger] = useState(0);
+
+  const parsedCsvData = useMemo(() => {
+    return activeQueryFilename && activeCsvContent !== null ? parseCsvContent(activeCsvContent, mode, []) : [];
+  }, [activeCsvContent, mode, activeQueryFilename]);
+
+  useEffect(() => {
+    setViewMode('draft');
+  }, [activeQueryFilename]);
 
   useEffect(() => {
     if (!activeQueryFilename) return;
@@ -241,12 +254,28 @@ export default function SubmissionPanel({
                        : activeQueryFilename.includes('-trake') ? 'trake' 
                        : 'kis';
     setMode(computedMode);
-    setLocalData(prevData => parseCsvContent(activeCsvContent, computedMode, prevData));
+    
+    // Do not initialize draft if we are still legally waiting for the new CSV content
+    if (activeCsvContent === null) return;
+    
+    // Initialize draft per file only if it doesn't exist
+    setDraftsByFile(prev => {
+      if (!prev[activeQueryFilename]) {
+        return {
+          ...prev,
+          [activeQueryFilename]: parseCsvContent(activeCsvContent, computedMode, [])
+        };
+      }
+      return prev;
+    });
   }, [activeQueryFilename, activeCsvContent]);
 
   const updateData = useCallback((updater) => {
-    setLocalData(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
+    if (!activeQueryFilename) return;
+    
+    setDraftsByFile(prev => {
+      const currentDraft = prev[activeQueryFilename] || [];
+      const next = typeof updater === 'function' ? updater(currentDraft) : updater;
       
       if (mode === 'trake') {
         const hasMixed = next.some(row => {
@@ -254,16 +283,12 @@ export default function SubmissionPanel({
           const firstVid = row[0].shot.video_id;
           return row.some(item => item.shot.video_id !== firstVid);
         });
-        if (hasMixed) return next;
+        if (hasMixed) return prev;
       }
-
-      if (onSyncState) {
-        const nextCsv = serializeCsvContent(next, mode);
-        onSyncState(nextCsv);
-      }
-      return next;
+      
+      return { ...prev, [activeQueryFilename]: next };
     });
-  }, [mode, onSyncState, activeCsvContent]);
+  }, [mode, activeQueryFilename]);
 
   const addFrame = useCallback((shot, answer = '') => {
     if (!shot) return;
@@ -387,7 +412,13 @@ export default function SubmissionPanel({
       // Ctrl + Space -> Add / Remove hovered frame
       if (e.ctrlKey && !e.shiftKey && e.code === 'Space') {
         e.preventDefault();
+        
+        const isCsvMode = typeof viewMode !== 'undefined' && viewMode === 'csv';
         if (hoveredPanelItem) {
+          if (isCsvMode) {
+             toast.error("Can't remove frames from CSV view. Switch to Draft first.");
+             return;
+          }
           removeFrame(hoveredPanelItem);
         } else if (hoveredFrame) {
           if (mode === 'qa') {
@@ -395,6 +426,7 @@ export default function SubmissionPanel({
             setQaModalTrigger(t => t + 1);
           } else {
             addFrame(hoveredFrame);
+            if (isCsvMode) toast.success("Added to Draft");
           }
         }
       }
@@ -403,11 +435,14 @@ export default function SubmissionPanel({
     const handleCustomPushEvent = (e) => {
       const shot = e.detail?.shot;
       if (!shot) return;
+      
+      const isCsvMode = typeof viewMode !== 'undefined' && viewMode === 'csv';
       if (mode === 'qa') {
         setQaModalShot(shot);
         setQaModalTrigger(t => t + 1);
       } else {
         addFrame(shot);
+        if (isCsvMode) toast.success("Added to Draft");
       }
     };
 
@@ -417,7 +452,7 @@ export default function SubmissionPanel({
       window.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('push-to-panel', handleCustomPushEvent);
     };
-  }, [activeQueryFilename, localData, mode, onSaveSubmission, hoveredFrame, addFrame, removeFrame, hoveredPanelItem]);
+  }, [activeQueryFilename, localData, mode, onSaveSubmission, hoveredFrame, addFrame, removeFrame, hoveredPanelItem, viewMode]);
 
   if (!activeQueryFilename) {
     return (
@@ -443,7 +478,39 @@ export default function SubmissionPanel({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {mode === 'trake' && (
+          <div className="flex bg-[var(--bg-tertiary)] rounded overflow-hidden shadow-inner mr-2 p-0.5">
+            <button
+              onClick={() => setViewMode('draft')}
+              className={`px-3 py-1 text-xs font-bold rounded transition-colors ${viewMode === 'draft' ? 'bg-blue-600 text-white shadow' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'}`}
+              title="View your local unsaved changes"
+            >
+              Draft
+            </button>
+            <button
+              onClick={() => setViewMode('csv')}
+              className={`px-3 py-1 text-xs font-bold rounded transition-colors ${viewMode === 'csv' ? 'bg-blue-600 text-white shadow' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'}`}
+              title="View the server's saved CSV content"
+            >
+              CSV
+            </button>
+          </div>
+          {viewMode === 'csv' && (
+            <button 
+              onClick={() => {
+                setDraftsByFile(prev => ({
+                   ...prev,
+                   [activeQueryFilename]: parseCsvContent(activeCsvContent, mode, [])
+                }));
+                setViewMode('draft');
+                toast.success("CSV content pushed to Draft");
+              }}
+              className="px-3 py-1 bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded text-xs hover:bg-purple-500/20"
+              title="Overwrite Draft with this CSV content"
+            >
+              <i className="fas fa-download mr-1"></i> Push to Draft
+            </button>
+          )}
+          {mode === 'trake' && viewMode === 'draft' && (
             <button 
               onClick={handleAddRow}
               className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/30 rounded text-xs hover:bg-blue-500/20"
@@ -451,116 +518,130 @@ export default function SubmissionPanel({
               <i className="fas fa-plus mr-1"></i> Add Row
             </button>
           )}
-          <button 
-            onClick={() => {
-              if (mode === 'trake') {
-                const hasMixed = localData.some(row => {
-                  if (row.length === 0) return false;
-                  const firstVid = row[0].shot.video_id;
-                  return row.some(item => item.shot.video_id !== firstVid);
-                });
-                if (hasMixed) {
-                  toast.error("Không thể lưu: Có dòng phụ (Trake) chứa nhiều video_id khác nhau!");
-                  return;
+          {viewMode === 'draft' && (
+            <button 
+              onClick={() => {
+                if (mode === 'trake') {
+                  const hasMixed = localData.some(row => {
+                    if (row.length === 0) return false;
+                    const firstVid = row[0].shot.video_id;
+                    return row.some(item => item.shot.video_id !== firstVid);
+                  });
+                  if (hasMixed) {
+                    toast.error("Không thể lưu: Có dòng phụ (Trake) chứa nhiều video_id khác nhau!");
+                    return;
+                  }
                 }
-              }
-              onSaveSubmission(serializeCsvContent(localData, mode))
-            }}
-            className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded text-xs hover:bg-emerald-500/20 font-bold"
-            title="Ctrl + Shift + Space"
-          >
-            <i className="fas fa-save mr-1"></i> Submit
-          </button>
+                onSaveSubmission(serializeCsvContent(localData, mode))
+              }}
+              className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded text-xs hover:bg-emerald-500/20 font-bold"
+              title="Ctrl + Shift + Space"
+            >
+              <i className="fas fa-save mr-1"></i> Submit
+            </button>
+          )}
         </div>
       </div>
 
       <div className="p-4 overflow-x-auto min-h-[140px] max-h-[300px] overflow-y-auto">
-        {(mode === 'kis' || mode === 'qa') ? (
-          localData.length === 0 ? (
-            <p className="text-[var(--text-secondary)] text-xs italic">Hover an image and press Ctrl+Space to add.</p>
-          ) : (
-            <div className="flex flex-nowrap gap-4">
-              {localData.map((item, idx) => (
-                <ShotImage 
-                  key={idx} 
-                  item={item} 
-                  mode={mode} 
-                  onAnswerChange={(ans) => {
-                    updateData(prevLocal => {
-                      const newLocal = [...prevLocal];
-                      if (newLocal[idx]) {
-                        newLocal[idx].answer = ans;
-                      }
-                      return newLocal;
-                    });
-                  }}
-                  onMouseEnter={() => setHoveredPanelItem({ type: 'kis', index: idx })}
-                  draggable={true}
-                  onDragStart={(e) => handleDragStart(e, { type: 'kis', index: idx }, item)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, { type: 'kis', index: idx })}
-                  onZoom={onZoom}
-                  onContext={onContext}
-                  onQuickSearch={onQuickSearch}
-                  onToggleLock={onToggleLock}
-                  onPreview={onPreview}
-                />
-              ))}
-            </div>
-          )
-        ) : (
-          <div className="flex flex-col gap-4">
-            {localData.length === 0 ? (
-              <p className="text-[var(--text-secondary)] text-xs italic">Hover an image and press Ctrl+Space to add to Trake row.</p>
+        {(() => {
+          const displayData = viewMode === 'csv' ? parsedCsvData : localData;
+          if (mode === 'kis' || mode === 'qa') {
+            return displayData.length === 0 ? (
+              <p className="text-[var(--text-secondary)] text-xs italic">
+                {viewMode === 'draft' ? "Hover an image and press Ctrl+Space to add." : "Server CSV is empty."}
+              </p>
             ) : (
-              localData.map((row, rowIdx) => (
-                <div 
-                  key={rowIdx} 
-                  className="flex gap-4 items-center bg-[var(--glass-bg)] p-2 rounded-lg border border-[var(--border-color)]"
-                  draggable={true}
-                  onDragStart={(e) => handleDragStart(e, { type: 'trake-row', index: rowIdx })}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, { type: 'trake-row', index: rowIdx })}
-                >
-                  <div className="text-[10px] text-[var(--text-secondary)] font-mono w-4">R{rowIdx+1}</div>
-                  <div className="flex flex-nowrap gap-2 overflow-x-auto flex-1">
-                    {row.length === 0 ? (
-                      <span className="text-[10px] text-[var(--text-secondary)] italic">Empty row...</span>
-                    ) : (
-                      row.map((item, idx) => (
-                        <ShotImage 
-                          key={idx} 
-                          item={item} 
-                          mode={mode} 
-                          onMouseEnter={() => setHoveredPanelItem({ type: 'trake', rIdx: rowIdx, cIdx: idx })}
-                          onPreviewTrakeFrame={onPreviewTrakeFrame}
-                          onZoom={onZoom}
-                          onContext={onContext}
-                          onQuickSearch={onQuickSearch}
-                          onToggleLock={onToggleLock}
-                          onPreview={onPreview}
-                        />
-                      ))
-                    )}
-                  </div>
-                  <button 
-                    className="text-red-400 hover:text-red-300 px-2"
-                    title="Remove row"
-                    onClick={() => {
+              <div className="flex flex-nowrap gap-4">
+                {displayData.map((item, idx) => (
+                  <ShotImage 
+                    key={idx} 
+                    item={item} 
+                    mode={mode} 
+                    onAnswerChange={(ans) => {
+                      if (viewMode === 'csv') return;
                       updateData(prevLocal => {
                         const newLocal = [...prevLocal];
-                        newLocal.splice(rowIdx, 1);
+                        if (newLocal[idx]) {
+                          newLocal[idx].answer = ans;
+                        }
                         return newLocal;
                       });
                     }}
-                  >
-                    <i className="fas fa-trash"></i>
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        )}
+                    onMouseEnter={() => setHoveredPanelItem(viewMode === 'draft' ? { type: 'kis', index: idx } : null)}
+                    draggable={viewMode === 'draft'}
+                    onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'kis', index: idx }, item)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'kis', index: idx })}
+                    onZoom={onZoom}
+                    onContext={onContext}
+                    onQuickSearch={onQuickSearch}
+                    onToggleLock={viewMode === 'draft' ? onToggleLock : undefined}
+                    onPreview={onPreview}
+                  />
+                ))}
+              </div>
+            );
+          } else {
+            return (
+              <div className="flex flex-col gap-4">
+                {displayData.length === 0 ? (
+                  <p className="text-[var(--text-secondary)] text-xs italic">
+                    {viewMode === 'draft' ? "Hover an image and press Ctrl+Space to add to Trake row." : "Server CSV is empty."}
+                  </p>
+                ) : (
+                  displayData.map((row, rowIdx) => (
+                    <div 
+                      key={rowIdx} 
+                      className="flex gap-4 items-center bg-[var(--glass-bg)] p-2 rounded-lg border border-[var(--border-color)]"
+                      draggable={viewMode === 'draft'}
+                      onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'trake-row', index: rowIdx })}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake-row', index: rowIdx })}
+                    >
+                      <div className="text-[10px] text-[var(--text-secondary)] font-mono w-4">R{rowIdx+1}</div>
+                      <div className="flex flex-nowrap gap-2 overflow-x-auto flex-1">
+                        {row.length === 0 ? (
+                          <span className="text-[10px] text-[var(--text-secondary)] italic">Empty row...</span>
+                        ) : (
+                          row.map((item, idx) => (
+                            <ShotImage 
+                              key={idx} 
+                              item={item} 
+                              mode={mode} 
+                              onMouseEnter={() => setHoveredPanelItem(viewMode === 'draft' ? { type: 'trake', rIdx: rowIdx, cIdx: idx } : null)}
+                              onPreviewTrakeFrame={onPreviewTrakeFrame}
+                              onZoom={onZoom}
+                              onContext={onContext}
+                              onQuickSearch={onQuickSearch}
+                              onToggleLock={viewMode === 'draft' ? onToggleLock : undefined}
+                              onPreview={onPreview}
+                            />
+                          ))
+                        )}
+                      </div>
+                      {viewMode === 'draft' && (
+                        <button 
+                          className="text-red-400 hover:text-red-300 px-2"
+                          title="Remove row"
+                          onClick={() => {
+                            updateData(prevLocal => {
+                              const newLocal = [...prevLocal];
+                              newLocal.splice(rowIdx, 1);
+                              return newLocal;
+                            });
+                          }}
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            );
+          }
+        })()}
       </div>
     </div>
     {qaModalShot && typeof document !== 'undefined' && createPortal(

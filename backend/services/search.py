@@ -310,26 +310,15 @@ async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Op
     if not runtime.qdrant_client or not frame_name or q_models is None:
         return None
     try:
-        must_conditions = []
-        if frame_name.startswith("_id_:"):
-            parts = frame_name[5:].split(":")
-            if len(parts) == 2:
-                fid_int = int(parts[1])
-                must_conditions = [
-                    q_models.FieldCondition(key="video_id", match=q_models.MatchValue(value=parts[0])),
-                    q_models.FieldCondition(key="frame_id", match=q_models.MatchValue(value=fid_int)),
-                ]
-            else:
-                return None
-        else:
-            base_name = os.path.splitext(frame_name)[0]
-            possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
-            must_conditions = [
-                q_models.FieldCondition(
-                    key="frame_name",
-                    match=q_models.MatchAny(any=possible_names),
-                )
-            ]
+        base_name = os.path.splitext(frame_name)[0]
+        possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
+        
+        must_conditions = [
+            q_models.FieldCondition(
+                key="frame_name",
+                match=q_models.MatchAny(any=possible_names),
+            )
+        ]
         
         points, _ = await asyncio.to_thread(
             runtime.qdrant_client.scroll,
@@ -343,6 +332,29 @@ async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Op
             if isinstance(vector, dict):
                 vector = vector.get(collection_name) or next(iter(vector.values()), None)
             return list(vector) if vector is not None else None
+            
+        # UI shortcut hallucination fallback (e.g. L22_V025_021195.webp -> L22_V025_0012_021195.webp)
+        parts = base_name.split("_")
+        if len(parts) == 3:
+            vid = f"{parts[0]}_{parts[1]}"
+            fid_str = parts[2]
+            frames = runtime.video_frame_mapping.get(vid, [])
+            true_frame = next((f for f in frames if f.endswith(f"_{fid_str}.webp") or f.endswith(f"_{str(int(fid_str))}.webp")), None)
+            if true_frame:
+                points_retry, _ = await asyncio.to_thread(
+                    runtime.qdrant_client.scroll,
+                    collection_name=collection_name,
+                    scroll_filter=q_models.Filter(must=[
+                        q_models.FieldCondition(key="frame_name", match=q_models.MatchValue(value=true_frame))
+                    ]),
+                    with_vectors=True,
+                    limit=1,
+                )
+                if points_retry and points_retry[0].vector is not None:
+                    vector = points_retry[0].vector
+                    if isinstance(vector, dict):
+                        vector = vector.get(collection_name) or next(iter(vector.values()), None)
+                    return list(vector) if vector is not None else None
     except Exception as e:
         print(f"get_stored_vector failed for {frame_name}: {e}")
     return None

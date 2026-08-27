@@ -272,6 +272,7 @@ export default function App() {
 
   const handleSelectQuery = async (filename) => {
     setActiveQueryFilename(filename);
+    setActiveCsvContent(null);
     if (!filename) return;
     try {
       const data = await fetchSubmissionQuery(filename);
@@ -279,6 +280,7 @@ export default function App() {
       setActiveCsvContent(data.csv_content || "");
     } catch (e) {
       toast.error('Failed to load query data');
+      setActiveCsvContent(""); // fallback
     }
   };
 
@@ -1304,9 +1306,6 @@ export default function App() {
       if (shot.frame_name && !isDynamicVideoFrame) {
         tempImageName = `_frame_:${shot.frame_name}`;
         imageUrl = shot.url || getImageUrl(shot.frame_name);
-      } else if (shot.video_id && shot.frame_id && !isDynamicVideoFrame) {
-        tempImageName = `_frame_:_id_:${shot.video_id}:${shot.frame_id}`;
-        imageUrl = shot.url || getImageUrl(shot.url);
       } else {
         if (shot.url?.startsWith('data:image')) {
           imageUrl = shot.url;
