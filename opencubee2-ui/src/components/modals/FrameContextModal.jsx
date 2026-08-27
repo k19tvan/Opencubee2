@@ -140,16 +140,10 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     }
   }, []);
 
-  const pushToTeam = useCallback((shot) => {
-    sendRealtimeMessage?.({
-      type: 'new_frame',
-      data: { shot, user: { name: username, color: userColor } },
-    });
-  }, [sendRealtimeMessage, username, userColor]);
-
-  const pushToTrake = useCallback((shot) => {
-    sendRealtimeMessage?.({ type: 'trake_add', data: { shot } });
-  }, [sendRealtimeMessage]);
+  const pushToPanel = useCallback((shot) => {
+    window.dispatchEvent(new CustomEvent('push-to-panel', { detail: { shot } }));
+    toast.success('Pushed to Panel!');
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -159,29 +153,16 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         onClose();
         return;
       }
-      if (e.ctrlKey && e.code === 'Space') {
+      if (e.ctrlKey && !e.shiftKey && e.code === 'Space') {
         e.preventDefault();
-        if (e.shiftKey) {
-          if (hoveredShot && onSubmitDres) {
-            onSubmitDres(hoveredShot);
-          }
-        } else {
-          if (hoveredShot) {
-            pushToTeam(hoveredShot);
-            toast.success('Sent to Team!');
-          }
-        }
-      } else if (e.shiftKey && !e.ctrlKey && e.code === 'Space') {
-        e.preventDefault();
-        e.stopImmediatePropagation?.();
         if (hoveredShot) {
-          pushToTrake(hoveredShot);
+          pushToPanel(hoveredShot);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hoveredShot, onSubmitDres, onClose, pushToTeam, pushToTrake]);
+  }, [hoveredShot, onClose, pushToPanel]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -338,10 +319,6 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                 const labelText = isVideoTimeline
                   ? `#${shot.frame_id}`
                   : (offset > 0 ? `+${offset}` : `${offset}`);
-                const isCorrect = isSameShot(shot, correctSubmission);
-                const isWrong = !isCorrect && wrongFrames.some((wrongFrame) => isSameShot(shot, wrongFrame));
-                const hasSubmissionStatus = isCorrect || isWrong;
-                const statusColor = isCorrect ? '#ccff00' : '#ff1744';
 
                 return (
                   <div
@@ -356,13 +333,9 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                       } ${
                         isCenter
                           ? 'border-[6px] ring-[6px] ring-slate-100'
-                          : hasSubmissionStatus
-                            ? 'border-0 z-20'
                           : 'border-[var(--border-color)] hover:border-[var(--accent-primary)]'
                       }`}
-                      style={hasSubmissionStatus ? {
-                        boxShadow: `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`,
-                      } : isCenter ? {
+                      style={isCenter ? {
                         borderColor: '#d1d5db',
                         boxShadow: '0 0 12px #f8fafc, 0 0 28px #e5e7eb, 0 0 46px #94a3b8',
                       } : undefined}
@@ -403,42 +376,17 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
                         }`}>
                           {isCenter ? 'ORIGINAL' : labelText}
                         </div>
-                        {isWrong && (
-                          <div className="px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center justify-center w-fit shadow-[0_0_8px_rgba(225,29,72,0.8)] border border-rose-400" title="Wrong Submission">
-                            <span className="text-[9px] font-extrabold tracking-widest text-white">WRONG</span>
-                          </div>
-                        )}
-                        {isCorrect && (
-                          <div className="px-2 py-0.5 rounded-full bg-[#ccff00] text-slate-900 flex items-center justify-center w-fit shadow-[0_0_10px_#ccff00] border border-[#a8cc00]/50" title="Correct Submission">
-                            <span className="text-[9px] font-extrabold tracking-widest text-slate-900">CORRECT</span>
-                          </div>
-                        )}
                       </div>
 
                       <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20">
-                      {onSubmitDres && (
                         <button
-                          className="absolute top-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-blue-500 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
-                          onClick={(e) => { e.stopPropagation(); onSubmitDres(shot); }}
-                          title="Submit to DRES"
+                          className="absolute top-2 right-2 px-3 py-1.5 rounded-md bg-emerald-600/95 border border-emerald-400 text-white flex items-center justify-center text-[10px] hover:bg-emerald-500 hover:scale-105 shadow-[0_0_12px_rgba(16,185,129,0.8)] cursor-pointer z-50 transition-all gap-1.5 opacity-0 group-hover:opacity-100"
+                          onClick={(e) => { e.stopPropagation(); pushToPanel(shot); }}
+                          title="Push to Panel (Ctrl + Space)"
                         >
-                          <i className="fas fa-paper-plane"></i>
+                          <i className="fas fa-level-up-alt"></i>
+                          <span className="font-bold tracking-wider">PUSH</span>
                         </button>
-                      )}
-                      <button 
-                        className="absolute bottom-1.5 left-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
-                        onClick={(e) => { e.stopPropagation(); pushToTeam(shot); }} 
-                        title="Send to Team"
-                      >
-                        <i className="fas fa-users"></i>
-                      </button>
-                      <button 
-                        className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
-                        onClick={(e) => { e.stopPropagation(); pushToTrake(shot); }} 
-                        title="Pin to Trake"
-                      >
-                        <i className="fas fa-thumbtack"></i>
-                      </button>
                       </div>
                     </div>
                     {isVideoTimeline && (
@@ -464,7 +412,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         </div>
 
         <div className="px-6 py-4 border-t border-[var(--border-color)] text-center text-xs text-[var(--text-secondary)] bg-[var(--glass-bg)]">
-          Click to zoom. Ctrl+Click: neighboring frames. Ctrl+Alt+Click: horizontal timeline of the entire video. Right-click to open video preview. Hover over any frame for action options (Ctrl+Shift+Space to submit DRES, Ctrl+Space to Send to Team).
+          Click to zoom. Ctrl+Click: neighboring frames. Ctrl+Alt+Click: horizontal timeline of the entire video. Right-click to open video preview. Hover over any frame for action options (Ctrl+Space to Push to Panel).
         </div>
 
       </div>

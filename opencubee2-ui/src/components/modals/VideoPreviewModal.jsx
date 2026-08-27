@@ -217,42 +217,14 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
     };
   };
 
-  const handlePushFrame = () => {
-    const socket = socketRef?.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      toast.error('Teamwork connection is not ready.');
-      return;
-    }
-
-    const mockShot = createCurrentShot();
-    if (!mockShot) {
-      toast.error('Could not capture the current video frame.');
-      return;
-    }
-
-    sendRealtimeMessage({
-      type: 'new_frame',
-      data: {
-        shot: mockShot,
-        user: { name: username, color: userColor },
-      },
-    });
-    toast.success('Frame sent to Teamwork Panel!');
-  };
-
-  const handleSubmitFrame = () => {
-    if (!onDresSubmit) return;
+  const handlePushToPanel = () => {
     const mockShot = createCurrentShot();
     if (!mockShot) return;
-    
-    onDresSubmit(mockShot, false);
+    window.dispatchEvent(new CustomEvent('push-to-panel', { detail: { shot: mockShot } }));
+    toast.success('Pushed frame to Submission Panel');
   };
 
-  const handlePinToTrake = () => {
-    const mockShot = createCurrentShot();
-    if (!mockShot || !onPushToTrake) return;
-    onPushToTrake(mockShot);
-  };
+
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -268,12 +240,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
         if (event.repeat) return;
         event.preventDefault();
         event.stopImmediatePropagation?.();
-        handlePushFrame();
-      } else if (event.shiftKey && !event.ctrlKey && event.code === 'Space') {
-        if (event.repeat) return;
-        event.preventDefault();
-        event.stopImmediatePropagation?.();
-        handlePinToTrake();
+        handlePushToPanel();
       } else if (event.code === 'Space') {
         event.preventDefault();
         handlePlayPause();
@@ -282,7 +249,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentFrame, handlePinToTrake, handlePushFrame, handlePlayPause, onClose, seekToFrame]);
+  }, [currentFrame, handlePushToPanel, handlePlayPause, onClose, seekToFrame]);
 
   const stripPosition = currentTime / thumbnailInterval * THUMB_STEP;
   const stripTranslate = timelineWidth / 2 - stripPosition - THUMB_WIDTH / 2;
@@ -337,7 +304,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
             <button type="button" className="video-control-button" onClick={() => seekToFrame(currentFrame - 1)} title="Back 1 frame">
               <i className="fas fa-step-backward"></i>
             </button>
-            <button type="button" className="w-11 h-11 shrink-0 rounded-xl bg-[var(--accent-primary)] text-white hover:brightness-110 active:scale-95" onClick={handlePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
+            <button type="button" className="w-11 h-11 shrink-0 rounded-xl bg-blue-600 border border-blue-400 text-white hover:bg-blue-500 hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(37,99,235,0.6)] transition-all" onClick={handlePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
               <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
             </button>
             <button type="button" className="video-control-button" onClick={() => seekToFrame(currentFrame + 1)} title="Forward 1 frame">
@@ -417,7 +384,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className={`px-3 py-2 rounded-lg border text-xs font-semibold ${fineScrub ? 'bg-[var(--accent-primary)] text-white border-transparent' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}
+                className={`px-3 py-2 rounded-lg border text-xs font-bold ${fineScrub ? 'bg-blue-500 text-white border-blue-400 shadow-md' : 'bg-transparent text-slate-300 border-white/20 hover:bg-white/10'}`}
                 onClick={() => setFineScrub((value) => !value)}
                 title="Fine shows denser timeline thumbnails; overview covers more time"
               >
@@ -427,7 +394,7 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
                 <button
                   key={rate}
                   type="button"
-                  className={`px-3 py-2 rounded-lg border text-xs font-semibold ${playbackRate === rate ? 'bg-white text-slate-950 border-white' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}
+                  className={`px-3 py-2 rounded-lg border text-xs font-bold ${playbackRate === rate ? 'bg-blue-500 text-white border-blue-400 shadow-md' : 'bg-transparent text-slate-300 border-white/20 hover:bg-white/10'}`}
                   onClick={() => setPlaybackRate(rate)}
                 >
                   {rate}x
@@ -438,28 +405,11 @@ export default function VideoPreviewModal({ videoId, initialFrame, onClose, sock
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="px-4 py-2 rounded-lg bg-rose-500/20 border border-rose-500/50 text-rose-400 text-xs font-bold uppercase tracking-wider hover:bg-rose-500 hover:text-white active:scale-95 disabled:opacity-40"
-                onClick={handlePinToTrake}
-                disabled={!onPushToTrake}
-                title="Pin current frame to Trake"
+                className="px-4 py-2 rounded-lg bg-emerald-600/95 border border-emerald-400 text-white text-xs font-bold uppercase tracking-wider hover:bg-emerald-500 hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(16,185,129,0.8)] transition-all flex items-center"
+                onClick={handlePushToPanel}
+                title="Push to Panel (Ctrl + Space)"
               >
-                <i className="fas fa-thumbtack mr-2"></i>Pin to Trake
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg bg-[var(--accent-primary)]/20 border border-[var(--accent-primary)]/50 text-[var(--accent-primary)] text-xs font-bold uppercase tracking-wider hover:bg-[var(--accent-primary)] hover:text-white active:scale-95 disabled:opacity-40"
-                onClick={handleSubmitFrame}
-                disabled={!onDresSubmit}
-              >
-                <i className="fas fa-paper-plane mr-2"></i>Submit
-              </button>
-              
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-wider hover:bg-[var(--accent-primary)] hover:border-transparent active:scale-95 disabled:opacity-40"
-                onClick={handlePushFrame}
-              >
-                <i className="fas fa-users mr-2"></i>Push to Team
+                <i className="fas fa-level-up-alt mr-2"></i>Push to Panel
               </button>
             </div>
           </div>

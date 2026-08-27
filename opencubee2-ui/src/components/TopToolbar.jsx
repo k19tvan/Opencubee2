@@ -48,13 +48,10 @@ export default function TopToolbar({
   userColor,
   theme,
   setTheme,
-  dresMode,
-  setDresMode,
-  dresSessionId,
-  onLogoutDres,
-  onOpenDresLogin,
-  showTrake,
-  setShowTrake,
+  onUploadZip,
+  submissionQueries = [],
+  activeQueryFilename,
+  onSelectQuery,
   similarityScopeEnabled,
   hasSimilarityScope,
   onToggleSimilarityScope,
@@ -74,7 +71,6 @@ export default function TopToolbar({
   setAutoTranslate,
   sentenceLevel = false,
   setSentenceLevel = () => { },
-  dresUsername,
   isMuted,
   setIsMuted,
   getHistoryEntries = () => [],
@@ -85,26 +81,18 @@ export default function TopToolbar({
   const themeRef = useRef(null);
   const [isModelsOpen, setIsModelsOpen] = useState(false);
   const modelsRef = useRef(null);
-  const [isDresModeOpen, setIsDresModeOpen] = useState(false);
-  const dresModeRef = useRef(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isQueryDropdownOpen, setIsQueryDropdownOpen] = useState(false);
   const historyRef = useRef(null);
+  const queryDropRef = useRef(null);
   const activeThemeMeta = THEME_META[theme] || THEME_META.dark;
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (themeRef.current && !themeRef.current.contains(event.target)) {
-        setIsThemeOpen(false);
-      }
-      if (modelsRef.current && !modelsRef.current.contains(event.target)) {
-        setIsModelsOpen(false);
-      }
-      if (dresModeRef.current && !dresModeRef.current.contains(event.target)) {
-        setIsDresModeOpen(false);
-      }
-      if (historyRef.current && !historyRef.current.contains(event.target)) {
-        setIsHistoryOpen(false);
-      }
+      if (themeRef.current && !themeRef.current.contains(event.target)) setIsThemeOpen(false);
+      if (modelsRef.current && !modelsRef.current.contains(event.target)) setIsModelsOpen(false);
+      if (historyRef.current && !historyRef.current.contains(event.target)) setIsHistoryOpen(false);
+      if (queryDropRef.current && !queryDropRef.current.contains(event.target)) setIsQueryDropdownOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -226,7 +214,13 @@ export default function TopToolbar({
         {/* Shortcuts & Utilities */}
         <ToolBtn onClick={() => onOpenModal('help')} icon="fas fa-keyboard" label="Shortcuts" theme={theme} />
         <ToolBtn
-          onClick={() => setAutoTranslate(!autoTranslate)}
+          onClick={() => {
+            setAutoTranslate(prev => {
+              const next = !prev;
+              toast.success(`Auto Translate: ${next ? 'ON' : 'OFF'}`, { id: 'auto-translate-toast' });
+              return next;
+            });
+          }}
           icon="fas fa-language"
           label="Auto Translate"
           active={autoTranslate}
@@ -238,14 +232,19 @@ export default function TopToolbar({
 
         {/* Search Mode Toggles */}
         <ToolBtn
-          onClick={() => setSentenceLevel(!sentenceLevel)}
+          onClick={() => {
+            setSentenceLevel(prev => {
+              const next = !prev;
+              toast.success(`Sentence level ASR: ${next ? 'ON' : 'OFF'}`, { id: 'sentence-level-toast' });
+              return next;
+            });
+          }}
           icon="fas fa-align-left"
           label="Sentence level"
           active={sentenceLevel}
           title={sentenceLevel ? "Sentence level Semantic ASR: ON (Ctrl + Q)" : "Sentence level Semantic ASR: OFF (Ctrl + Q)"}
           theme={theme}
         />
-        <ToolBtn onClick={() => setShowTrake(!showTrake)} icon="fas fa-stream" label="Trake" active={showTrake} theme={theme} />
         <ToolBtn
           onClick={onToggleSimilarityScope}
           icon="fas fa-images"
@@ -260,7 +259,13 @@ export default function TopToolbar({
           theme={theme}
         />
         <ToolBtn
-          onClick={() => setMetaClipOnly((previous) => !previous)}
+          onClick={() => {
+            setMetaClipOnly(prev => {
+              const next = !prev;
+              toast.success(`MetaCLIP Filter: ${next ? 'ON' : 'OFF'}`, { id: 'metaclip-toast' });
+              return next;
+            });
+          }}
           icon="fas fa-bolt"
           label="MetaCLIP only"
           active={metaClipOnly}
@@ -363,59 +368,94 @@ export default function TopToolbar({
 
         <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
-        {/* Integration & System */}
-        {dresSessionId ? (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="relative flex items-center group" ref={dresModeRef}>
+        {/* Integrations (Zip Upload & Query Select) */}
+        {!submissionQueries || submissionQueries.length === 0 ? (
+          <label
+            data-topbar-button="true"
+            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 cursor-pointer font-bold`}
+            title="Upload ZIP containing TXT queries"
+          >
+            <i className="fas fa-file-archive text-[11px]"></i>
+            <span>Upload Queries ZIP</span>
+            <input type="file" accept=".zip" className="hidden" onChange={(e) => {
+              if (e.target.files && e.target.files[0]) {
+                onUploadZip(e.target.files[0]);
+              }
+              e.target.value = null;
+            }} />
+          </label>
+        ) : (
+          <div className="flex items-center gap-1 shrink-0 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg p-0.5">
+            <div className="relative flex items-center group" ref={queryDropRef}>
               <button
-                onClick={() => setIsDresModeOpen(!isDresModeOpen)}
-                data-topbar-button="true"
-                className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
-                title="DRES Submit Mode (Alt + Q to switch KIS/QA)"
+                onClick={() => setIsQueryDropdownOpen(!isQueryDropdownOpen)}
+                className="flex items-center justify-between min-w-[200px] max-w-[250px] px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--glass-bg)] rounded-md transition-colors"
+                title={activeQueryFilename || "Select Query"}
               >
-                <i className={`fas fa-paper-plane ${theme === 'jujutsu' ? 'text-[12px]' : 'text-[11px]'}`}></i>
-                <span className="hidden sm:inline">{dresMode}</span>
+                <div className="flex items-center gap-2 truncate">
+                  <i className="fas fa-file-csv text-blue-400"></i>
+                  <span className="truncate font-semibold uppercase">{activeQueryFilename || "Select Query"}</span>
+                </div>
+                <i className={`fas fa-chevron-down text-[10px] text-[var(--text-secondary)] ml-2 transition-transform ${isQueryDropdownOpen ? 'rotate-180' : ''}`}></i>
               </button>
 
               <div
-                className={`absolute top-[calc(100%+6px)] right-0 min-w-[120px] flex flex-col ${theme === 'jujutsu' ? 'rounded-xl overflow-hidden' : 'rounded-xl'} border border-[var(--border-color)] shadow-xl transition-all duration-200 origin-top-right z-50 py-1 ${isDresModeOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} ${theme === 'jujutsu' ? 'bg-[#5b40c2]' : 'bg-[var(--bg-secondary)]'}`}
+                className={`absolute top-[calc(100%+6px)] left-0 min-w-[280px] flex flex-col rounded-xl border border-[var(--border-color)] shadow-2xl transition-all duration-200 origin-top-left z-50 py-1 ${isQueryDropdownOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'} bg-[var(--bg-secondary)] overflow-hidden`}
               >
-                {['KIS', 'QA'].map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => {
-                      setDresMode(mode);
-                      setIsDresModeOpen(false);
-                    }}
-                    className={`text-left px-3.5 py-1.5 text-xs transition-colors duration-150 flex items-center gap-2 ${dresMode === mode ? (theme === 'jujutsu' ? 'bg-[#795ceb] text-white font-bold' : 'bg-[var(--glass-bg)] text-[var(--text-primary)] font-semibold') : (theme === 'jujutsu' ? 'text-white hover:bg-[#684dd4]' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]')}`}
-                  >
-                    <span className="flex-grow">{mode} Mode</span>
-                    {dresMode === mode && <i className="fas fa-check text-[10px] text-emerald-400"></i>}
-                  </button>
-                ))}
+                <div className="max-h-[50vh] overflow-y-auto custom-scrollbar">
+                  {submissionQueries.map((query) => {
+                    const isActive = query.filename === activeQueryFilename;
+                    const isEmpty = query.is_empty;
+                    return (
+                      <button
+                        key={query.filename}
+                        onClick={() => {
+                          onSelectQuery(query.filename);
+                          setIsQueryDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs transition-colors duration-150 flex items-center gap-2 ${isActive ? 'bg-blue-500/20 text-blue-300 font-bold' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] hover:text-[var(--text-primary)]'}`}
+                      >
+                        <i className={`fas ${!isEmpty ? 'fa-check-circle text-emerald-400' : 'fa-circle text-[var(--border-color)]'}`}></i>
+                        <span className="truncate">{query.filename}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            <button
-              onClick={onOpenDresLogin}
-              data-topbar-button="true"
-              className={`${toolBtnBaseClasses()} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20`}
-              title="DRES Session Active (Click to view session/logout)"
-            >
-              <i className="fas fa-plug text-[11px]"></i>
-              <span className="hidden sm:inline">{dresUsername || 'Dres'}</span>
-            </button>
+            <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 mx-0.5" />
+
+            <div className="flex items-center">
+              <label
+                className="flex items-center justify-center w-7 h-7 rounded text-[var(--text-secondary)] hover:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer transition-colors"
+                title="Upload ZIP"
+              >
+                <i className="fas fa-file-archive text-[11px]"></i>
+                <input type="file" accept=".zip" className="hidden" onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    onUploadZip(e.target.files[0]);
+                  }
+                  e.target.value = null;
+                }} />
+              </label>
+              
+              <button
+                onClick={() => {
+                  const name = window.prompt("Enter new CSV filename (e.g. L21_V001.csv):");
+                  if (name && name.trim()) {
+                    let finalName = name.trim();
+                    if (!finalName.endsWith('.csv')) finalName += '.csv';
+                    onCreateCsv(finalName);
+                  }
+                }}
+                className="flex items-center justify-center w-7 h-7 rounded text-[var(--text-secondary)] hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                title="Create empty CSV"
+              >
+                <i className="fas fa-plus text-[11px]"></i>
+              </button>
+            </div>
           </div>
-        ) : (
-          <button
-            onClick={onOpenDresLogin}
-            data-topbar-button="true"
-            className={`${toolBtnBaseClasses()} ${toolBtnStateClasses(false)}`}
-            title="DRES Login"
-          >
-            <i className="fas fa-plug text-[11px]"></i>
-            <span className="hidden sm:inline">Dres</span>
-          </button>
         )}
 
         <button

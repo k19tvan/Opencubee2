@@ -211,12 +211,16 @@ export default function StageCard({
         try {
           const shotData = JSON.parse(rawJson);
           if (shotData && shotData.url) targetUrl = shotData.url;
-          if (shotData && shotData.frame_name) internalFrameName = shotData.frame_name;
+          if (shotData && shotData.frame_name) {
+            internalFrameName = `_frame_:${shotData.frame_name}`;
+          } else if (shotData && shotData.video_id && shotData.frame_id) {
+            internalFrameName = `_frame_:_id_:${shotData.video_id}:${shotData.frame_id}`;
+          }
         } catch { }
       }
 
       if (internalFrameName) {
-        setTempImageName(`_frame_:${internalFrameName}`);
+        setTempImageName(internalFrameName);
         if (targetUrl) setImagePreview(targetUrl);
         return;
       }

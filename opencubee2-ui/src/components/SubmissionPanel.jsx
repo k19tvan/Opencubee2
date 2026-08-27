@@ -1,0 +1,580 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { getImageUrl } from '../utils/imageUrl';
+import { getVideoThumbnailUrl, BASE_URL } from '../api';
+import toast from 'react-hot-toast';
+import QAModal from './modals/QAModal';
+
+const getAbsoluteThumbnailUrl = (videoId, frameId) => {
+  let url = getVideoThumbnailUrl(videoId, frameId, 360);
+  if (url.startsWith('/')) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    url = `${origin}${url}`;
+  }
+  return url;
+};
+
+// Cache metadata globally so it persists across query switching (unmounts)
+const globalMetaMap = new Map();
+
+const parseCsvContent = (csvString, mode, currentData = []) => {
+  if (!csvString) return [];
+  
+  // Build a lookup map from currentData to preserve metadata like similarity_labels
+  const metaMap = new Map();
+  const flatData = mode === 'trake' ? currentData.flat() : currentData;
+  for (const item of flatData) {
+    if (item?.shot) {
+      metaMap.set(`${item.shot.video_id}_${item.shot.frame_id}`, item.shot);
+    }
+  }
+
+  const getPreservedShot = (video_id, frame_id) => {
+    const url = getAbsoluteThumbnailUrl(video_id, frame_id);
+    const baseShot = { video_id, frame_id, url };
+    
+    const existingShot = metaMap.get(`${video_id}_${frame_id}`) || globalMetaMap.get(`${video_id}_${frame_id}`);
+    if (existingShot) {
+      return { ...baseShot, frame_name: existingShot.frame_name, similarity_labels: existingShot.similarity_labels, username: existingShot.username };
+    }
+    return baseShot;
+  };
+
+  const lines = csvString.split('\n').filter(l => l.trim());
+  
+  if (mode === 'kis') {
+    return lines.map(line => {
+      const p = line.split(',');
+      const video_id = Object.is(p[0], undefined) ? '' : p[0];
+      const frame_id = Object.is(p[1], undefined) ? '' : String(p[1]).trim();
+      return { shot: getPreservedShot(video_id, frame_id), answer: null };
+    });
+  } else if (mode === 'qa') {
+    return lines.map(line => {
+      const p = line.split(',');
+      const video_id = Object.is(p[0], undefined) ? '' : p[0];
+      const frame_id = Object.is(p[1], undefined) ? '' : String(p[1]).trim();
+      const answer = p.length > 2 ? p.slice(2).join(',').replace(/^"|"$/g, '') : '';
+      return { shot: getPreservedShot(video_id, frame_id), answer };
+    });
+  } else if (mode === 'trake') {
+    return lines.map(line => {
+      const p = line.split(',');
+      const video_id = Object.is(p[0], undefined) ? '' : p[0];
+      const frameIds = p.slice(1);
+      return frameIds.map(fid => {
+        const strFid = String(fid).trim();
+        return { shot: getPreservedShot(video_id, strFid) };
+      });
+    });
+  }
+  return [];
+};
+
+const serializeCsvContent = (localData, mode) => {
+  if (mode === 'kis') {
+    return localData.map(item => `${item.shot.video_id},${item.shot.frame_id}`).join('\n');
+  } else if (mode === 'qa') {
+    return localData.map(item => `${item.shot.video_id},${item.shot.frame_id},"${item.answer || ''}"`).join('\n');
+  } else if (mode === 'trake') {
+    return localData.map(row => {
+      if (row.length === 0) return '';
+      const vid = row[0].shot.video_id;
+      const fids = row.map(item => item.shot.frame_id).join(',');
+      return `${vid},${fids}`;
+    }).filter(l => l).join('\n');
+  }
+  return '';
+};
+
+const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onPreviewTrakeFrame, onZoom, onContext, onQuickSearch, onToggleLock, onPreview, draggable, onDragStart, onDragOver, onDrop }) => {
+  const [answer, setAnswer] = useState(item.answer || '');
+
+  useEffect(() => {
+    setAnswer(item.answer || '');
+  }, [item.answer]);
+
+  const handleBlur = () => {
+    if (onAnswerChange) onAnswerChange(answer);
+  };
+
+  const handleInteraction = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const computedUrl = item.shot?.url || item.shot?.frame_name || item.shot?.filepath 
+      ? getImageUrl(item.shot.url || item.shot.frame_name || item.shot.filepath) 
+      : getAbsoluteThumbnailUrl(item.shot.video_id, item.shot.frame_id);
+      
+    const enrichedShot = {
+      ...item.shot,
+      url: computedUrl,
+    };
+    if (item.shot.frame_name) {
+      enrichedShot.frame_name = item.shot.frame_name;
+    }
+
+    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+    if (isCtrlOrCmd && e.altKey && onContext) {
+      onContext({ ...enrichedShot, contextView: 'video-timeline' });
+      return;
+    }
+    if (e.altKey && onToggleLock) {
+      onToggleLock(enrichedShot);
+      return;
+    }
+    if (isCtrlOrCmd && e.shiftKey && onQuickSearch) {
+      onQuickSearch(enrichedShot);
+    } else if (isCtrlOrCmd && onContext) {
+      onContext({ ...enrichedShot, contextView: 'neighbors' });
+    } else if (onZoom) {
+      onZoom(computedUrl);
+    }
+  };
+
+  return (
+    <div 
+      className="relative flex-shrink-0 w-[180px] rounded-lg overflow-hidden border border-[var(--border-color)] hover:border-[var(--accent-primary)] group cursor-pointer"
+      onMouseEnter={onMouseEnter}
+      onClick={handleInteraction}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onPreview) onPreview(item.shot?.video_id, item.shot?.frame_id);
+      }}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      <div className="aspect-video">
+        <img
+          src={getImageUrl(item.shot?.url || item.shot?.frame_name || item.shot?.filepath)}
+          alt="Frame"
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = 'data:image/svg+xml;base64,...'; // fallback
+          }}
+          loading="lazy"
+        />
+      </div>
+      <div className="absolute top-1 right-1 bg-gradient-to-r from-indigo-900/90 to-indigo-700/90 border border-indigo-500/50 px-1.5 py-0.5 rounded text-[10px] text-white font-mono z-20 shadow-md">
+        {item.shot?.video_id}_{item.shot?.frame_id}
+      </div>
+      {(() => {
+        const labels = item.shot?.similarity_labels || [];
+        const hasDuplicate = labels.includes('DUP');
+        const hasReuse = labels.includes('REUSE');
+        if (hasDuplicate || hasReuse) {
+          return (
+            <div className="absolute top-1.5 left-1.5 z-20 pointer-events-none opacity-90">
+              <div className={`px-1.5 py-[3px] rounded bg-gradient-to-br text-white flex items-center justify-center w-fit shadow-[0_2px_8px_rgba(0,0,0,0.6)] border ${hasDuplicate ? 'from-[#e86c1f] to-[#cf5505] border-[#ff8b45]' : 'from-emerald-500 to-emerald-700 border-emerald-400'}`}>
+                <i className="far fa-clone text-[8px] mr-[3px]"></i>
+                <span className="text-[8px] font-black tracking-widest">{hasDuplicate ? 'DUP' : 'REPE'}</span>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
+      
+      {item.shot?.username && (
+        <div className={`absolute z-20 pointer-events-none opacity-90 ${mode === 'qa' && item.answer ? 'bottom-1.5 right-1.5' : 'bottom-1.5 left-1.5'}`}>
+          <div className="px-1.5 py-[2px] rounded bg-violet-600/90 text-white flex items-center justify-center w-fit shadow-[0_2px_8px_rgba(0,0,0,0.6)] border border-violet-400">
+            <i className="fas fa-user-astronaut text-[8px] mr-[3px]"></i>
+            <span className="text-[8.5px] font-bold tracking-wide">{item.shot.username}</span>
+          </div>
+        </div>
+      )}
+
+      {mode === 'qa' && item.answer && (
+        <div className="absolute bottom-1.5 left-1.5 bg-emerald-500/90 backdrop-blur-md px-2 py-0.5 rounded shadow-lg text-[10.5px] font-extrabold text-white max-w-[120px] truncate border border-emerald-400/50 z-20" title={item.answer}>
+          {item.answer}
+        </div>
+      )}
+      {mode === 'trake' && (
+        <button
+          type="button"
+          draggable={false}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (onPreviewTrakeFrame) onPreviewTrakeFrame(item.shot);
+          }}
+          className="absolute bottom-1.5 right-1.5 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-slate-900/90 text-xs text-white shadow-md transition-all hover:scale-110 hover:border-transparent hover:bg-blue-500 cursor-pointer"
+          title="Preview frames around this point"
+          aria-label="Preview frames around this point"
+        >
+          <i className="fas fa-film"></i>
+        </button>
+      )}
+    </div>
+  );
+};
+
+export default function SubmissionPanel({ 
+  activeQueryFilename, 
+  activeQueryText,
+  activeCsvContent, 
+  onSaveSubmission, 
+  onSyncState,
+  hoveredFrame, // this comes from layout when hovering over gallery
+  onPreviewTrakeFrame,
+  onZoom,
+  onContext,
+  onQuickSearch,
+  onToggleLock,
+  onPreview,
+  username
+}) {
+  const [localData, setLocalData] = useState([]);
+  const [mode, setMode] = useState('kis');
+  const [hoveredPanelItem, setHoveredPanelItem] = useState(null);
+  const [qaModalShot, setQaModalShot] = useState(null);
+  const [qaModalTrigger, setQaModalTrigger] = useState(0);
+
+  useEffect(() => {
+    if (!activeQueryFilename) return;
+    const computedMode = activeQueryFilename.includes('-qa') ? 'qa' 
+                       : activeQueryFilename.includes('-trake') ? 'trake' 
+                       : 'kis';
+    setMode(computedMode);
+    setLocalData(prevData => parseCsvContent(activeCsvContent, computedMode, prevData));
+  }, [activeQueryFilename, activeCsvContent]);
+
+  const updateData = useCallback((updater) => {
+    setLocalData(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      
+      if (mode === 'trake') {
+        const hasMixed = next.some(row => {
+          if (row.length === 0) return false;
+          const firstVid = row[0].shot.video_id;
+          return row.some(item => item.shot.video_id !== firstVid);
+        });
+        if (hasMixed) return next;
+      }
+
+      if (onSyncState) {
+        const nextCsv = serializeCsvContent(next, mode);
+        onSyncState(nextCsv);
+      }
+      return next;
+    });
+  }, [mode, onSyncState, activeCsvContent]);
+
+  const addFrame = useCallback((shot, answer = '') => {
+    if (!shot) return;
+    const { video_id } = shot;
+    // ensure shot has frame_id extracted properly if using getDresFrameNumber
+    const frame_id = shot.frame_id || (shot.frame_name ? shot.frame_name.split('_').pop().split('.')[0] : '');
+    const normalizedShot = { ...shot, video_id, frame_id, username };
+    globalMetaMap.set(`${video_id}_${frame_id}`, normalizedShot);
+
+    updateData(prev => {
+      if (mode === 'kis' || mode === 'qa') {
+        return [...prev, { shot: normalizedShot, answer }];
+      } else if (mode === 'trake') {
+        const next = [...prev];
+        if (next.length === 0) next.push([]);
+        next[next.length - 1].push({ shot: normalizedShot });
+        return next;
+      }
+      return prev;
+    });
+  }, [mode, updateData]);
+
+  const removeFrame = useCallback((targetInfo) => {
+    if (!targetInfo) return;
+    updateData(prev => {
+      if (mode === 'kis' || mode === 'qa') {
+        if (targetInfo.type === 'kis') {
+          return prev.filter((_, i) => i !== targetInfo.index);
+        }
+      } else if (mode === 'trake') {
+        if (targetInfo.type === 'trake') {
+          const next = [...prev];
+          if (next[targetInfo.rIdx]) {
+            next[targetInfo.rIdx] = next[targetInfo.rIdx].filter((_, i) => i !== targetInfo.cIdx);
+          }
+          return next;
+        }
+      }
+      return prev;
+    });
+  }, [mode, updateData]);
+
+  const handleDragStart = (e, payload, item) => {
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      ...payload,
+      ...(item?.shot ? {
+          video_id: item.shot.video_id,
+          frame_id: item.shot.frame_id,
+          frame_name: item.shot.frame_name,
+          url: item.shot.url
+      } : {})
+    }));
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e, targetPayload) => {
+    e.preventDefault();
+    try {
+      const source = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (!source.type || source.type !== targetPayload.type) return;
+
+      if (source.type === 'kis') {
+        const fromIdx = source.index;
+        const toIdx = targetPayload.index;
+        if (fromIdx === toIdx) return;
+        updateData(prev => {
+          const next = [...prev];
+          const [moved] = next.splice(fromIdx, 1);
+          next.splice(toIdx, 0, moved);
+          return next;
+        });
+      } else if (source.type === 'trake-row') {
+        const fromIdx = source.index;
+        const toIdx = targetPayload.index;
+        if (fromIdx === toIdx) return;
+        updateData(prev => {
+          const next = [...prev];
+          const [moved] = next.splice(fromIdx, 1);
+          next.splice(toIdx, 0, moved);
+          return next;
+        });
+      }
+    } catch (err) {}
+  };
+
+  const handleAddRow = () => {
+    if (mode === 'trake') {
+      updateData(prev => [...prev, []]);
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.repeat || !activeQueryFilename) return;
+      if (document.querySelector('[data-shortcut-scope="modal"]')) return;
+
+      // Ctrl + Shift + Space -> Submit
+      if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
+        e.preventDefault();
+        
+        if (mode === 'trake') {
+          const hasMixed = localData.some(row => {
+            if (row.length === 0) return false;
+            const firstVid = row[0].shot.video_id;
+            return row.some(item => item.shot.video_id !== firstVid);
+          });
+          if (hasMixed) {
+            toast.error("Không thể lưu: Có dòng phụ (Trake) chứa nhiều video_id khác nhau!");
+            return;
+          }
+        }
+
+        const newCsv = serializeCsvContent(localData, mode);
+        onSaveSubmission(newCsv);
+        return;
+      }
+
+      // Ctrl + Space -> Add / Remove hovered frame
+      if (e.ctrlKey && !e.shiftKey && e.code === 'Space') {
+        e.preventDefault();
+        if (hoveredPanelItem) {
+          removeFrame(hoveredPanelItem);
+        } else if (hoveredFrame) {
+          if (mode === 'qa') {
+            setQaModalShot(hoveredFrame);
+            setQaModalTrigger(t => t + 1);
+          } else {
+            addFrame(hoveredFrame);
+          }
+        }
+      }
+    };
+
+    const handleCustomPushEvent = (e) => {
+      const shot = e.detail?.shot;
+      if (!shot) return;
+      if (mode === 'qa') {
+        setQaModalShot(shot);
+        setQaModalTrigger(t => t + 1);
+      } else {
+        addFrame(shot);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('push-to-panel', handleCustomPushEvent);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('push-to-panel', handleCustomPushEvent);
+    };
+  }, [activeQueryFilename, localData, mode, onSaveSubmission, hoveredFrame, addFrame, removeFrame, hoveredPanelItem]);
+
+  if (!activeQueryFilename) {
+    return (
+      <div className="px-6 py-4 border-b border-[var(--border-color)]">
+        <p className="text-[var(--text-secondary)] text-xs italic">Select a query from the top bar to start submitting.</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+    <div 
+      className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] shadow-sm z-[49] relative" 
+      onMouseLeave={() => setHoveredPanelItem(null)}
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-gradient-to-r from-[var(--bg-secondary)] to-[var(--bg-primary)] shadow-inner gap-4">
+        <div className="flex-1 min-w-0 pr-4">
+          <h3 className="text-[10px] font-extrabold text-[var(--accent-primary)] uppercase tracking-widest flex items-center gap-2 mb-1.5 opacity-90">
+            <i className="fas fa-file-contract"></i> Submission Panel ({mode.toUpperCase()})
+          </h3>
+          <p className="text-sm font-semibold text-[var(--text-primary)] line-clamp-3 leading-snug drop-shadow-sm" title={activeQueryText || activeQueryFilename}>
+            {activeQueryText || activeQueryFilename}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {mode === 'trake' && (
+            <button 
+              onClick={handleAddRow}
+              className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/30 rounded text-xs hover:bg-blue-500/20"
+            >
+              <i className="fas fa-plus mr-1"></i> Add Row
+            </button>
+          )}
+          <button 
+            onClick={() => {
+              if (mode === 'trake') {
+                const hasMixed = localData.some(row => {
+                  if (row.length === 0) return false;
+                  const firstVid = row[0].shot.video_id;
+                  return row.some(item => item.shot.video_id !== firstVid);
+                });
+                if (hasMixed) {
+                  toast.error("Không thể lưu: Có dòng phụ (Trake) chứa nhiều video_id khác nhau!");
+                  return;
+                }
+              }
+              onSaveSubmission(serializeCsvContent(localData, mode))
+            }}
+            className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded text-xs hover:bg-emerald-500/20 font-bold"
+            title="Ctrl + Shift + Space"
+          >
+            <i className="fas fa-save mr-1"></i> Submit
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 overflow-x-auto min-h-[140px] max-h-[300px] overflow-y-auto">
+        {(mode === 'kis' || mode === 'qa') ? (
+          localData.length === 0 ? (
+            <p className="text-[var(--text-secondary)] text-xs italic">Hover an image and press Ctrl+Space to add.</p>
+          ) : (
+            <div className="flex flex-nowrap gap-4">
+              {localData.map((item, idx) => (
+                <ShotImage 
+                  key={idx} 
+                  item={item} 
+                  mode={mode} 
+                  onAnswerChange={(ans) => {
+                    updateData(prevLocal => {
+                      const newLocal = [...prevLocal];
+                      if (newLocal[idx]) {
+                        newLocal[idx].answer = ans;
+                      }
+                      return newLocal;
+                    });
+                  }}
+                  onMouseEnter={() => setHoveredPanelItem({ type: 'kis', index: idx })}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, { type: 'kis', index: idx }, item)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, { type: 'kis', index: idx })}
+                  onZoom={onZoom}
+                  onContext={onContext}
+                  onQuickSearch={onQuickSearch}
+                  onToggleLock={onToggleLock}
+                  onPreview={onPreview}
+                />
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="flex flex-col gap-4">
+            {localData.length === 0 ? (
+              <p className="text-[var(--text-secondary)] text-xs italic">Hover an image and press Ctrl+Space to add to Trake row.</p>
+            ) : (
+              localData.map((row, rowIdx) => (
+                <div 
+                  key={rowIdx} 
+                  className="flex gap-4 items-center bg-[var(--glass-bg)] p-2 rounded-lg border border-[var(--border-color)]"
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, { type: 'trake-row', index: rowIdx })}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, { type: 'trake-row', index: rowIdx })}
+                >
+                  <div className="text-[10px] text-[var(--text-secondary)] font-mono w-4">R{rowIdx+1}</div>
+                  <div className="flex flex-nowrap gap-2 overflow-x-auto flex-1">
+                    {row.length === 0 ? (
+                      <span className="text-[10px] text-[var(--text-secondary)] italic">Empty row...</span>
+                    ) : (
+                      row.map((item, idx) => (
+                        <ShotImage 
+                          key={idx} 
+                          item={item} 
+                          mode={mode} 
+                          onMouseEnter={() => setHoveredPanelItem({ type: 'trake', rIdx: rowIdx, cIdx: idx })}
+                          onPreviewTrakeFrame={onPreviewTrakeFrame}
+                          onZoom={onZoom}
+                          onContext={onContext}
+                          onQuickSearch={onQuickSearch}
+                          onToggleLock={onToggleLock}
+                          onPreview={onPreview}
+                        />
+                      ))
+                    )}
+                  </div>
+                  <button 
+                    className="text-red-400 hover:text-red-300 px-2"
+                    title="Remove row"
+                    onClick={() => {
+                      updateData(prevLocal => {
+                        const newLocal = [...prevLocal];
+                        newLocal.splice(rowIdx, 1);
+                        return newLocal;
+                      });
+                    }}
+                  >
+                    <i className="fas fa-trash"></i>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+    {qaModalShot && typeof document !== 'undefined' && createPortal(
+      <QAModal
+        shot={qaModalShot}
+        trigger={qaModalTrigger}
+        onClose={() => setQaModalShot(null)}
+        onSubmit={(answer) => {
+          addFrame(qaModalShot, answer);
+          setQaModalShot(null);
+        }}
+      />,
+      document.getElementById('app-theme-root') || document.body
+    )}
+    </>
+  );
+}

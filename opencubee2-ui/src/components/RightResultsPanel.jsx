@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { getImageUrl } from '../utils/imageUrl';
 import { getSimilarFrames } from '../api';
+import SubmissionPanel from './SubmissionPanel';
 
 const HIGHLIGHT_START = '__MEILI_HIGHLIGHT_START__';
 const HIGHLIGHT_END = '__MEILI_HIGHLIGHT_END__';
@@ -126,10 +127,10 @@ const SimilarFramesPopover = ({ shotData, onClose, onZoom, onPreview, onContext,
                 <div className="absolute top-1.5 left-1.5 bg-black/80 px-2 py-0.5 rounded text-[10px] font-extrabold text-white">
                   {hasDup ? 'DUP' : 'REPEAT'}
                 </div>
-                <div className="absolute bottom-1.5 left-1.5 bg-black/70 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-sm">
+                <div className="absolute bottom-1.5 left-1.5 bg-gradient-to-r from-blue-900/90 to-blue-700/90 border border-blue-500/50 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-sm">
                   {shot.video_id}
                 </div>
-                <div className="absolute bottom-1.5 right-1.5 bg-black/70 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-sm">
+                <div className="absolute bottom-1.5 right-1.5 bg-gradient-to-l from-indigo-900/90 to-indigo-700/90 border border-indigo-500/50 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-sm">
                   {shot.frame_id}
                 </div>
               </div>
@@ -229,31 +230,17 @@ const ResultItem = React.memo(({
       <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-slate-950/50 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none rounded-b-lg" />
       <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-20">
         <button
-          className="absolute bottom-1.5 left-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent cursor-pointer pointer-events-auto shadow-md"
-          onClick={(e) => { e.stopPropagation(); onPushToTeam(shot); }}
-          title="Send to Team"
+          className="absolute top-1.5 right-1.5 px-3 py-1.5 rounded-md bg-emerald-600/95 border border-emerald-400 text-white flex items-center justify-center text-[10px] hover:bg-emerald-500 hover:scale-105 shadow-[0_0_12px_rgba(16,185,129,0.8)] cursor-pointer pointer-events-auto z-40 transition-all gap-1.5"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.dispatchEvent(new CustomEvent('push-to-panel', { detail: { shot } }));
+          }}
+          title="Push to Panel (Ctrl + Space)"
         >
-          <i className="fas fa-users"></i>
+          <i className="fas fa-level-up-alt"></i>
+          <span className="font-bold tracking-wider">PUSH</span>
         </button>
-        <button
-          className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent cursor-pointer pointer-events-auto shadow-md"
-          onClick={(e) => { e.stopPropagation(); onPushToTrake(shot); }}
-          title="Pin to Trake"
-        >
-          <i className="fas fa-thumbtack"></i>
-        </button>
-        {(dresMode === 'KIS' || dresMode === 'QA') && (
-          <button
-            className={`absolute top-1.5 right-1.5 w-9 h-9 rounded-lg border flex items-center justify-center text-xs text-white hover:border-transparent cursor-pointer pointer-events-auto ${dresMode === 'KIS'
-              ? 'bg-emerald-600/90 border-emerald-400/30 hover:bg-emerald-500'
-              : 'bg-blue-600/90 border-blue-400/30 hover:bg-blue-500'
-              }`}
-            onClick={(e) => { e.stopPropagation(); onDresSubmit?.(shot); }}
-            title={`Submit ${dresMode}`}
-          >
-            <i className={`fas ${dresMode === 'KIS' ? 'fa-paper-plane' : 'fa-comment-dots'}`}></i>
-          </button>
-        )}
       </div>
       {isLocked && (
         <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded bg-emerald-500/90 flex items-center justify-center z-10" title="Video locked">
@@ -321,92 +308,14 @@ const isSameShot = (first, second) => {
   );
 };
 
-// Component cho Teamwork Panel
-const TeamworkPanel = React.memo(({ teamworkFrames, wrongFrames, correctSubmission, onDragStart, onItemClick, onContextMenu, onMouseEnter, onMouseLeave }) => {
-  if (teamworkFrames.length === 0) {
-    return <p className="text-[var(--text-secondary)] text-xs italic px-6 py-4">No frames shared by the team yet...</p>;
-  }
-
-  return (
-    <div className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none">
-      {teamworkFrames.map((frame, idx) => {
-        const isCorrect = isSameShot(frame.shot, correctSubmission);
-        const isWrong = !isCorrect && wrongFrames.some((shot) => isSameShot(frame.shot, shot));
-        const statusColor = isCorrect
-          ? '#ccff00'
-          : isWrong
-            ? '#ff1744'
-            : (frame.user?.color || 'var(--accent-primary)');
-        const hasSubmissionStatus = isCorrect || isWrong;
-
-        return (
-          <div
-          key={`teamwork-${frame.shot?.filepath || frame.shot?.frame_name || frame.shot?.url || idx}`}
-          draggable={true}
-          onDragStart={(e) => onDragStart(e, frame.shot)}
-          className={`relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border-0 hover:scale-[1.03] hover:-translate-y-0.5 transition-transform duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn ${
-            hasSubmissionStatus ? 'z-20' : '!border-2 !border-[var(--border-color)]'
-          }`}
-          style={{
-            boxShadow: hasSubmissionStatus
-              ? `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`
-              : `0 4px 15px ${statusColor}26`
-          }}
-          onClick={(e) => onItemClick(e, frame.shot)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onContextMenu(frame.shot);
-          }}
-          onMouseEnter={() => onMouseEnter(frame.shot, false)}
-          onMouseMove={(event) => onMouseEnter(
-            frame.shot,
-            event.movementX !== 0 || event.movementY !== 0,
-          )}
-          onMouseLeave={() => onMouseLeave(frame.shot)}
-        >
-          <img
-            src={getImageUrl(frame.shot?.url || frame.shot?.frame_name || frame.shot?.filepath)}
-            alt="Frame"
-            className="w-full h-full object-cover animate-fadeIn"
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+';
-            }}
-            loading="lazy"
-            decoding="async"
-          />
-          <div
-            className="absolute bottom-1 left-1.5 bg-slate-900/90 text-white px-2 py-0.5 rounded text-[9px] font-bold border-l-2"
-            style={{ borderLeftColor: statusColor }}
-          >
-            {frame.user?.name}
-          </div>
-        </div>
-        );
-      })}
-    </div>
-  );
-});
 
 export default function RightResultsPanel({
   searchResults = [],
-  teamworkFrames = [],
-  trakeFrames = [],
-  wrongFrames = [],
-  showTrake = false,
   loading = false,
   loadingMore = false,
   hasMore = false,
   onLoadMore = () => { },
   onPreview = () => { },
-  sendRealtimeMessage = () => false,
-  username = '',
-  userColor = '',
-  onPushToTrake = () => { },
-  onReorderTrake = () => { },
-  onRemoveFromTrake = () => { },
-  onPreviewTrakeFrame = () => { },
-  correctSubmission = null,
   onZoom = () => { },
   isClustered = false,
   isAmbiguous = false,
@@ -414,153 +323,27 @@ export default function RightResultsPanel({
   onQuickSearch = () => { },
   onToggleLock = () => { },
   lockedVideoIds = [],
-  dresMode,
+  activeQueryFilename,
+  activeQueryText,
+  activeCsvContent,
+  onSaveSubmission,
+  onSyncState,
   setHoveredFrame,
-  setIsHoveringTrakePanel,
-  onDresSubmit,
+  onPreviewTrakeFrame,
+  username,
 }) {
   const containerRef = useRef(null);
   const sentinelRef = useRef(null);
   const prevFirstResult = useRef(null);
   const hoveredShotRef = useRef(null);
-  const hoveredTeamShotRef = useRef(null);
-  const hoveredTrakeShotRef = useRef(null);
-  const hoveredTrakeIndexRef = useRef(null);
-  const trakeFramesRef = useRef(trakeFrames);
-  const trakeDragIndexRef = useRef(null);
-  const suppressTeamRemovalRef = useRef(false);
-  trakeFramesRef.current = trakeFrames;
-
-  const pushToTeam = useCallback((shot) => {
-    if (!shot) return;
-    // Wait for the server echo/snapshot instead of creating local-only state
-    // when the socket is unavailable.
-    sendRealtimeMessage({
-      type: 'new_frame',
-      data: { shot, user: { name: username, color: userColor } },
-    });
-  }, [sendRealtimeMessage, username, userColor]);
-
-  const removeFromTeam = useCallback((shot) => {
-    if (!shot) return;
-    const frameKey = shot.filepath || shot.frame_name || shot.url;
-    if (!frameKey) return;
-
-    // Do not let the card that slides under the pointer become an implicit
-    // second delete target. The pointer must move before another remove.
-    suppressTeamRemovalRef.current = true;
-    hoveredTeamShotRef.current = null;
-    setHoveredFrame?.(null);
-    sendRealtimeMessage({
-      type: 'remove_frame',
-      data: {
-        filepath: shot.filepath,
-        frame_name: shot.frame_name,
-        url: shot.url,
-      },
-    });
-  }, [sendRealtimeMessage, setHoveredFrame]);
-
-  const pushToTrake = useCallback((shot) => {
-    onPushToTrake(shot);
-  }, [onPushToTrake]);
-
-  const removeFromTrake = useCallback((shot) => {
-    const currentFrames = trakeFramesRef.current;
-    const frameKey = shot?.filepath || shot?.frame_name || shot?.url;
-    const index = currentFrames.findIndex((frame) => (
-      (frame.filepath || frame.frame_name || frame.url) === frameKey
-    ));
-    // The next card slides into the same slot without emitting mouseenter.
-    // Keep the slot index so the next shortcut resolves against new state.
-    const nextFrame = index >= 0 ? currentFrames[index + 1] : null;
-    hoveredTrakeIndexRef.current = nextFrame ? index : null;
-    hoveredTrakeShotRef.current = nextFrame || null;
-    trakeFramesRef.current = index >= 0
-      ? currentFrames.filter((_, frameIndex) => frameIndex !== index)
-      : currentFrames;
-    onRemoveFromTrake(shot);
-  }, [onRemoveFromTrake]);
-
-  useEffect(() => {
-    const handleShortcut = (event) => {
-      if (event.repeat) return;
-      // A modal owns its keyboard shortcuts while open. The results panel is
-      // still mounted underneath it and must not perform a second action.
-      if (document.querySelector('[data-shortcut-scope="modal"]')) return;
-      const hoveredTrakeShot = hoveredTrakeIndexRef.current != null
-        ? trakeFramesRef.current[hoveredTrakeIndexRef.current]
-        : hoveredTrakeShotRef.current;
-
-      const hoveredTeamShot = hoveredTeamShotRef.current;
-
-      if (event.ctrlKey && event.code === 'Space' && !event.shiftKey) {
-        event.preventDefault();
-
-        if (hoveredTrakeShot) {
-          pushToTeam(hoveredTrakeShot);
-        } else if (hoveredTeamShot && !suppressTeamRemovalRef.current) {
-          removeFromTeam(hoveredTeamShot);
-        } else if (hoveredShotRef.current) {
-          pushToTeam(hoveredShotRef.current);
-        }
-      } else if (event.shiftKey && !event.ctrlKey && event.code === 'Space') {
-        event.preventDefault();
-
-        if (hoveredTrakeShot) {
-          removeFromTrake(hoveredTrakeShot);
-        } else if (hoveredTeamShot) {
-          pushToTrake(hoveredTeamShot);
-        } else if (hoveredShotRef.current) {
-          pushToTrake(hoveredShotRef.current);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleShortcut);
-    return () => {
-      window.removeEventListener('keydown', handleShortcut);
-    };
-  }, [pushToTeam, removeFromTeam, pushToTrake, removeFromTrake]);
-
-  useEffect(() => {
-    const hoveredShot = hoveredTrakeShotRef.current;
-    if (hoveredTrakeIndexRef.current != null && hoveredTrakeIndexRef.current >= trakeFrames.length) {
-      hoveredTrakeIndexRef.current = null;
-    }
-    if (!hoveredShot) return;
-    const hoveredKey = hoveredShot.filepath || hoveredShot.frame_name || hoveredShot.url;
-    const stillInTrake = trakeFrames.some((shot) => (
-      (shot.filepath || shot.frame_name || shot.url) === hoveredKey
-    ));
-    if (!stillInTrake) hoveredTrakeShotRef.current = null;
-  }, [trakeFrames]);
 
   const handleResultMouseEnter = useCallback((shot) => {
     hoveredShotRef.current = shot || null;
-    hoveredTeamShotRef.current = null;
-    hoveredTrakeShotRef.current = null;
-    hoveredTrakeIndexRef.current = null;
   }, []);
 
   const handleResultMouseLeave = useCallback((shot) => {
     if (hoveredShotRef.current === shot) hoveredShotRef.current = null;
   }, []);
-
-  const handleTeamMouseEnter = useCallback((shot, pointerMoved = false) => {
-    if (suppressTeamRemovalRef.current && !pointerMoved) return;
-    if (pointerMoved) suppressTeamRemovalRef.current = false;
-    hoveredTeamShotRef.current = shot || null;
-    hoveredShotRef.current = null;
-    hoveredTrakeShotRef.current = null;
-    hoveredTrakeIndexRef.current = null;
-    setHoveredFrame?.(shot);
-  }, [setHoveredFrame]);
-
-  const handleTeamMouseLeave = useCallback((shot) => {
-    if (hoveredTeamShotRef.current === shot) hoveredTeamShotRef.current = null;
-    setHoveredFrame?.(null);
-  }, [setHoveredFrame]);
 
   const handleDragStart = useCallback((e, shot) => {
     if (!shot) return;
@@ -571,39 +354,6 @@ export default function RightResultsPanel({
     e.dataTransfer.setData('text/plain', shot.frame_name || fullUrl);
     e.dataTransfer.effectAllowed = 'copy';
   }, []);
-
-  const handleTrakeDragStart = useCallback((event, shot, index) => {
-    trakeDragIndexRef.current = index;
-    handleDragStart(event, shot);
-    event.dataTransfer.effectAllowed = 'move';
-  }, [handleDragStart]);
-
-  const handleTrakeDrop = useCallback((event, targetIndex) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const sourceIndex = trakeDragIndexRef.current;
-    trakeDragIndexRef.current = null;
-    if (sourceIndex == null || sourceIndex === targetIndex) return;
-
-    const reorderedFrames = [...trakeFrames];
-    const [movedFrame] = reorderedFrames.splice(sourceIndex, 1);
-    if (!movedFrame) return;
-    reorderedFrames.splice(targetIndex, 0, movedFrame);
-    onReorderTrake(reorderedFrames);
-  }, [trakeFrames, onReorderTrake]);
-
-  const handleTrakePanelDrop = useCallback((event) => {
-    event.preventDefault();
-    if (trakeDragIndexRef.current != null) return;
-
-    try {
-      const serializedShot = event.dataTransfer.getData('application/json');
-      const shot = serializedShot ? JSON.parse(serializedShot) : null;
-      if (shot) pushToTrake(shot);
-    } catch {
-      // Ignore drops that were not created from one of this app's frame cards.
-    }
-  }, [pushToTrake]);
 
   const handleItemClick = useCallback((e, shot) => {
     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
@@ -661,31 +411,22 @@ export default function RightResultsPanel({
 
   const renderResultItem = useCallback((shot, key) => {
     if (!shot || !shot.url) return null;
-    const isCorrect = isSameShot(shot, correctSubmission);
-    const isWrong = !isCorrect && wrongFrames.some((wrongShot) => isSameShot(shot, wrongShot));
     return (
       <ResultItem
         key={key}
         shot={shot}
-        onDragStart={handleDragStart}
         onClick={handleItemClick}
+        onDragStart={handleDragStart}
         onContextMenu={handleOpenPreview}
         onMouseEnter={handleResultMouseEnter}
         onMouseLeave={handleResultMouseLeave}
-        onPushToTeam={pushToTeam}
-        onPushToTrake={pushToTrake}
-        onZoom={onZoom}
-        onPreview={onPreview}
-        onContext={onContext}
         isLocked={lockedVideoIds.includes(shot.video_id)}
-        dresMode={dresMode}
-        setHoveredFrame={setHoveredFrame}
-        onDresSubmit={onDresSubmit}
-        isWrong={isWrong}
-        isCorrect={isCorrect}
+        onZoom={onZoom}
+        onContext={onContext}
+        onQuickSearch={onQuickSearch}
       />
     );
-  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, pushToTeam, pushToTrake, lockedVideoIds, dresMode, setHoveredFrame, onDresSubmit, wrongFrames, correctSubmission]);
+  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, lockedVideoIds, setHoveredFrame, onZoom, onContext, onQuickSearch]);
 
   useEffect(() => {
     const firstResult = searchResults.length > 0 ? searchResults[0] : null;
@@ -695,21 +436,6 @@ export default function RightResultsPanel({
     prevFirstResult.current = firstResult;
   }, [searchResults]);
 
-  useEffect(() => {
-    const hovered = hoveredTeamShotRef.current;
-    if (!hovered) return;
-
-    const stillExists = teamworkFrames.some((frame) => {
-      const shot = frame.shot || {};
-      return (
-        (hovered.filepath && shot.filepath === hovered.filepath) ||
-        (hovered.frame_name && shot.frame_name === hovered.frame_name) ||
-        (hovered.url && shot.url === hovered.url)
-      );
-    });
-
-    if (!stillExists) hoveredTeamShotRef.current = null;
-  }, [teamworkFrames]);
 
   useEffect(() => {
     if (!containerRef.current || !hasMore || loading || loadingMore) return;
@@ -739,114 +465,21 @@ export default function RightResultsPanel({
       className="flex-grow overflow-y-auto bg-[var(--bg-primary)] pb-12 transition-colors duration-300 relative w-full"
       style={{ willChange: 'transform' }}
     >
-      <div id="teamworkPanelContainer" className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[49] transition-colors duration-300 shadow-sm">
-        <h3 className="text-xs font-bold text-[var(--accent-primary)] uppercase tracking-widest flex items-center gap-2 px-6 mb-3">
-          <i className="fas fa-users"></i> Teamwork Submission Panel
-        </h3>
-        <TeamworkPanel
-          teamworkFrames={teamworkFrames}
-          wrongFrames={wrongFrames}
-          correctSubmission={correctSubmission}
-          onDragStart={handleDragStart}
-          onItemClick={handleItemClick}
-          onContextMenu={handleOpenPreview}
-          onMouseEnter={handleTeamMouseEnter}
-          onMouseLeave={handleTeamMouseLeave}
-        />
-      </div>
-
-      {showTrake && (
-        <div
-          id="trakePanelContainer"
-          className="pt-4 border-b border-[var(--border-color)] sticky top-0 bg-[var(--bg-primary)] z-[48] transition-colors duration-300 shadow-sm"
-          onMouseEnter={() => setIsHoveringTrakePanel?.(true)}
-          onMouseLeave={() => {
-            hoveredTrakeShotRef.current = null;
-            hoveredTrakeIndexRef.current = null;
-            setIsHoveringTrakePanel?.(false);
-          }}
-        >
-          <div className="flex-shrink-0">
-            <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2 px-6 mb-3">
-              <i className="fas fa-thumbtack"></i> Trake Panel
-              <span className="text-[10px] bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded-full font-mono ml-1">
-                {trakeFrames.length}
-              </span>
-              {dresMode === 'Trake' && (
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-2 py-0.5 rounded-full font-mono font-bold animate-pulse ml-2">
-                  READY TO SUBMIT (Ctrl+Shift+Space)
-                </span>
-              )}
-            </h3>
-          </div>
-          <div
-            id="trakeGrid"
-            className="flex flex-nowrap overflow-x-auto gap-4 px-6 pb-4 select-none min-h-[110px]"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleTrakePanelDrop}
-          >
-            {trakeFrames.length === 0 ? (
-              <p className="text-[var(--text-secondary)] text-xs italic py-2">Drag or pin frames here to compare...</p>
-            ) : (
-              trakeFrames.map((shot, idx) => (
-                <div
-                  key={`trake-${shot?.filepath || shot?.frame_name || shot?.url || idx}`}
-                  draggable={true}
-                  onDragStart={(e) => handleTrakeDragStart(e, shot, idx)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleTrakeDrop(e, idx)}
-                  onDragEnd={() => { trakeDragIndexRef.current = null; }}
-                  className="relative flex-shrink-0 w-[180px] aspect-video rounded-lg overflow-hidden border border-[var(--border-color)] hover:border-[var(--border-hover)] hover:scale-[1.03] hover:-translate-y-0.5 transition-all duration-300 ease-spring cursor-grab active:cursor-grabbing active:scale-100 will-change-transform animate-scaleIn"
-                  onClick={(e) => handleItemClick(e, shot)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    handleOpenPreview(shot);
-                  }}
-                  onMouseEnter={() => {
-                    hoveredTrakeShotRef.current = shot;
-                    hoveredTrakeIndexRef.current = idx;
-                    setIsHoveringTrakePanel?.(true);
-                  }}
-                  onMouseMove={() => {
-                    hoveredTrakeShotRef.current = shot;
-                    hoveredTrakeIndexRef.current = idx;
-                  }}
-                  onMouseLeave={() => {
-                    if (hoveredTrakeShotRef.current === shot) hoveredTrakeShotRef.current = null;
-                  }}
-                >
-                  <img
-                    src={getImageUrl(shot.url || shot.frame_name || shot.filepath)}
-                    alt="Trake frame"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWUxZTFlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMCIgZmlsbD0iIzY2NiIgZG1pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZSBOb3QgRm91bmQ8L3RleHQ+PC9zdmc+';
-                    }}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <button
-                    type="button"
-                    draggable={false}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onPreviewTrakeFrame(shot);
-                    }}
-                    className="absolute bottom-1.5 right-1.5 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-slate-900/90 text-xs text-white shadow-md transition-all hover:scale-110 hover:border-transparent hover:bg-blue-500 cursor-pointer"
-                    title="Preview frames around this point"
-                    aria-label="Preview frames around this point"
-                  >
-                    <i className="fas fa-film"></i>
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      <SubmissionPanel
+        activeQueryFilename={activeQueryFilename}
+        activeQueryText={activeQueryText}
+        activeCsvContent={activeCsvContent}
+        onSaveSubmission={onSaveSubmission}
+        onSyncState={onSyncState}
+        hoveredFrame={hoveredShotRef.current}
+        onPreviewTrakeFrame={onPreviewTrakeFrame}
+        onZoom={onZoom}
+        onContext={onContext}
+        onQuickSearch={onQuickSearch}
+        onPreview={onPreview}
+        onToggleLock={onToggleLock}
+        username={username}
+      />
 
       <div className="px-6 py-4">
         {loading ? (

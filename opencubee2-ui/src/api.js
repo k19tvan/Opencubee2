@@ -4,7 +4,6 @@ export const BASE_URL = import.meta.env.VITE_BACKEND_BASE_URL !== undefined
   ? import.meta.env.VITE_BACKEND_BASE_URL 
   : (typeof window !== 'undefined' && (window.location.port === '2408' || window.location.port === '80' || window.location.port === '443' || !window.location.port) ? '' : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:2108`);
 export const VIDEO_BACKEND_BASE_URL = import.meta.env.VITE_VIDEO_BACKEND_BASE_URL || BASE_URL;
-export const DRES_BASE_URL = import.meta.env.VITE_DRES_BASE_URL || 'http://192.168.28.151:5000';
 
 export function getWsUrl() {
   // Derive ws(s):// from the REST base; fall back to same-origin if BASE_URL is relative.
@@ -154,6 +153,36 @@ export async function runMultiAgentSearch(payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+  return handleResponse(response);
+}
+
+export async function uploadSubmissionZip(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${BASE_URL}/api/submission/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
+export async function fetchSubmissionQueries() {
+  const response = await fetch(`${BASE_URL}/api/submission/list`);
+  return handleResponse(response);
+}
+
+export async function fetchSubmissionQuery(filename) {
+  const response = await fetch(`${BASE_URL}/api/submission/query/${encodeURIComponent(filename)}`);
+  return handleResponse(response);
+}
+
+export async function saveSubmissionQuery(filename, csvContent) {
+  const response = await fetch(`${BASE_URL}/api/submission/query/${encodeURIComponent(filename)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csv_content: csvContent }),
   });
   return handleResponse(response);
 }

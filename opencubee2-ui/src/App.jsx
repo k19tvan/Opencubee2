@@ -11,9 +11,7 @@ import VideoPreviewModal from './components/modals/VideoPreviewModal';
 import FrameContextModal from './components/modals/FrameContextModal';
 import TrakeFramePreviewSidebar from './components/TrakeFramePreviewSidebar';
 import HelpModal from './components/modals/HelpModal';
-import DresLoginModal from './components/modals/DresLoginModal';
-import DresSubmitModal from './components/modals/DresSubmitModal';
-import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, searchSemanticAsr, getWsUrl, DRES_BASE_URL } from './api';
+import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, searchSemanticAsr, getWsUrl, uploadSubmissionZip, fetchSubmissionQueries, fetchSubmissionQuery, saveSubmissionQuery } from './api';
 import { getImageUrl } from './utils/imageUrl';
 import { getDresFrameNumber } from './utils/frameNumber';
 
@@ -151,7 +149,6 @@ export default function App() {
   });
   const [randomTheme, setRandomTheme] = useState(() => RANDOM_THEME_OPTIONS[Math.floor(Math.random() * RANDOM_THEME_OPTIONS.length)]);
   const effectiveTheme = theme === 'random' ? randomTheme : theme;
-  const [showTrake, setShowTrake] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
   const [isClustered, setIsClustered] = useState(false);
   const [isAmbiguous, setIsAmbiguous] = useState(true);
@@ -175,20 +172,14 @@ export default function App() {
   const [similarityScopeEnabled, setSimilarityScopeEnabled] = useState(false);
   const [lastFinalQueries, setLastFinalQueries] = useState([]);
   const [resultIsAmbiguous, setResultIsAmbiguous] = useState(false);
-  const [teamworkFrames, setTeamworkFrames] = useState([]);
-  const [trakeFrames, setTrakeFrames] = useState([]);
-  const [trakePreviewShot, setTrakePreviewShot] = useState(null);
-  const [wrongFrames, setWrongFrames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [timingInfo, setTimingInfo] = useState(null);
-  const [correctSubmission, setCorrectSubmission] = useState(null);
 
   const [isMuted, setIsMuted] = useState(() => {
     return localStorage.getItem('opencubee_muted') === 'true';
   });
   const isMutedRef = useRef(isMuted);
   const playingAudioRef = useRef(null);
-  const phonkIndexRef = useRef(0);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
@@ -215,20 +206,106 @@ export default function App() {
 
   const [lockedVideos, setLockedVideos] = useState([]);
 
-  // DRES Submit Mode (KIS, QA, Trake)
-  const [dresSessionId, setDresSessionId] = useState(() => sessionStorage.getItem('dresSessionId') || null);
-  const [dresEvaluationId, setDresEvaluationId] = useState(() => sessionStorage.getItem('dresEvaluationId') || null);
-  const [dresUsername, setDresUsername] = useState(() => sessionStorage.getItem('dresUsername') || null);
-  const [dresMode, setDresMode] = useState('KIS');
+  // Submission System State
+  const [submissionQueries, setSubmissionQueries] = useState([]);
+  const [activeQueryFilename, setActiveQueryFilename] = useState("");
+  const activeQueryFilenameRef = useRef("");
+  const [activeQueryText, setActiveQueryText] = useState("");
+  const [activeCsvContent, setActiveCsvContent] = useState("");
   const [isHoveringTrakePanel, setIsHoveringTrakePanel] = useState(false);
   const [hoveredFrame, setHoveredFrame] = useState(null);
-  const [openDresSubmit, setOpenDresSubmit] = useState(null);
+  const [trakePreviewShot, setTrakePreviewShot] = useState(null);
 
   useEffect(() => {
-    if (dresMode !== 'QA') {
-      setOpenDresSubmit(null);
+    activeQueryFilenameRef.current = activeQueryFilename;
+  }, [activeQueryFilename]);
+
+  const loadQueries = async (forceSelectFilename = null) => {
+    try {
+      const qs = await fetchSubmissionQueries();
+      setSubmissionQueries(qs);
+      
+      if (forceSelectFilename) {
+        handleSelectQuery(forceSelectFilename);
+      } else if (!activeQueryFilenameRef.current && qs.length > 0) {
+        handleSelectQuery(qs[0].filename);
+      } else if (activeQueryFilenameRef.current && !qs.some(q => q.filename === activeQueryFilenameRef.current)) {
+        if (qs.length > 0) {
+          handleSelectQuery(qs[0].filename);
+        } else {
+          setActiveQueryFilename("");
+          setActiveQueryText("");
+          setActiveCsvContent("");
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load queries", e);
     }
-  }, [dresMode]);
+  };
+
+  useEffect(() => {
+    loadQueries();
+  }, []);
+
+  const handleUploadZip = async (file) => {
+    try {
+      const toastId = toast.loading('Uploading ZIP...');
+      await uploadSubmissionZip(file);
+      toast.success('ZIP uploaded and extracted!', { id: toastId });
+      loadQueries();
+    } catch (error) {
+      toast.error('Failed to upload ZIP: ' + error.message);
+    }
+  };
+
+  const handleCreateNewCsv = async (filename) => {
+    if (!filename) return;
+    try {
+      // Create empty file
+      await saveSubmissionQuery(filename, "");
+      toast.success(`Created ${filename}`);
+      loadQueries(filename);
+    } catch (e) {
+      toast.error('Failed to create new CSV: ' + e.message);
+    }
+  };
+
+  const handleSelectQuery = async (filename) => {
+    setActiveQueryFilename(filename);
+    if (!filename) return;
+    try {
+      const data = await fetchSubmissionQuery(filename);
+      setActiveQueryText(data.query_text || "");
+      setActiveCsvContent(data.csv_content || "");
+    } catch (e) {
+      toast.error('Failed to load query data');
+    }
+  };
+
+  const handleSaveSubmission = async (csvContent) => {
+    if (!activeQueryFilename) return;
+    try {
+      const toastId = toast.loading('Saving submission...');
+      setActiveCsvContent(csvContent);
+      await saveSubmissionQuery(activeQueryFilename, csvContent);
+      toast.success('Submission saved', { id: toastId });
+      loadQueries();
+      sendRealtimeMessage({ type: 'submission_sync', data: { filename: activeQueryFilename, csvContent } });
+    } catch (e) {
+      toast.error('Failed to save submission');
+    }
+  };
+
+  const handleSilentSaveSubmission = async (csvContent) => {
+    if (!activeQueryFilename) return;
+    try {
+      setActiveCsvContent(csvContent);
+      sendRealtimeMessage({ type: 'submission_sync', data: { filename: activeQueryFilename, csvContent } });
+      await saveSubmissionQuery(activeQueryFilename, csvContent);
+    } catch(e) {
+      console.error('Failed to auto-save submission', e);
+    }
+  };
 
   const socketRef = useRef(null);
   const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
@@ -632,7 +709,7 @@ export default function App() {
         toast.success(isTurningOff
           ? `Spatial search OFF for box ${targetIndex + 1}`
           : `${spatialShortcut.label} spatial search for box ${targetIndex + 1}`,
-        { position: 'top-right' });
+          { position: 'top-right' });
         return;
       }
 
@@ -790,121 +867,11 @@ export default function App() {
         return;
       }
 
-      if (type === 'new_frame') {
-        if (!data?.shot) return;
-        const mappedData = {
-          ...data,
-          shot: {
-            ...data.shot,
-            url: data.shot.url?.startsWith('data:image')
-              ? data.shot.url
-              : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
-          }
-        };
-        setTeamworkFrames((prev) => {
-          const incomingKey = getShotKey(mappedData.shot);
-          if (incomingKey && prev.some((frame) => getShotKey(frame.shot) === incomingKey)) return prev;
-          return [mappedData, ...prev];
-        });
-      } else if (type === 'remove_frame') {
-        setTeamworkFrames((prev) => prev.filter((f) => {
-          const shot = f.shot || {};
-          return !(
-            (data.filepath && shot.filepath === data.filepath) ||
-            (data.frame_name && shot.frame_name === data.frame_name) ||
-            (data.url && shot.url === data.url)
-          );
-        }));
-      } else if (type === 'clear_panel') {
-        setTeamworkFrames([]);
-      } else if (type === 'team_sync') {
-        const mappedData = (data || []).map((frame) => ({
-          ...frame,
-          shot: {
-            ...(frame.shot || {}),
-            url: frame.shot?.url?.startsWith('data:image')
-              ? frame.shot.url
-              : (getImageUrl(frame.shot?.url || frame.shot?.frame_name) || frame.shot?.url),
-          },
-        })).filter((frame) => frame.shot && getShotKey(frame.shot));
-        setTeamworkFrames(mappedData);
-      } else if (type === 'global_wrong_submission') {
-        if (!data?.shot) return;
-        setWrongFrames((prev) => {
-          const incomingKey = getShotKey(data.shot);
-          if (incomingKey && prev.some((frame) => getShotKey(frame) === incomingKey)) return prev;
-          return [data.shot, ...prev];
-        });
-
-        try {
-          if (playingAudioRef.current) {
-            playingAudioRef.current.pause();
-          }
-          const audio = new Audio('/wrong.mp3');
-          audio.volume = 1.0;
-          audio.muted = isMutedRef.current;
-          playingAudioRef.current = audio;
-          audio.play().catch(e => console.log("Audio play failed:", e));
-          
-          setTimeout(() => {
-            if (playingAudioRef.current === audio) {
-              audio.pause();
-            }
-          }, 5000);
-        } catch (e) { }
-
-      } else if (type === 'wrong_frames_sync') {
-        const mappedData = (data || []).map(shot => ({
-          ...shot,
-          url: getImageUrl(shot.url || shot.frame_name)
-        }));
-        setWrongFrames(mappedData);
-      } else if (type === 'trake_sync') {
-        const mappedData = (data || []).map(shot => ({
-          ...shot,
-          url: getImageUrl(shot.url || shot.frame_name)
-        }));
-        setTrakeFrames(mappedData);
-      } else if (type === 'trake_add') {
-        const mappedShot = {
-          ...data.shot,
-          url: data.shot.url?.startsWith('data:image')
-            ? data.shot.url
-            : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
-        };
-        setTrakeFrames(prev => {
-          const incomingKey = getShotKey(mappedShot);
-          if (incomingKey && prev.some(s => getShotKey(s) === incomingKey)) return prev;
-          return [...prev, mappedShot];
-        });
-      } else if (type === 'trake_remove') {
-        const frameKey = data.frame_key || data.filepath;
-        setTrakeFrames(prev => prev.filter(s => getShotKey(s) !== frameKey));
-      } else if (type === 'global_correct_submission') {
-        const mappedShot = {
-          ...data.shot,
-          url: data.shot.url?.startsWith('data:image')
-            ? data.shot.url
-            : (getImageUrl(data.shot.url || data.shot.frame_name) || data.shot.url)
-        };
-        setCorrectSubmission(mappedShot);
-        setWrongFrames([]);
-        setTeamworkFrames([{ shot: mappedShot, user: data.user || { name: 'SYSTEM', color: '#10b981' } }]);
-
-        try {
-          if (playingAudioRef.current) {
-            playingAudioRef.current.pause();
-          }
-          const phonkFiles = ['/phonk1.MP3', '/phonk2.mp3', '/phonk3.mp3'];
-          const currentIndex = phonkIndexRef.current % phonkFiles.length;
-          const nextPhonk = phonkFiles[currentIndex];
-          phonkIndexRef.current = currentIndex + 1;
-          const audio = new Audio(nextPhonk);
-          audio.volume = 1.0;
-          audio.muted = isMutedRef.current;
-          playingAudioRef.current = audio;
-          audio.play().catch(e => console.log("Audio play failed:", e));
-        } catch (e) { }
+      if (type === 'submission_sync') {
+        if (data?.filename === activeQueryFilenameRef.current) {
+          setActiveCsvContent(data.csvContent);
+        }
+        return;
       }
     };
 
@@ -990,17 +957,31 @@ export default function App() {
     });
   }, [username, userColor, sendRealtimeMessage]);
 
-  const handleReplaceTrakeFrame = useCallback((newShot) => {
-    if (!trakePreviewShot) return;
-    setTrakeFrames(prev => {
-      const index = prev.findIndex(s => s.frame_name === trakePreviewShot.frame_name);
-      if (index === -1) return prev;
-      const next = [...prev];
-      next[index] = { ...newShot, url: getImageUrl(newShot.url || newShot.frame_name) || newShot.url };
-      return next;
-    });
+  const handleReplaceTrakeFrame = useCallback(async (newShot) => {
+    if (!trakePreviewShot || !activeQueryFilename) return;
+
+    // Parse current activeCsvContent, find the frame, replace it
+    const csvContent = activeCsvContent;
+    const oldFid = trakePreviewShot.frame_id || (trakePreviewShot.frame_name ? trakePreviewShot.frame_name.split('_').pop().split('.')[0] : '');
+    const newFid = newShot.frame_id || (newShot.frame_name ? newShot.frame_name.split('_').pop().split('.')[0] : '');
+
+    if (oldFid && newFid) {
+      // Very naive text replace, assumes frame_id is unique enough in the row (e.g. ,0982,)
+      // We should probably just do a string replace of the frame ID.
+      // But since CSV is like L10_V001,1200,1850... replace using accurate boundary regex.
+      const regex = new RegExp(`(?<=,)${oldFid}(?=(,|$|\\n))`, 'g');
+      const newCsv = csvContent.replace(regex, newFid);
+
+      setActiveCsvContent(newCsv);
+      // Auto-save the replacement to server
+      try {
+        await saveSubmissionQuery(activeQueryFilename, newCsv);
+        sendRealtimeMessage({ type: 'submission_sync', data: { filename: activeQueryFilename, csvContent: newCsv } });
+      } catch (e) { }
+    }
+
     setTrakePreviewShot(newShot);
-  }, [trakePreviewShot]);
+  }, [trakePreviewShot, activeCsvContent, activeQueryFilename, sendRealtimeMessage]);
 
   const handleReorderTrake = useCallback((orderedFrames) => {
     setTrakeFrames(orderedFrames);
@@ -1017,16 +998,6 @@ export default function App() {
     sendRealtimeMessage({ type: 'trake_remove', data: { frame_key: frameKey } });
   }, [sendRealtimeMessage]);
 
-  const handleLogoutDres = () => {
-    setDresSessionId(null);
-    setDresEvaluationId(null);
-    setDresUsername(null);
-    sessionStorage.removeItem('dresSessionId');
-    sessionStorage.removeItem('dresEvaluationId');
-    sessionStorage.removeItem('dresUsername');
-    toast.success('Logged out from DRES');
-  };
-
   const handleJoinSession = (name, color) => {
     setUsername(name);
     setUserColor(color);
@@ -1036,147 +1007,10 @@ export default function App() {
     toast.success(`Welcome, ${name}!`);
   };
 
-  const handleInstantDresSubmit = useCallback(async (shot, forcedMode = null) => {
-    if (!dresSessionId || !dresEvaluationId) {
-      toast.error('DRES is not logged in.');
-      return;
-    }
-
-    const effectiveMode = forcedMode || dresMode;
-
-    if (effectiveMode === 'QA') {
-      if (!shot) {
-        toast.error('No frame selected for QA.');
-        return;
-      }
-      setOpenDresSubmit(shot);
-      return;
-    }
-
-    if (effectiveMode === 'Trake') {
-      if (!trakeFrames || trakeFrames.length === 0) return;
-      const loadingToast = toast.loading('Submitting Trake to DRES...');
-      try {
-        const videoId = trakeFrames[0].video_id;
-        const frameIds = trakeFrames.map(frame => getDresFrameNumber(frame)).join(',');
-        const textPayload = `TR-${videoId}-${frameIds}`;
-
-        const payload = {
-          answerSets: [{
-            answers: [{
-              text: textPayload
-            }]
-          }]
-        };
-
-        const res = await fetch(`${DRES_BASE_URL}/api/v2/submit/${dresEvaluationId}?session=${dresSessionId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const resText = await res.text();
-        if (!res.ok) throw new Error(resText || res.statusText);
-
-        let resData = {};
-        try { resData = JSON.parse(resText); } catch (e) { }
-
-        if (resData.submission === 'CORRECT') {
-          setCorrectSubmission(trakeFrames[0]);
-          setWrongFrames([]);
-          setTeamworkFrames([{ shot: trakeFrames[0], user: { name: username || 'ME', color: userColor || '#10b981' } }]);
-          toast.success('Trake Submit CORRECT!', { id: loadingToast });
-          sendRealtimeMessage({
-            type: 'global_correct_submission',
-            data: { shot: trakeFrames[0], user: { name: username, color: userColor } }
-          });
-        } else if (resData.submission === 'WRONG') {
-          toast.error(`Trake Submit WRONG`, { id: loadingToast });
-          setWrongFrames(prev => [trakeFrames[0], ...prev]);
-          sendRealtimeMessage({
-            type: 'global_wrong_submission',
-            data: { shot: trakeFrames[0] }
-          });
-        } else {
-          toast.success(`Trake Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
-        }
-      } catch (err) {
-        toast.error(`Trake Submit Error: ${err.message}`, { id: loadingToast });
-      }
-      return;
-    }
-
-    if (effectiveMode === 'KIS') {
-      if (!shot) {
-        toast.error('No frame selected for KIS.');
-        return;
-      }
-      const loadingToast = toast.loading('Submitting KIS to DRES...');
-      try {
-        const { getVideoInfo } = await import('./api');
-        const info = await getVideoInfo(shot.video_id);
-        const fps = info?.fps || 25;
-        const time = getDresFrameNumber(shot) / fps;
-        const ms = Math.floor(time * 1000);
-
-        const payload = {
-          answerSets: [{
-            answers: [{
-              mediaItemName: shot.video_id,
-              start: ms,
-              end: ms
-            }]
-          }]
-        };
-
-        const res = await fetch(`${DRES_BASE_URL}/api/v2/submit/${dresEvaluationId}?session=${dresSessionId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const resText = await res.text();
-        if (!res.ok) {
-          throw new Error(resText || res.statusText);
-        }
-        let resData = {};
-        try { resData = JSON.parse(resText); } catch (e) { }
-
-        if (resData.submission === 'CORRECT') {
-          setCorrectSubmission(shot);
-          setWrongFrames([]);
-          toast.success('KIS Submit CORRECT!', { id: loadingToast });
-          sendRealtimeMessage({
-            type: 'global_correct_submission',
-            data: { shot, user: { name: username, color: userColor } }
-          });
-        } else if (resData.submission === 'WRONG') {
-          toast.error(`KIS Submit WRONG`, { id: loadingToast });
-          setWrongFrames(prev => [shot, ...prev]);
-          sendRealtimeMessage({ type: 'global_wrong_submission', data: { shot } });
-        } else {
-          toast.success(`KIS Submitted: ${resData.submission || 'OK'}`, { id: loadingToast });
-        }
-      } catch (err) {
-        toast.error(`KIS Submit Error: ${err.message}`, { id: loadingToast });
-      }
-    }
-  }, [dresSessionId, dresEvaluationId, dresMode, trakeFrames, username, userColor, sendRealtimeMessage]);
-
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
       if (document.querySelector('[data-shortcut-scope="modal"]')) return;
       const isTypingInField = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
-
-      if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
-        if (e.repeat) return;
-        if (activeModal) return;
-        e.preventDefault();
-        if (isHoveringTrakePanel) {
-          handleInstantDresSubmit(null, 'Trake');
-        } else if (hoveredFrame) {
-          handleInstantDresSubmit(hoveredFrame);
-        }
-        return;
-      }
 
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyQ') {
         e.preventDefault();
@@ -1188,29 +1022,17 @@ export default function App() {
         return;
       }
 
-      if (isTypingInField) return;
-
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'KeyG') {
         e.preventDefault();
         setIsClustered(prev => !prev);
+        return;
       }
+
+      if (isTypingInField) return;
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [handleInstantDresSubmit, hoveredFrame, isHoveringTrakePanel, activeModal]);
-
-  useEffect(() => {
-    const handleQaCorrect = (e) => {
-      const shot = e.detail?.shot;
-      if (shot) {
-        setCorrectSubmission(shot);
-        setWrongFrames([]);
-        setTeamworkFrames([{ shot, user: { name: username || 'ME', color: userColor || '#10b981' } }]);
-      }
-    };
-    window.addEventListener('dres-qa-correct', handleQaCorrect);
-    return () => window.removeEventListener('dres-qa-correct', handleQaCorrect);
-  }, [username, userColor]);
+  }, [activeModal]);
 
   const performSearch = async (pageNumber = 1, overrideStages = null, captureHistory = true, options = {}) => {
     const selectedSearchModel = pageNumber === 1
@@ -1482,6 +1304,9 @@ export default function App() {
       if (shot.frame_name && !isDynamicVideoFrame) {
         tempImageName = `_frame_:${shot.frame_name}`;
         imageUrl = shot.url || getImageUrl(shot.frame_name);
+      } else if (shot.video_id && shot.frame_id && !isDynamicVideoFrame) {
+        tempImageName = `_frame_:_id_:${shot.video_id}:${shot.frame_id}`;
+        imageUrl = shot.url || getImageUrl(shot.url);
       } else {
         if (shot.url?.startsWith('data:image')) {
           imageUrl = shot.url;
@@ -1659,21 +1484,12 @@ export default function App() {
   }, []);
 
   return (
-    <div className={`theme-${effectiveTheme} flex flex-col w-full h-screen overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-[#050505]' : 'bg-[var(--bg-primary)]'} text-[var(--text-primary)] transition-colors duration-1000 ease-smooth relative`}>
+    <div id="app-theme-root" className={`theme-${effectiveTheme} flex flex-col w-full h-screen overflow-hidden ${effectiveTheme === 'jujutsu' ? 'bg-[#050505]' : 'bg-[var(--bg-primary)]'} text-[var(--text-primary)] transition-colors duration-1000 ease-smooth relative`}>
       {theme === 'random' && (
         <div
           key={effectiveTheme}
           className="theme-shift-wash"
           aria-hidden="true"
-        />
-      )}
-
-      {openDresSubmit && dresSessionId && dresMode === 'QA' && (
-        <DresSubmitModal
-          shot={openDresSubmit}
-          sessionId={dresSessionId}
-          evaluationId={dresEvaluationId}
-          onClose={() => setOpenDresSubmit(null)}
         />
       )}
       {effectiveTheme === 'jujutsu' && (
@@ -1702,8 +1518,6 @@ export default function App() {
             userColor={userColor}
             theme={theme}
             setTheme={setTheme}
-            showTrake={showTrake}
-            setShowTrake={setShowTrake}
             showChatbot={showChatbot}
             setShowChatbot={setShowChatbot}
             similarityScopeEnabled={similarityScopeEnabled}
@@ -1721,12 +1535,11 @@ export default function App() {
             setAutoTranslate={setAutoTranslate}
             sentenceLevel={sentenceLevel}
             setSentenceLevel={setSentenceLevel}
-            dresMode={dresMode}
-            setDresMode={setDresMode}
-            dresSessionId={dresSessionId}
-            dresUsername={dresUsername}
-            onOpenDresLogin={() => setActiveModal('dresLogin')}
-            onLogoutDres={handleLogoutDres}
+            onUploadZip={handleUploadZip}
+            onCreateCsv={handleCreateNewCsv}
+            submissionQueries={submissionQueries}
+            activeQueryFilename={activeQueryFilename}
+            onSelectQuery={handleSelectQuery}
             onOpenModal={setActiveModal}
             onGoBack={goBackOneStep}
             onGoForward={goForwardOneStep}
@@ -1774,10 +1587,6 @@ export default function App() {
 
               <RightResultsPanel
                 searchResults={searchResults}
-                teamworkFrames={teamworkFrames}
-                trakeFrames={trakeFrames}
-                wrongFrames={wrongFrames}
-                showTrake={showTrake}
                 loading={loading}
                 loadingMore={loadingMore}
                 hasMore={hasMore}
@@ -1786,11 +1595,6 @@ export default function App() {
                 sendRealtimeMessage={sendRealtimeMessage}
                 username={username}
                 userColor={userColor}
-                onPushToTrake={handlePushToTrake}
-                onReorderTrake={handleReorderTrake}
-                onRemoveFromTrake={handleRemoveFromTrake}
-                onPreviewTrakeFrame={setTrakePreviewShot}
-                correctSubmission={correctSubmission}
                 onZoom={setZoomedImage}
                 isClustered={isClustered}
                 isAmbiguous={resultIsAmbiguous}
@@ -1798,10 +1602,14 @@ export default function App() {
                 onQuickSearch={handleQuickImageSearch}
                 onToggleLock={toggleVideoLock}
                 lockedVideoIds={lockedVideos.map(v => v.videoId)}
-                dresMode={dresMode}
+                activeQueryFilename={activeQueryFilename}
+                activeQueryText={activeQueryText}
+                activeCsvContent={activeCsvContent}
+                onSaveSubmission={handleSaveSubmission}
+                onSyncState={handleSilentSaveSubmission}
                 setHoveredFrame={setHoveredFrame}
                 setIsHoveringTrakePanel={setIsHoveringTrakePanel}
-                onDresSubmit={handleInstantDresSubmit}
+                onPreviewTrakeFrame={setTrakePreviewShot}
               />
               {trakePreviewShot && (
                 <TrakeFramePreviewSidebar
@@ -1826,7 +1634,6 @@ export default function App() {
             lockedVideoIds={lockedVideos.map(v => v.videoId)}
             onPushToTeam={handlePushToTeam}
             onPushToTrake={handlePushToTrake}
-            onDresSubmit={handleInstantDresSubmit}
           />
 
           {showUserModal && <UsernameModal onJoin={handleJoinSession} />}
@@ -1866,8 +1673,6 @@ export default function App() {
               sendRealtimeMessage={sendRealtimeMessage}
               username={username}
               userColor={userColor}
-              wrongFrames={wrongFrames}
-              onDresSubmit={handleInstantDresSubmit}
               onPushToTrake={handlePushToTrake}
             />
           )}
@@ -1881,11 +1686,8 @@ export default function App() {
               sendRealtimeMessage={sendRealtimeMessage}
               username={username}
               userColor={userColor}
-              onSubmitDres={handleInstantDresSubmit}
               onContext={setContextShot}
               onQuickSearch={handleQuickImageSearch}
-              wrongFrames={wrongFrames}
-              correctSubmission={correctSubmission}
             />
           )}
 

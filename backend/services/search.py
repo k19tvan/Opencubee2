@@ -310,18 +310,31 @@ async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Op
     if not runtime.qdrant_client or not frame_name or q_models is None:
         return None
     try:
-        base_name = os.path.splitext(frame_name)[0]
-        possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
+        must_conditions = []
+        if frame_name.startswith("_id_:"):
+            parts = frame_name[5:].split(":")
+            if len(parts) == 2:
+                fid_int = int(parts[1])
+                must_conditions = [
+                    q_models.FieldCondition(key="video_id", match=q_models.MatchValue(value=parts[0])),
+                    q_models.FieldCondition(key="frame_id", match=q_models.MatchValue(value=fid_int)),
+                ]
+            else:
+                return None
+        else:
+            base_name = os.path.splitext(frame_name)[0]
+            possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
+            must_conditions = [
+                q_models.FieldCondition(
+                    key="frame_name",
+                    match=q_models.MatchAny(any=possible_names),
+                )
+            ]
         
         points, _ = await asyncio.to_thread(
             runtime.qdrant_client.scroll,
             collection_name=collection_name,
-            scroll_filter=q_models.Filter(
-                must=[q_models.FieldCondition(
-                    key="frame_name",
-                    match=q_models.MatchAny(any=possible_names),
-                )]
-            ),
+            scroll_filter=q_models.Filter(must=must_conditions),
             with_vectors=True,
             limit=1,
         )
