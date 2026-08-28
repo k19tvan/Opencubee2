@@ -209,6 +209,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Broadcast the live submission draft to all other clients
                 await broadcast_event("submission_sync", data)
 
+            elif msg_type == "draft_sync":
+                # Broadcast the local personal draft state to all other clients for collaboration
+                await broadcast_event("draft_sync", data)
+
             else:
                 await send_error(websocket, f"Unsupported message type: {msg_type!r}.")
 

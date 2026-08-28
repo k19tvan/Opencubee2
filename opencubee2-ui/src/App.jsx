@@ -351,6 +351,10 @@ export default function App() {
     return false;
   }, []);
 
+  const handleSyncDraft = useCallback((filename, draftContent) => {
+    sendRealtimeMessage({ type: 'draft_sync', data: { filename, draftContent } });
+  }, [sendRealtimeMessage]);
+
   const updateHistoryDepths = (store = readWorkspaceHistory()) => {
     const currentIndex = store.entries.findIndex((entry) => entry.id === store.currentId);
     setGoBackDepth(currentIndex > 0 ? Math.min(currentIndex, MAX_GO_BACK_STEPS - 1) : 0);
@@ -872,6 +876,15 @@ export default function App() {
       if (type === 'submission_sync') {
         if (data?.filename === activeQueryFilenameRef.current) {
           setActiveCsvContent(data.csvContent);
+        }
+        return;
+      }
+
+      if (type === 'draft_sync') {
+        if (data?.filename) {
+          window.dispatchEvent(new CustomEvent('draft_updated', { 
+            detail: { filename: data.filename, draftContent: data.draftContent } 
+          }));
         }
         return;
       }
@@ -1609,6 +1622,7 @@ export default function App() {
                 setHoveredFrame={setHoveredFrame}
                 setIsHoveringTrakePanel={setIsHoveringTrakePanel}
                 onPreviewTrakeFrame={setTrakePreviewShot}
+                onSyncDraft={handleSyncDraft}
               />
               {trakePreviewShot && (
                 <TrakeFramePreviewSidebar

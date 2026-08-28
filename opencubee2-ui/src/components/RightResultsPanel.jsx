@@ -331,6 +331,7 @@ export default function RightResultsPanel({
   setHoveredFrame,
   onPreviewTrakeFrame,
   username,
+  onSyncDraft,
 }) {
   const containerRef = useRef(null);
   const sentinelRef = useRef(null);
@@ -479,6 +480,7 @@ export default function RightResultsPanel({
         onPreview={onPreview}
         onToggleLock={onToggleLock}
         username={username}
+        onSyncDraft={onSyncDraft}
       />
 
       <div className="px-6 py-4">

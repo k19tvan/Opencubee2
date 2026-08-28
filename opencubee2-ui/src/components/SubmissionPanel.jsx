@@ -229,7 +229,8 @@ export default function SubmissionPanel({
   onQuickSearch,
   onToggleLock,
   onPreview,
-  username
+  username,
+  onSyncDraft
 }) {
   const [draftsByFile, setDraftsByFile] = useState({});
   const localData = (activeQueryFilename && draftsByFile[activeQueryFilename]) || [];
@@ -246,6 +247,20 @@ export default function SubmissionPanel({
 
   useEffect(() => {
     setViewMode('draft');
+  }, [activeQueryFilename]);
+
+  useEffect(() => {
+    const handleDraftUpdated = (e) => {
+      const { filename, draftContent } = e.detail;
+      if (filename === activeQueryFilename) {
+        setDraftsByFile(prev => ({
+          ...prev,
+          [filename]: draftContent
+        }));
+      }
+    };
+    window.addEventListener('draft_updated', handleDraftUpdated);
+    return () => window.removeEventListener('draft_updated', handleDraftUpdated);
   }, [activeQueryFilename]);
 
   useEffect(() => {
@@ -286,9 +301,12 @@ export default function SubmissionPanel({
         if (hasMixed) return prev;
       }
       
+      if (onSyncDraft) {
+        onSyncDraft(activeQueryFilename, next);
+      }
       return { ...prev, [activeQueryFilename]: next };
     });
-  }, [mode, activeQueryFilename]);
+  }, [mode, activeQueryFilename, onSyncDraft]);
 
   const addFrame = useCallback((shot, answer = '') => {
     if (!shot) return;
@@ -497,10 +515,12 @@ export default function SubmissionPanel({
           {viewMode === 'csv' && (
             <button 
               onClick={() => {
+                const newDraft = parseCsvContent(activeCsvContent, mode, []);
                 setDraftsByFile(prev => ({
                    ...prev,
-                   [activeQueryFilename]: parseCsvContent(activeCsvContent, mode, [])
+                   [activeQueryFilename]: newDraft
                 }));
+                if (onSyncDraft) onSyncDraft(activeQueryFilename, newDraft);
                 setViewMode('draft');
                 toast.success("CSV content pushed to Draft");
               }}
