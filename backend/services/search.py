@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
@@ -151,7 +152,7 @@ async def search_ocr_asr_on_meilisearch_async(
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """Search OCR and ASR fields independently; when both are present, intersect frames."""
+    t_start = time.time()
     queries = []
     if ocr_keyword and ocr_keyword.strip():
         queries.append((ocr_keyword.strip(), OCR_SEARCH_FIELD))
@@ -167,13 +168,17 @@ async def search_ocr_asr_on_meilisearch_async(
         for keyword, field in queries
     ])
     if len(results) == 1:
-        return results[0]
-    by_frame = [{item["frame_name"]: item for item in group} for group in results]
-    common_frames = set(by_frame[0]).intersection(*by_frame[1:])
-    return [
-        {**by_frame[0][frame_name], "score": min(float(group[frame_name].get("score", 0.0)) for group in by_frame)}
-        for frame_name in common_frames
-    ]
+        res = results[0]
+    else:
+        by_frame = [{item["frame_name"]: item for item in group} for group in results]
+        common_frames = set(by_frame[0]).intersection(*by_frame[1:])
+        res = [
+            {**by_frame[0][frame_name], "score": min(float(group[frame_name].get("score", 0.0)) for group in by_frame)}
+            for frame_name in common_frames
+        ]
+    t_elapsed = time.time() - t_start
+    print(f"  ⏱ [Meilisearch] OCR/ASR search returned {len(res)} hits in {t_elapsed:.3f}s")
+    return res
 
 # --- Helper: Fusion Vector & Meilisearch Results ---
 def _combine_and_rerank_results(
@@ -476,14 +481,20 @@ async def embed_and_search_model(
     spatial_region: str = "full",
     spatial_only: bool = False,
 ):
+    t_embed_start = time.time()
     embedding = await get_embedding(
         model_name=model_name,
         text=text,
         image_name=image_name,
         image_text=image_text,
     )
+    t_embed = time.time() - t_embed_start
     if not embedding:
+        print(f"  ❌ [Model: {model_name}] Embedding extraction FAILED in {t_embed:.3f}s")
         return model_name, None
+    print(f"  ⏱ [Model: {model_name}] Embedding extracted in {t_embed:.3f}s")
+
+    t_qdrant_start = time.time()
     config = MODEL_CONFIGS[model_name]
     if model_name == "beit3" and spatial_region in SPATIAL_REGION_VECTORS:
         spatial_results = await search_spatial_qdrant(
@@ -503,6 +514,9 @@ async def embed_and_search_model(
             embedding, config["collection"], limit=limit,
             candidate_frame_names=candidate_frame_names, video_ids=video_ids,
         )
+    t_qdrant = time.time() - t_qdrant_start
+    hit_count = len(raw_results) if raw_results is not None else 0
+    print(f"  ⏱ [Model: {model_name}] Qdrant search returned {hit_count} hits in {t_qdrant:.3f}s (Total for model: {t_embed + t_qdrant:.3f}s)")
     return model_name, raw_results
 
 async def search_all_models(

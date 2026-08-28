@@ -123,9 +123,21 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
     has_vector_query = bool(search_model.query_text or image_name or search_model.image_search_text)
     has_filter_query = bool(search_model.ocr_query or search_model.asr_query) 
 
+    print(f"\n==================== [SEARCH PIPELINE START] ====================")
+    print(f" ▶ Query Text  : {repr(search_model.query_text)}")
+    print(f" ▶ Image Query : {image_name}")
+    print(f" ▶ Models      : {models_to_use}")
+    print(f" ▶ OCR Filter  : {repr(search_model.ocr_query)} | ASR Filter: {repr(search_model.asr_query)}")
+    print(f" ▶ Spatial     : region='{spatial.get('spatial_region')}' (only={spatial_only})")
+    if search_model.candidate_frame_names:
+        print(f" ▶ Candidate Filter: {len(search_model.candidate_frame_names)} frames")
+    if search_model.video_ids:
+        print(f" ▶ Video Filter    : {search_model.video_ids}")
+
     async def _vector_stage():
         if not has_vector_query:
             return []
+        t_vec_start = time.time()
         results_by_model = await search_all_models(
             models_to_use,
             text=spatial["semantic_query"],
@@ -137,23 +149,29 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
             spatial_region=spatial["spatial_region"],
             spatial_only=spatial_only,
         )
-        return fuse_results(results_by_model, {m: weights.get(m, 1.0) for m in models_to_use})
+        fused = fuse_results(results_by_model, {m: weights.get(m, 1.0) for m in models_to_use})
+        print(f"  ⏱ [Stage: Vector Search & Fusion] Finished in {time.time() - t_vec_start:.3f}s -> {len(fused)} items")
+        return fused
 
     async def _ocr_stage():
         if not has_filter_query:
             return []
-        return await search_ocr_asr_on_meilisearch_async(
+        t_filter_start = time.time()
+        res = await search_ocr_asr_on_meilisearch_async(
             ocr_keyword=search_model.ocr_query,
             asr_keyword=search_model.asr_query,
             limit=5000,
             candidate_frame_names=search_model.candidate_frame_names,
             video_ids=search_model.video_ids, 
         )
+        print(f"  ⏱ [Stage: OCR/ASR Meilisearch] Finished in {time.time() - t_filter_start:.3f}s -> {len(res)} items")
+        return res
 
     start_retrieval = time.time()
     fused_vector_results, filter_search_results = await asyncio.gather(_vector_stage(), _ocr_stage())
     timings["retrieval_s"] = time.time() - start_retrieval
 
+    t_rerank_start = time.time()
     final_results = []
     if has_vector_query and has_filter_query:
         final_results = _combine_and_rerank_results(fused_vector_results, filter_search_results)
@@ -164,18 +182,31 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
             res['score'] = res.get('score', 0.0)
             res['url'] = f"/keyframes/{res['frame_name']}"
         final_results = sorted(filter_search_results, key=lambda x: x.get('score', 0), reverse=True)
+    t_rerank = time.time() - t_rerank_start
 
     start_final = time.time()
+    t_label_start = time.time()
     attach_similarity_labels(final_results)
+    t_label = time.time() - t_label_start
+
+    t_cluster_start = time.time()
     clustered = process_and_cluster_results(final_results)
+    t_cluster = time.time() - t_cluster_start
+
     total_results = len(clustered)
-    
     start_idx = (search_model.page - 1) * search_model.page_size
     paginated = clustered[start_idx:start_idx + search_model.page_size]
-    timings["final_processing_s"] = time.time() - start_final
-
-    timings["total_request_s"] = time.time() - start_time
     
+    timings["final_processing_s"] = time.time() - start_final
+    timings["total_request_s"] = time.time() - start_time
+
+    print(f" ----------------- TIMING SUMMARY -----------------")
+    print(f"  • Retrieval (Qdrant/Meili) : {timings['retrieval_s']:.3f}s")
+    print(f"  • Score Fusion & Reranking : {t_rerank:.3f}s")
+    print(f"  • Similarity Labels        : {t_label:.3f}s")
+    print(f"  • Temporal Clustering      : {t_cluster:.3f}s ({len(final_results)} frames -> {total_results} clusters)")
+    print(f"  • TOTAL BACKEND TIME       : {timings['total_request_s']:.3f}s")
+    print(f"==================== [SEARCH PIPELINE END] ====================\n")
     return {
         "results": paginated,
         "total_results": total_results,
