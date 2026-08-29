@@ -4,29 +4,38 @@ import toast from 'react-hot-toast';
 import { getImageUrl } from '../../utils/imageUrl'; // Import URL builder helper
 import { BASE_URL } from '../../api';
 
-function buildTimelineSlots(frames, words) {
-  if (frames.length === 0) return [];
-
-  const slots = frames.map((shot) => ({ shot, words: [] }));
-  let slotIndex = 0;
-  for (const word of words) {
-    while (
-      slotIndex < frames.length - 1
-      && word.start_frame_id >= frames[slotIndex + 1].frame_id
-    ) {
-      slotIndex += 1;
-    }
-    slots[slotIndex].words.push(word);
+function buildSentenceGroups(frames, sentences) {
+  if (!frames || frames.length === 0) return [];
+  if (!sentences || sentences.length === 0) {
+    return frames.map((shot) => ({ sentence: null, shots: [shot] }));
   }
 
-  return slots.map((slot) => {
-    const characterCount = slot.words.reduce(
-      (total, word) => total + word.word.trim().length + 1,
-      0,
-    );
-    const extraWidth = Math.min(500, slot.words.length * 7 + characterCount * 1.4);
-    return { ...slot, width: Math.round(230 + extraWidth) };
-  });
+  const sortedSentences = [...sentences].sort((a, b) => a.start_frame_id - b.start_frame_id);
+
+  const groups = [];
+  let currentGroup = null;
+
+  for (const shot of frames) {
+    const fid = shot.frame_id;
+    let matched = null;
+    if (fid != null) {
+      matched = sortedSentences.find((s) => fid >= s.start_frame_id && fid <= s.end_frame_id);
+    }
+    const matchedId = matched ? matched.id : null;
+
+    if (!currentGroup || currentGroup.sentenceId !== matchedId) {
+      currentGroup = {
+        sentence: matched,
+        sentenceId: matchedId,
+        shots: [shot],
+      };
+      groups.push(currentGroup);
+    } else {
+      currentGroup.shots.push(shot);
+    }
+  }
+
+  return groups;
 }
 
 const isSameShot = (first, second) => {
@@ -43,10 +52,23 @@ const isSameShot = (first, second) => {
   );
 };
 
-export default function FrameContextModal({ shotData, onClose, onZoom, onPreview, sendRealtimeMessage, username, userColor, onSubmitDres, onContext, onQuickSearch, wrongFrames = [], correctSubmission = null }) {
+export default function FrameContextModal({
+  shotData,
+  onClose,
+  onZoom,
+  onPreview,
+  sendRealtimeMessage,
+  username,
+  userColor,
+  onSubmitDres,
+  onContext,
+  onQuickSearch,
+  wrongFrames = [],
+  correctSubmission = null,
+}) {
   const [neighbors, setNeighbors] = useState([]);
   const [contextMode, setContextMode] = useState('all');
-  const [timelineWords, setTimelineWords] = useState([]);
+  const [timelineSentences, setTimelineSentences] = useState([]);
   const [timelineFps, setTimelineFps] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hoveredShot, setHoveredShot] = useState(null);
@@ -54,9 +76,10 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
   const railRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startScrollLeft: 0, moved: false });
   const suppressClickRef = useRef(false);
-  const timelineSlots = useMemo(
-    () => isVideoTimeline ? buildTimelineSlots(neighbors, timelineWords) : [],
-    [isVideoTimeline, neighbors, timelineWords],
+
+  const sentenceGroups = useMemo(
+    () => (isVideoTimeline ? buildSentenceGroups(neighbors, timelineSentences) : []),
+    [isVideoTimeline, neighbors, timelineSentences],
   );
 
   useEffect(() => {
@@ -165,11 +188,9 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
           if (hoveredShot && onSubmitDres) {
             onSubmitDres(hoveredShot);
           }
-        } else {
-          if (hoveredShot) {
-            pushToTeam(hoveredShot);
-            toast.success('Sent to Team!');
-          }
+        } else if (hoveredShot) {
+          pushToTeam(hoveredShot);
+          toast.success('Sent to Team!');
         }
       } else if (e.shiftKey && !e.ctrlKey && e.code === 'Space') {
         e.preventDefault();
@@ -188,29 +209,29 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     const fetchNeighbors = async () => {
       setLoading(true);
       setNeighbors([]);
-      setTimelineWords([]);
+      setTimelineSentences([]);
       setTimelineFps(null);
       try {
         const response = isVideoTimeline
           ? await fetch(`${BASE_URL}/video_timeline/${encodeURIComponent(shotData.video_id)}`, {
-              signal: controller.signal,
-            })
+            signal: controller.signal,
+          })
           : await fetch(`${BASE_URL}/check_temporal_frames`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ base_frame_name: shotData.frame_name, mode: contextMode }),
-              signal: controller.signal,
-            });
-        if (!response.ok) throw new Error("Failed to load context frames");
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base_frame_name: shotData.frame_name, mode: contextMode }),
+            signal: controller.signal,
+          });
+        if (!response.ok) throw new Error('Failed to load context frames');
         const payload = await response.json();
         const filenames = isVideoTimeline ? payload.frames : payload;
-        if (!Array.isArray(filenames)) throw new Error("Invalid frame timeline response");
+        if (!Array.isArray(filenames)) throw new Error('Invalid frame timeline response');
         if (isVideoTimeline) {
-          setTimelineWords(Array.isArray(payload.words) ? payload.words : []);
+          setTimelineSentences(Array.isArray(payload.sentences) ? payload.sentences : []);
           setTimelineFps(payload.fps ?? null);
         }
 
-        const mapped = filenames.map(fname => {
+        const mapped = filenames.map((fname) => {
           const frame_id_match = fname.match(/_(\d+)\.[^.]+$/);
           const frameId = frame_id_match ? parseInt(frame_id_match[1], 10) : null;
           const nameParts = fname.replace(/\.[^.]+$/, '').split('_');
@@ -220,7 +241,7 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
             video_id: shotData.video_id,
             shot_id: nameParts.length >= 4 ? nameParts[nameParts.length - 2] : shotData.shot_id,
             filepath: fname,
-            url: getImageUrl(fname) 
+            url: getImageUrl(fname),
           };
         });
         const isDynamicVideoFrame = shotData.filepath?.startsWith('dynamic-frame-')
@@ -232,11 +253,6 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         } : null;
         const displayedFrames = originalFrame ? [originalFrame, ...mapped] : mapped;
         if (originalFrame) {
-          // Video-preview frames are dynamic and are not part of the mapped
-          // keyframe list.  Keep the original in chronological position for
-          // both the neighbors grid and the full timeline; prepending it
-          // makes the context appear out of order (and always puts ORIGINAL
-          // in the top-left corner).
           displayedFrames.sort((first, second) => {
             const firstFrame = Number.isFinite(first.frame_id) ? first.frame_id : Number.POSITIVE_INFINITY;
             const secondFrame = Number.isFinite(second.frame_id) ? second.frame_id : Number.POSITIVE_INFINITY;
@@ -246,8 +262,8 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         setNeighbors(displayedFrames);
       } catch (e) {
         if (e.name === 'AbortError') return;
-        console.error("Error checking temporal frames:", e);
-        toast.error(isVideoTimeline ? "Error loading video timeline" : "Error loading neighboring frames");
+        console.error('Error checking temporal frames:', e);
+        toast.error(isVideoTimeline ? 'Error loading video timeline' : 'Error loading neighboring frames');
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -256,18 +272,130 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
     return () => controller.abort();
   }, [isVideoTimeline, shotData, contextMode]);
 
+  const renderShotCard = (shot, idx) => {
+    const offset = shot.frame_id - shotData.frame_id;
+    const isCenter = shot.isOriginalFrame || offset === 0;
+    const labelText = isVideoTimeline
+      ? `#${shot.frame_id}`
+      : (offset > 0 ? `+${offset}` : `${offset}`);
+    const isCorrect = isSameShot(shot, correctSubmission);
+    const isWrong = !isCorrect && wrongFrames.some((wrongFrame) => isSameShot(shot, wrongFrame));
+    const hasSubmissionStatus = isCorrect || isWrong;
+    const statusColor = isCorrect ? '#ccff00' : '#ff1744';
+
+    return (
+      <div
+        key={shot.frame_name || `${shot.video_id}-${shot.frame_id}-${idx}`}
+        data-center-frame={isCenter ? 'true' : 'false'}
+        className={`relative bg-[var(--card-bg)] rounded-xl overflow-hidden aspect-video cursor-zoom-in hover:scale-[1.03] transition-all duration-200 group ${
+          isVideoTimeline ? 'w-[230px] flex-none' : 'w-full'
+        } ${
+          isCenter
+            ? 'border-[4px] ring-[4px] ring-cyan-400/80 shadow-[0_0_20px_rgba(34,211,238,0.5)] z-20'
+            : hasSubmissionStatus
+              ? 'border-0 z-20'
+              : 'border-[var(--border-color)] hover:border-[var(--accent-primary)]'
+        }`}
+        style={hasSubmissionStatus ? {
+          boxShadow: `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`,
+        } : undefined}
+        onClick={(e) => {
+          if (suppressClickRef.current) {
+            e.preventDefault();
+            return;
+          }
+          if ((e.ctrlKey || e.metaKey) && e.altKey && onContext) {
+            e.preventDefault();
+            e.stopPropagation();
+            setHoveredShot(null);
+            onContext({ ...shot, contextView: 'video-timeline' });
+          } else if (e.ctrlKey && e.shiftKey && onQuickSearch) {
+            onQuickSearch(shot);
+            onClose();
+          } else if ((e.ctrlKey || e.metaKey) && onContext) {
+            e.preventDefault();
+            e.stopPropagation();
+            setHoveredShot(null);
+            onContext({ ...shot, contextView: 'neighbors' });
+          } else {
+            onZoom(shot.url);
+          }
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onPreview(shot.video_id, shot.frame_id);
+        }}
+        onMouseEnter={() => setHoveredShot(shot)}
+        onMouseLeave={() => setHoveredShot(null)}
+      >
+        <img
+          loading="lazy"
+          draggable="false"
+          src={getImageUrl(shot.url || shot.frame_name || shot.filepath)}
+          className="w-full h-full object-cover pointer-events-none"
+          alt="Context result"
+          onError={(e) => { e.target.onerror = null; e.target.src = '/fallback-image.png'; }}
+        />
+
+        <div className="absolute top-2 left-2 flex flex-col gap-1 z-10 pointer-events-none">
+          <div className={`px-2 py-0.5 rounded-full border text-[9px] font-extrabold tracking-widest shadow-lg w-fit ${
+            isCenter ? 'bg-cyan-500 text-slate-950 border-cyan-300 font-bold shadow-[0_0_10px_#22d3ee]' : 'bg-black/80 border-white/20 text-white'
+          }`}>
+            {isCenter ? 'ORIGINAL' : labelText}
+          </div>
+          {isWrong && (
+            <div className="px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center justify-center w-fit shadow-[0_0_8px_rgba(225,29,72,0.8)] border border-rose-400" title="Wrong Submission">
+              <span className="text-[9px] font-extrabold tracking-widest text-white">WRONG</span>
+            </div>
+          )}
+          {isCorrect && (
+            <div className="px-2 py-0.5 rounded-full bg-[#ccff00] text-slate-900 flex items-center justify-center w-fit shadow-[0_0_10px_#ccff00] border border-[#a8cc00]/50" title="Correct Submission">
+              <span className="text-[9px] font-extrabold tracking-widest text-slate-900">CORRECT</span>
+            </div>
+          )}
+        </div>
+
+        <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20">
+          {onSubmitDres && (
+            <button
+              className="absolute top-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-blue-500 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
+              onClick={(e) => { e.stopPropagation(); onSubmitDres(shot); }}
+              title="Submit to DRES"
+            >
+              <i className="fas fa-paper-plane"></i>
+            </button>
+          )}
+          <button
+            className="absolute bottom-1.5 left-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
+            onClick={(e) => { e.stopPropagation(); pushToTeam(shot); }}
+            title="Send to Team"
+          >
+            <i className="fas fa-users"></i>
+          </button>
+          <button
+            className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
+            onClick={(e) => { e.stopPropagation(); pushToTrake(shot); }}
+            title="Pin to Trake"
+          >
+            <i className="fas fa-thumbtack"></i>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div data-shortcut-scope="modal" className="fixed inset-0 bg-black/90 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg w-[95vw] max-h-[90vh] flex flex-col overflow-hidden shadow-[var(--shadow-heavy)]">
-        
+      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-2xl w-[95vw] max-h-[92vh] flex flex-col overflow-hidden shadow-[var(--shadow-heavy)]">
+
         <div className="px-6 py-4 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--glass-bg)] group/header">
           <div className="flex items-center gap-6">
             <h2 className="text-sm font-bold text-[var(--accent-primary)] uppercase tracking-wider flex items-center gap-2">
-              <i className="fas fa-layer-group"></i> 
-              {isVideoTimeline ? 'Video Timeline + Word ASR' : 'Frame Context'} – Video: <span className="font-mono text-[var(--text-primary)]">{shotData.video_id}</span>, Frame: <span className="font-mono text-[var(--text-primary)]">{shotData.frame_id}</span>
+              <i className="fas fa-film"></i>
+              {isVideoTimeline ? 'Sentence-Level Video Timeline' : 'Frame Context'} – Video: <span className="font-mono text-[var(--text-primary)]">{shotData.video_id}</span>, Frame: <span className="font-mono text-[var(--text-primary)]">{shotData.frame_id}</span>
               {isVideoTimeline && timelineFps && <span className="font-mono text-[var(--text-secondary)]">({timelineFps} FPS)</span>}
             </h2>
-            
+
             {!isVideoTimeline && (
               <div className="flex items-center bg-black/40 rounded-full p-1 border border-white/5 opacity-80 hover:opacity-100 transition-opacity">
                 <button
@@ -294,8 +422,8 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
             )}
           </div>
 
-          <span 
-            className="text-lg cursor-pointer text-[var(--text-secondary)] hover:text-red-500 hover:rotate-90 duration-200" 
+          <span
+            className="text-lg cursor-pointer text-[var(--text-secondary)] hover:text-red-500 hover:rotate-90 duration-200"
             onClick={onClose}
           >
             &times;
@@ -308,157 +436,73 @@ export default function FrameContextModal({ shotData, onClose, onZoom, onPreview
         }>
           {loading ? (
             <div className="flex items-center justify-center text-[var(--accent-primary)] text-xs py-20 gap-2 animate-pulse">
-              <i className="fas fa-spinner fa-spin text-sm"></i> Checking available frames...
+              <i className="fas fa-spinner fa-spin text-sm"></i> Loading timeline & ASR sentences...
             </div>
           ) : neighbors.length === 0 ? (
             <p className="text-center text-[var(--text-secondary)] py-20 italic">No context frames found.</p>
-          ) : (
+          ) : isVideoTimeline ? (
             <div
               ref={railRef}
-              className={isVideoTimeline
-                ? 'flex w-full items-stretch gap-3 overflow-x-auto overflow-y-hidden px-2 py-5 custom-scrollbar cursor-grab active:cursor-grabbing select-none'
-                : 'grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 w-full'
-              }
-              style={isVideoTimeline
-                ? { overscrollBehaviorX: 'contain', touchAction: 'pan-y', scrollBehavior: 'auto' }
-                : undefined
-              }
-              onPointerDown={isVideoTimeline ? handleRailPointerDown : undefined}
-              onPointerMove={isVideoTimeline ? handleRailPointerMove : undefined}
-              onPointerUp={isVideoTimeline ? finishRailDrag : undefined}
-              onPointerCancel={isVideoTimeline ? finishRailDrag : undefined}
-              onLostPointerCapture={isVideoTimeline ? finishRailDrag : undefined}
+              className="flex w-full items-stretch gap-6 overflow-x-auto overflow-y-hidden px-3 py-6 custom-scrollbar cursor-grab active:cursor-grabbing select-none"
+              style={{ overscrollBehaviorX: 'contain', touchAction: 'pan-y', scrollBehavior: 'auto' }}
+              onPointerDown={handleRailPointerDown}
+              onPointerMove={handleRailPointerMove}
+              onPointerUp={finishRailDrag}
+              onPointerCancel={finishRailDrag}
+              onLostPointerCapture={finishRailDrag}
             >
-              {(isVideoTimeline
-                ? timelineSlots
-                : neighbors.map((shot) => ({ shot, words: [], width: null }))
-              ).map(({ shot, words, width }, idx) => {
-                const offset = shot.frame_id - shotData.frame_id;
-                const isCenter = shot.isOriginalFrame || offset === 0;
-                const labelText = isVideoTimeline
-                  ? `#${shot.frame_id}`
-                  : (offset > 0 ? `+${offset}` : `${offset}`);
-                const isCorrect = isSameShot(shot, correctSubmission);
-                const isWrong = !isCorrect && wrongFrames.some((wrongFrame) => isSameShot(shot, wrongFrame));
-                const hasSubmissionStatus = isCorrect || isWrong;
-                const statusColor = isCorrect ? '#ccff00' : '#ff1744';
+              {sentenceGroups.map((group, groupIdx) => {
+                const hasSentence = !!group.sentence;
+
+                if (!hasSentence) {
+                  return (
+                    <div key={`gap-group-${groupIdx}`} className="flex-none flex items-center gap-3">
+                      {group.shots.map((shot, sIdx) => renderShotCard(shot, sIdx))}
+                    </div>
+                  );
+                }
 
                 return (
                   <div
-                    key={shot.frame_name || `${shot.video_id}-${shot.frame_id}-${idx}`}
-                    className={isVideoTimeline ? 'min-w-0 flex-none flex flex-col gap-1' : 'contents'}
-                    style={isVideoTimeline ? { width: `${width}px` } : undefined}
+                    key={group.sentence.id || `sentence-group-${groupIdx}`}
+                    className="flex-none flex flex-col gap-3.5 p-3.5 rounded-2xl bg-amber-500/5 border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.12)] relative transition-all hover:border-amber-500/50 hover:shadow-[0_0_25px_rgba(245,158,11,0.2)]"
                   >
-                    <div
-                      data-center-frame={isCenter ? 'true' : 'false'}
-                      className={`relative bg-[var(--card-bg)] rounded-xl overflow-hidden aspect-video cursor-zoom-in hover:scale-[1.03] transition-all duration-200 group ${
-                        isVideoTimeline ? 'self-start w-[230px]' : ''
-                      } ${
-                        isCenter
-                          ? 'border-[6px] ring-[6px] ring-slate-100'
-                          : hasSubmissionStatus
-                            ? 'border-0 z-20'
-                          : 'border-[var(--border-color)] hover:border-[var(--accent-primary)]'
-                      }`}
-                      style={hasSubmissionStatus ? {
-                        boxShadow: `0 0 15px 3px ${statusColor}, 0 0 30px 8px ${statusColor}, 0 0 60px 15px ${statusColor}, inset 0 0 25px 5px ${statusColor}`,
-                      } : isCenter ? {
-                        borderColor: '#d1d5db',
-                        boxShadow: '0 0 12px #f8fafc, 0 0 28px #e5e7eb, 0 0 46px #94a3b8',
-                      } : undefined}
-                      onClick={(e) => {
-                        if (suppressClickRef.current) {
-                          e.preventDefault();
-                          return;
-                        }
-                        if ((e.ctrlKey || e.metaKey) && e.altKey && onContext) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setHoveredShot(null);
-                          onContext({ ...shot, contextView: 'video-timeline' });
-                        } else if (e.ctrlKey && e.shiftKey && onQuickSearch) {
-                        onQuickSearch(shot);
-                        onClose();
-                      } else if ((e.ctrlKey || e.metaKey) && onContext) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setHoveredShot(null);
-                        onContext({ ...shot, contextView: 'neighbors' });
-                      } else {
-                        onZoom(shot.url);
-                      }
-                      }}
-                      onContextMenu={(e) => {
-                      e.preventDefault();
-                      onPreview(shot.video_id, shot.frame_id);
-                      }}
-                      onMouseEnter={() => setHoveredShot(shot)}
-                      onMouseLeave={() => setHoveredShot(null)}
-                    >
-                      <img loading="lazy" draggable="false" src={getImageUrl(shot.url || shot.frame_name || shot.filepath)} className="w-full h-full object-cover pointer-events-none" alt="Context result" onError={(e) => { e.target.onerror = null; e.target.src = '/fallback-image.png'; }} />
-                    
-                      <div className="absolute top-2 left-2 flex flex-col gap-1 z-10 pointer-events-none">
-                        <div className={`px-2 py-0.5 rounded-full border text-[9px] font-extrabold tracking-widest shadow-lg w-fit ${
-                          isCenter ? 'bg-[var(--accent-secondary)] text-white border-white/50 shadow-[0_0_10px_var(--accent-secondary)]' : 'bg-black/80 border-white/20 text-white'
-                        }`}>
-                          {isCenter ? 'ORIGINAL' : labelText}
-                        </div>
-                        {isWrong && (
-                          <div className="px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center justify-center w-fit shadow-[0_0_8px_rgba(225,29,72,0.8)] border border-rose-400" title="Wrong Submission">
-                            <span className="text-[9px] font-extrabold tracking-widest text-white">WRONG</span>
-                          </div>
-                        )}
-                        {isCorrect && (
-                          <div className="px-2 py-0.5 rounded-full bg-[#ccff00] text-slate-900 flex items-center justify-center w-fit shadow-[0_0_10px_#ccff00] border border-[#a8cc00]/50" title="Correct Submission">
-                            <span className="text-[9px] font-extrabold tracking-widest text-slate-900">CORRECT</span>
-                          </div>
-                        )}
+                    {/* Sentence Header Info */}
+                    <div className="flex items-center justify-between text-[11px] font-bold text-amber-400 uppercase tracking-wider px-1">
+                      <span className="flex items-center gap-1.5">
+                        <i className="fas fa-[#f59e0b] fa-align-left text-amber-400"></i>
+                        Sentence Segment
+                      </span>
+                      <span className="font-mono text-[10px] text-amber-300/80 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
+                        {group.sentence.start.toFixed(1)}s – {group.sentence.end.toFixed(1)}s (Frame #{group.sentence.start_frame_id}–#{group.sentence.end_frame_id})
+                      </span>
+                    </div>
+
+                    {/* Shots Row with Highlighted Dividers (Vách ngăn) */}
+                    <div className="flex items-center gap-3 relative">
+                      {/* Left Boundary / Vách ngăn đầu câu */}
+                      <div className="h-full w-2 rounded-full bg-gradient-to-b from-amber-300 via-amber-500 to-amber-600 shadow-[0_0_12px_#f59e0b] flex-none self-stretch" title="Sentence Start Divider" />
+
+                      <div className="flex items-center gap-3">
+                        {group.shots.map((shot, sIdx) => renderShotCard(shot, sIdx))}
                       </div>
 
-                      <div className="absolute inset-0 bg-slate-950/0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20">
-                      {onSubmitDres && (
-                        <button
-                          className="absolute top-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-blue-500 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
-                          onClick={(e) => { e.stopPropagation(); onSubmitDres(shot); }}
-                          title="Submit to DRES"
-                        >
-                          <i className="fas fa-paper-plane"></i>
-                        </button>
-                      )}
-                      <button 
-                        className="absolute bottom-1.5 left-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
-                        onClick={(e) => { e.stopPropagation(); pushToTeam(shot); }} 
-                        title="Send to Team"
-                      >
-                        <i className="fas fa-users"></i>
-                      </button>
-                      <button 
-                        className="absolute bottom-1.5 right-1.5 w-9 h-9 rounded-lg bg-slate-900/90 border border-white/10 text-white flex items-center justify-center text-xs hover:bg-slate-700 hover:border-transparent hover:scale-110 duration-150 cursor-pointer pointer-events-auto"
-                        onClick={(e) => { e.stopPropagation(); pushToTrake(shot); }} 
-                        title="Pin to Trake"
-                      >
-                        <i className="fas fa-thumbtack"></i>
-                      </button>
-                      </div>
+                      {/* Right Boundary / Vách ngăn cuối câu */}
+                      <div className="h-full w-2 rounded-full bg-gradient-to-b from-amber-300 via-amber-500 to-amber-600 shadow-[0_0_12px_#f59e0b] flex-none self-stretch" title="Sentence End Divider" />
                     </div>
-                    {isVideoTimeline && (
-                      <div className="min-h-12 w-full min-w-0 px-2 pt-1 text-left text-sm font-medium leading-6 text-[var(--text-primary)]">
-                        {words.length > 0 ? words.map((word, wordIndex) => (
-                          <span
-                            key={`${word.start_frame_id}-${word.end_frame_id}-${wordIndex}`}
-                            className="hover:text-[var(--accent-primary)]"
-                            title={`${word.start.toFixed(2)}s–${word.end.toFixed(2)}s · frame ${word.start_frame_id}–${word.end_frame_id}`}
-                          >
-                            {word.word.trim()}{' '}
-                          </span>
-                        )) : (
-                          <span aria-hidden="true">&nbsp;</span>
-                        )}
-                      </div>
-                    )}
+
+                    {/* Seamless Sentence Transcription Card */}
+                    <div className="w-full bg-slate-950/80 border border-amber-500/30 rounded-xl p-3 text-xs leading-relaxed text-amber-100/90 font-medium tracking-wide flex items-start gap-2 shadow-inner">
+                      <i className="fas fa-quote-left text-amber-400 text-xs mt-0.5 flex-none" />
+                      <span className="flex-grow select-text">{group.sentence.text}</span>
+                    </div>
                   </div>
                 );
               })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 w-full">
+              {neighbors.map((shot, idx) => renderShotCard(shot, idx))}
             </div>
           )}
         </div>

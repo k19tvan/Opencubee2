@@ -502,9 +502,52 @@ async def get_video_keyframes(video_id: str):
     return frame_names
 
 
+SENTENCE_LEVEL_GEMINI_DIR = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/results/asr/transcription/sentence_level_gemini")
+SENTENCE_LEVEL_DIR = Path("/workingspace_aiclub/WorkingSpace/Personal/nguyenmv/Opencubee2_HCMAI25/results/asr/transcription/sentence_level")
+
+
+@lru_cache(maxsize=16)
+def load_sentence_timeline(video_id: str) -> tuple[float, list[dict]]:
+    fps = load_fps_mapping().get(video_id, 25.0)
+    trans_path = SENTENCE_LEVEL_GEMINI_DIR / f"{video_id}.json"
+    if not trans_path.exists():
+        trans_path = SENTENCE_LEVEL_DIR / f"{video_id}.json"
+    if not trans_path.exists():
+        return fps, []
+
+    try:
+        with trans_path.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except Exception:
+        return fps, []
+
+    sentences = []
+    if isinstance(data, list):
+        for idx, item in enumerate(data):
+            if not isinstance(item, dict):
+                continue
+            try:
+                start = float(item.get("start", 0))
+                end = float(item.get("end", 0))
+            except (ValueError, TypeError):
+                continue
+            text = str(item.get("text") or item.get("summary") or "").strip()
+            if not text:
+                continue
+            sentences.append({
+                "id": f"{video_id}_{idx}",
+                "text": text,
+                "start": start,
+                "end": end,
+                "start_frame_id": int(start * fps + 0.5),
+                "end_frame_id": int(end * fps + 0.5),
+            })
+    return fps, sentences
+
+
 @router.get("/video_timeline/{video_id}")
 async def get_video_timeline(video_id: str):
-    """Return full-video keyframes and word timestamps mapped to frame IDs."""
+    """Return full-video keyframes, word timestamps, and sentence-level transcriptions mapped to frame IDs."""
     validate_video_id(video_id)
     frame_names = runtime.video_frame_mapping.get(video_id)
     if frame_names is None:
@@ -518,19 +561,18 @@ async def get_video_timeline(video_id: str):
 
     try:
         fps, words = await asyncio.to_thread(load_word_timeline, video_id)
-    except FileNotFoundError as error:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No word-level transcription found for video {video_id}",
-        ) from error
-    except (OSError, ValueError) as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception:
+        fps = load_fps_mapping().get(video_id, 25.0)
+        words = []
+
+    _, sentences = await asyncio.to_thread(load_sentence_timeline, video_id)
 
     return {
         "video_id": video_id,
         "fps": fps,
         "frames": frame_names,
         "words": words,
+        "sentences": sentences,
     }
 
 @router.post("/upload_image")
