@@ -20,7 +20,12 @@ from backend.core.config import (
     TRANSLATE_MODEL,
     TRANSLATE_MODEL_API_KEY,
     TRANSLATE_MODEL_BASE_URL,
+    VECTOR_DATABASE,
+    MILVUS_HOST,
+    MILVUS_PORT,
 )
+
+from pymilvus import connections
 
 LOGGER = logging.getLogger(__name__)
 
@@ -237,20 +242,37 @@ def startup_runtime():
     load_scene_frame_mapping_json()
 
 
-    try:
-        from qdrant_client import QdrantClient
-
-        print(f"--- Connecting to Qdrant at {QDRANT_HOST} (gRPC: {QDRANT_GRPC_PORT})... ---")
-        qdrant_client = QdrantClient(
-            host=QDRANT_HOST,
-            port=QDRANT_PORT,
-            grpc_port=QDRANT_GRPC_PORT,
-            prefer_grpc=True,
-            timeout=120.0,
-        )
-        print("--- Qdrant connection successful. ---")
-    except Exception as e:
-        print(f"FATAL: Qdrant connection failed: {e}")
+    if VECTOR_DATABASE == "milvus":
+        try:
+            print(f"--- Connecting to MILVUS at {MILVUS_HOST}:{MILVUS_PORT}... ---")
+            connections.connect("default", host=MILVUS_HOST, port=MILVUS_PORT)
+            print("--- Milvus connection successful. ---")
+            
+            from pymilvus import utility, Collection
+            cols = utility.list_collections()
+            print(f"--- Loading Milvus collections into RAM: {cols} ---")
+            for c_name in cols:
+                try:
+                    Collection(c_name).load()
+                except Exception as e:
+                    print(f"Failed to load collection {c_name}: {e}")
+            print("--- All Milvus collections loaded! ---")
+        except Exception as e:
+            print(f"FATAL: Milvus connection failed: {e}")
+    else:
+        try:
+            from qdrant_client import QdrantClient
+            print(f"--- Connecting to Qdrant at {QDRANT_HOST} (gRPC: {QDRANT_GRPC_PORT})... ---")
+            qdrant_client = QdrantClient(
+                host=QDRANT_HOST,
+                port=QDRANT_PORT,
+                grpc_port=QDRANT_GRPC_PORT,
+                prefer_grpc=True,
+                timeout=120.0,
+            )
+            print("--- Qdrant connection successful. ---")
+        except Exception as e:
+            print(f"FATAL: Qdrant connection failed: {e}")
 
     try:
         import meilisearch

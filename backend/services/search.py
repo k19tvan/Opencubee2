@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
@@ -27,7 +28,13 @@ from backend.core.config import (
     TEMP_UPLOAD_DIR,
     VLLM_BASE_URL,
     VLLM_MODEL,
+    VECTOR_DATABASE,
 )
+
+try:
+    from pymilvus import Collection
+except ModuleNotFoundError:
+    Collection = None
 
 SPATIAL_REGION_VECTORS = {
     "left": ("left",), "right": ("right",), "top": ("top",), "bottom": ("bottom",),
@@ -151,7 +158,7 @@ async def search_ocr_asr_on_meilisearch_async(
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """Search OCR and ASR fields independently; when both are present, intersect frames."""
+    t_start = time.time()
     queries = []
     if ocr_keyword and ocr_keyword.strip():
         queries.append((ocr_keyword.strip(), OCR_SEARCH_FIELD))
@@ -167,13 +174,17 @@ async def search_ocr_asr_on_meilisearch_async(
         for keyword, field in queries
     ])
     if len(results) == 1:
-        return results[0]
-    by_frame = [{item["frame_name"]: item for item in group} for group in results]
-    common_frames = set(by_frame[0]).intersection(*by_frame[1:])
-    return [
-        {**by_frame[0][frame_name], "score": min(float(group[frame_name].get("score", 0.0)) for group in by_frame)}
-        for frame_name in common_frames
-    ]
+        res = results[0]
+    else:
+        by_frame = [{item["frame_name"]: item for item in group} for group in results]
+        common_frames = set(by_frame[0]).intersection(*by_frame[1:])
+        res = [
+            {**by_frame[0][frame_name], "score": min(float(group[frame_name].get("score", 0.0)) for group in by_frame)}
+            for frame_name in common_frames
+        ]
+    t_elapsed = time.time() - t_start
+    print(f"  ⏱ [Meilisearch] OCR/ASR search returned {len(res)} hits in {t_elapsed:.3f}s")
+    return res
 
 # --- Helper: Fusion Vector & Meilisearch Results ---
 def _combine_and_rerank_results(
@@ -305,98 +316,215 @@ async def embed_image_bytes(
         print(f"Failed to embed image bytes via {model_name} worker: {e}")
     return None
 
-# --- Helper: Lấy vector đã lưu của một keyframe trong Qdrant ---
+# --- Helper: Lấy vector đã lưu của một keyframe ---
 async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Optional[list]:
-    if not runtime.qdrant_client or not frame_name or q_models is None:
-        return None
-    try:
-        base_name = os.path.splitext(frame_name)[0]
-        possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
-        
-        points, _ = await asyncio.to_thread(
-            runtime.qdrant_client.scroll,
-            collection_name=collection_name,
-            scroll_filter=q_models.Filter(
-                must=[q_models.FieldCondition(
+    if not frame_name: return None
+    
+    # ------------------ MILVUS ------------------
+    if VECTOR_DATABASE == "milvus":
+        if Collection is None: return None
+        try:
+            milvus_col = Collection(collection_name)
+            base_name = os.path.splitext(frame_name)[0]
+            possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
+            names_str = json.dumps(possible_names) # e.g. '["name1", "name2..."]'
+            
+            # Since older schema merged everything into `payload`, but new one splits to `other_payload`
+            # and `frame_name` isn't an explicit column, it usually lives inside JSON payload:
+            expr = f'other_payload["frame_name"] in {names_str}' 
+            # Temporary fallback if schema used `payload` instead of `other_payload`... but we will stick to one.
+            if collection_name in ["beit3", "bge", "metaclip2", "fgclip2"]:
+                # The latest schema you ran has `other_payload`
+                pass
+            
+            res = await asyncio.to_thread(milvus_col.query, expr=expr, limit=1, output_fields=["vector"])
+            if res and res[0].get("vector"):
+                return list(res[0]["vector"])
+                
+            # If nothing, try with explicit mapped fallback logic for hallucinated paths (Skip for brevity to not break UI logic)
+        except Exception as e:
+            print(f"Milvus get_stored_vector failed for {frame_name}: {e}")
+            
+    # ------------------ QDRANT ------------------
+    else:
+        if not runtime.qdrant_client or q_models is None: return None
+        try:
+            base_name = os.path.splitext(frame_name)[0]
+            possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
+            
+            must_conditions = [
+                q_models.FieldCondition(
                     key="frame_name",
                     match=q_models.MatchAny(any=possible_names),
-                )]
-            ),
-            with_vectors=True,
-            limit=1,
-        )
-        if points and points[0].vector is not None:
-            vector = points[0].vector
-            if isinstance(vector, dict):
-                vector = vector.get(collection_name) or next(iter(vector.values()), None)
-            return list(vector) if vector is not None else None
-    except Exception as e:
-        print(f"get_stored_vector failed for {frame_name}: {e}")
+                )
+            ]
+            
+            points, _ = await asyncio.to_thread(
+                runtime.qdrant_client.scroll,
+                collection_name=collection_name,
+                scroll_filter=q_models.Filter(must=must_conditions),
+                with_vectors=True,
+                limit=1,
+            )
+            if points and points[0].vector is not None:
+                vector = points[0].vector
+                if isinstance(vector, dict):
+                    vector = vector.get(collection_name) or next(iter(vector.values()), None)
+                return list(vector) if vector is not None else None
+                
+            # UI shortcut hallucination fallback (e.g. L22_V025_021195.webp -> L22_V025_0012_021195.webp)
+            parts = base_name.split("_")
+            if len(parts) == 3:
+                vid = f"{parts[0]}_{parts[1]}"
+                fid_str = parts[2]
+                frames = runtime.video_frame_mapping.get(vid, [])
+                true_frame = next((f for f in frames if f.endswith(f"_{fid_str}.webp") or f.endswith(f"_{str(int(fid_str))}.webp")), None)
+                if true_frame:
+                    points_retry, _ = await asyncio.to_thread(
+                        runtime.qdrant_client.scroll,
+                        collection_name=collection_name,
+                        scroll_filter=q_models.Filter(must=[
+                            q_models.FieldCondition(key="frame_name", match=q_models.MatchValue(value=true_frame))
+                        ]),
+                        with_vectors=True,
+                        limit=1,
+                    )
+                    if points_retry and points_retry[0].vector is not None:
+                        vector = points_retry[0].vector
+                        if isinstance(vector, dict):
+                            vector = vector.get(collection_name) or next(iter(vector.values()), None)
+                        return list(vector) if vector is not None else None
+        except Exception as e:
+            print(f"get_stored_vector failed for {frame_name}: {e}")
+            
     return None
 
-# --- Helper: Tìm kiếm lân cận trên Qdrant ---
+# --- Helper: Tìm kiếm lân cận Vector Database (Qdrant / Milvus) ---
 async def search_qdrant(
     query_vector: list,
     collection_name: str,
     limit: int = 200,
     candidate_frame_names: Optional[List[str]] = None,
-    video_ids: Optional[List[str]] = None,  # <--- Bổ sung video_ids
+    video_ids: Optional[List[str]] = None, 
     vector_name: Optional[str] = None,
 ) -> List[Dict]:
-    if not runtime.qdrant_client or q_models is None: return []
-    try:
-        allowed_frame_names = list(dict.fromkeys(candidate_frame_names or []))
-        if candidate_frame_names is not None and not allowed_frame_names:
-            return []
-        
-        must_conditions = []
-        if allowed_frame_names:
-            must_conditions.append(
-                q_models.FieldCondition(
-                    key="frame_name",
-                    match=q_models.MatchAny(any=allowed_frame_names),
-                )
-            )
-        # Bổ sung lọc theo video_id trong Qdrant
-        if video_ids:
-            must_conditions.append(
-                q_models.FieldCondition(
-                    key="video_id",
-                    match=q_models.MatchAny(any=video_ids),
-                )
-            )
-
-        query_filter = q_models.Filter(must=must_conditions) if must_conditions else None
-
-        query_kwargs = {
-            "collection_name": collection_name,
-            "query": query_vector,
-            "query_filter": query_filter,
-            "limit": min(limit, len(allowed_frame_names)) if allowed_frame_names else limit,
-            "with_payload": ["frame_name", "video_id", "frame_id", "shot_id"],
-            "timeout": 300,
-        }
-        if vector_name:
-            query_kwargs["using"] = vector_name
-        response = await asyncio.to_thread(runtime.qdrant_client.query_points, **query_kwargs)
-        results = []
-        for hit in response.points:
-            payload = hit.payload
-            frame_name = payload.get("frame_name")
-            if not frame_name: continue
-            
-            results.append({
-                "frame_name": frame_name,
-                "score": hit.score,
-                "video_id": payload.get("video_id"),
-                "frame_id": payload.get("frame_id"),
-                "shot_id": str(payload.get("shot_id", "1")),
-                "url": f"/keyframes/{frame_name}"
-            })
-        return results
-    except Exception as e:
-        print(f"Qdrant search error on collection {collection_name}: {e}")
+    
+    allowed_frame_names = list(dict.fromkeys(candidate_frame_names or []))
+    if candidate_frame_names is not None and not allowed_frame_names:
         return []
+            
+    # ------------------ MILVUS ------------------
+    if VECTOR_DATABASE == "milvus":
+        if Collection is None: return []
+        try:
+            milvus_col = Collection(collection_name)
+            
+            expr_parts = []
+            if allowed_frame_names:
+                allowed_str = json.dumps(allowed_frame_names)
+                # Dùng thuộc tính phụ trợ the other_payload JSON field
+                expr_parts.append(f'other_payload["frame_name"] in {allowed_str}')
+                
+            if video_ids:
+                vids_str = json.dumps(video_ids)
+                # Trường video_id đã tách ra schema cột chính
+                expr_parts.append(f'video_id in {vids_str}')
+                
+            expr = " and ".join(expr_parts) if expr_parts else None
+            
+            k = min(limit, len(allowed_frame_names)) if allowed_frame_names else limit
+            
+            search_params = {
+                "metric_type": "COSINE",
+                "params": {"ef": max(64, k)}, 
+            }
+            anns_field_name = f"vector_{vector_name}" if vector_name else "vector"
+            # For 2.4, milvus_col.search is quick
+            resp = await asyncio.to_thread(
+                milvus_col.search,
+                data=[query_vector],
+                anns_field=anns_field_name,
+                param=search_params,
+                limit=k,
+                expr=expr,
+                output_fields=["file_path", "video_id", "shot_id", "frame_id", "other_payload"],
+                timeout=120.0
+            )
+            
+            results = []
+            if not resp or not resp[0]:
+                return []
+                
+            for hit in resp[0]:
+                ent = hit.entity
+                fname = ent.get("other_payload", {}).get("frame_name")
+                if not fname:
+                    fname = os.path.basename(ent.get("file_path", ""))
+                    
+                results.append({
+                    "frame_name": fname,
+                    "score": float(hit.distance), # Cosine trả về similarity distance range [0, 1] cho search (tùy config metric type milvus, nhưng nó tương thích)
+                    "video_id": ent.get("video_id"),
+                    "frame_id": ent.get("frame_id"),
+                    "shot_id": str(ent.get("shot_id", "1")),
+                    "url": f"/keyframes/{fname}"
+                })
+            return results
+        except Exception as e:
+            print(f"Milvus search error on collection {collection_name}: {e}")
+            return []
+
+    # ------------------ QDRANT ------------------
+    else:
+        if not runtime.qdrant_client or q_models is None: return []
+        try:
+            must_conditions = []
+            if allowed_frame_names:
+                must_conditions.append(
+                    q_models.FieldCondition(
+                        key="frame_name",
+                        match=q_models.MatchAny(any=allowed_frame_names),
+                    )
+                )
+            if video_ids:
+                must_conditions.append(
+                    q_models.FieldCondition(
+                        key="video_id",
+                        match=q_models.MatchAny(any=video_ids),
+                    )
+                )
+
+            query_filter = q_models.Filter(must=must_conditions) if must_conditions else None
+
+            query_kwargs = {
+                "collection_name": collection_name,
+                "query": query_vector,
+                "query_filter": query_filter,
+                "limit": min(limit, len(allowed_frame_names)) if allowed_frame_names else limit,
+                "with_payload": ["frame_name", "video_id", "frame_id", "shot_id"],
+                "timeout": 300,
+            }
+            if vector_name:
+                query_kwargs["using"] = vector_name
+            response = await asyncio.to_thread(runtime.qdrant_client.query_points, **query_kwargs)
+            results = []
+            for hit in response.points:
+                payload = hit.payload
+                frame_name = payload.get("frame_name")
+                if not frame_name: continue
+                
+                results.append({
+                    "frame_name": frame_name,
+                    "score": hit.score,
+                    "video_id": payload.get("video_id"),
+                    "frame_id": payload.get("frame_id"),
+                    "shot_id": str(payload.get("shot_id", "1")),
+                    "url": f"/keyframes/{frame_name}"
+                })
+            return results
+        except Exception as e:
+            print(f"Qdrant search error on collection {collection_name}: {e}")
+            return []
 
 
 def weighted_rrf(
@@ -451,14 +579,20 @@ async def embed_and_search_model(
     spatial_region: str = "full",
     spatial_only: bool = False,
 ):
+    t_embed_start = time.time()
     embedding = await get_embedding(
         model_name=model_name,
         text=text,
         image_name=image_name,
         image_text=image_text,
     )
+    t_embed = time.time() - t_embed_start
     if not embedding:
+        print(f"  ❌ [Model: {model_name}] Embedding extraction FAILED in {t_embed:.3f}s")
         return model_name, None
+    print(f"  ⏱ [Model: {model_name}] Embedding extracted in {t_embed:.3f}s")
+
+    t_qdrant_start = time.time()
     config = MODEL_CONFIGS[model_name]
     if model_name == "beit3" and spatial_region in SPATIAL_REGION_VECTORS:
         spatial_results = await search_spatial_qdrant(
@@ -478,6 +612,10 @@ async def embed_and_search_model(
             embedding, config["collection"], limit=limit,
             candidate_frame_names=candidate_frame_names, video_ids=video_ids,
         )
+    t_qdrant = time.time() - t_qdrant_start
+    hit_count = len(raw_results) if raw_results is not None else 0
+    db_name = "Milvus" if VECTOR_DATABASE == "milvus" else "Qdrant"
+    print(f"  ⏱ [Model: {model_name}] {db_name} search returned {hit_count} hits in {t_qdrant:.3f}s (Total for model: {t_embed + t_qdrant:.3f}s)")
     return model_name, raw_results
 
 async def search_all_models(
