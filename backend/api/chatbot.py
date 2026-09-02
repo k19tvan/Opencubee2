@@ -24,10 +24,6 @@ from backend.services.multiagent_search import (
 
 router = APIRouter(prefix="/chatbot", tags=["chatbot"])
 
-# ==============================================================================
-# 1. MODELS & STRUCTURED SCHEMAS
-# ==============================================================================
-
 model = ChatOpenAI(
     model_name=GEMINI_MODEL_NAME,
     base_url=GEMINI_BASE_URL,
@@ -42,12 +38,19 @@ class OptionSchema(BaseModel):
 class OptionsSchema(BaseModel):
     options: list[OptionSchema]
 
-model_with_structured = model.with_structured_output(schema=OptionsSchema)
-
-
-# ==============================================================================
-# 2. CHAT & RESEARCH WORKFLOW GRAPH
-# ==============================================================================
+def parse_options_response(content: Any) -> list[dict[str, Any]]:
+    payload = parse_json_response(content)
+    raw_options = payload.get("options", payload) if isinstance(payload, dict) else payload
+    if not isinstance(raw_options, list):
+        return []
+    options = []
+    for item in raw_options:
+        if isinstance(item, dict) and "option" in item:
+            options.append({
+                "option": str(item.get("option", "")).strip(),
+                "reason": str(item.get("reason", "")).strip(),
+            })
+    return options
 
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
@@ -56,23 +59,20 @@ class ChatState(TypedDict):
 
 async def research_node(state: ChatState) -> dict[str, Any]:
     system_prompt = (
-        "Bạn là một chuyên gia nghiên cứu và truy vấn video/hình ảnh.\n"
-        "Hãy phân tích nội dung người dùng cung cấp và đưa ra 3-5 lựa chọn (đối tượng, sự kiện, người, thực thể, bối cảnh) "
-        "có khả năng nhất kèm theo lý do cụ thể.\n"
-        "Trả về định dạng JSON với danh sách 'options', mỗi phần tử bắt buộc có 2 trường: 'option' và 'reason'"
+        "Bạn là một chuyên gia nghiên cứu và truy vấn video/hình ảnh."
+        "Hãy phân tích nội dung người dùng cung cấp, tìm kiếm thông tin trên mạng và đưa ra 10 lựa chọn (đối tượng, sự kiện, người, thực thể, bối cảnh) "
+        "có khả năng nhất kèm theo lý do cụ thể."
+        "BẮT BUỘC chỉ trả về định dạng JSON thuần (không kèm bất kỳ văn bản giải thích nào ngoài khối JSON), định dạng chuẩn:"
+        '{"options": [{"option": "<tên đối tượng/người/sự kiện>", "reason": "<lý do chi tiết>"}]}'
+        "Mỗi phần tử bắt buộc có 2 trường: 'option' và 'reason'."
     )
     user_messages = [m for m in state["messages"] if isinstance(m, (HumanMessage, AIMessage))]
     
-    response = await model_with_structured.ainvoke(
+    response = await model.ainvoke(
         [SystemMessage(content=system_prompt), *user_messages]
     )
     
-    # Chuyển đổi an toàn sang list of dicts
-    options_data = []
-    if isinstance(response, OptionsSchema):
-        options_data = [opt.dict() for opt in response.options]
-    elif isinstance(response, dict):
-        options_data = response.get("options", [])
+    options_data = parse_options_response(response.content)
 
     return {
         "options": options_data,
