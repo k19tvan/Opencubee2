@@ -27,6 +27,7 @@ from backend.core.config import (
     TEMP_UPLOAD_DIR,
     VLLM_BASE_URL,
     VLLM_MODEL,
+    VECTOR_DATABASE,
 )
 
 SPATIAL_REGION_VECTORS = {
@@ -306,7 +307,7 @@ async def embed_image_bytes(
     return None
 
 # --- Helper: Lấy vector đã lưu của một keyframe trong Qdrant ---
-async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Optional[list]:
+async def _get_stored_vector_qdrant(frame_name: str, collection_name: str = "bge") -> Optional[list]:
     if not runtime.qdrant_client or not frame_name or q_models is None:
         return None
     try:
@@ -331,16 +332,45 @@ async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Op
                 vector = vector.get(collection_name) or next(iter(vector.values()), None)
             return list(vector) if vector is not None else None
     except Exception as e:
-        print(f"get_stored_vector failed for {frame_name}: {e}")
+        print(f"_get_stored_vector_qdrant failed for {frame_name}: {e}")
     return None
 
-# --- Helper: Tìm kiếm lân cận trên Qdrant ---
-async def search_qdrant(
+async def _get_stored_vector_milvus(frame_name: str, collection_name: str = "bge") -> Optional[list]:
+    if not runtime.milvus_client or not frame_name:
+        return None
+    try:
+        base_name = os.path.splitext(frame_name)[0]
+        possible_names = [base_name, f"{base_name}.jpg", f"{base_name}.webp", f"{base_name}.png", f"{base_name}.jpeg"]
+        names_str = ",".join(f"'{n}'" for n in possible_names)
+        
+        res = await asyncio.to_thread(
+            runtime.milvus_client.query,
+            collection_name=collection_name,
+            filter=f"other_payload['frame_name'] in [{names_str}]",
+            output_fields=["*"],
+            limit=1
+        )
+        if res and len(res) > 0:
+            keys = [k for k in res[0].keys() if k.startswith("vector")]
+            if keys:
+                return list(res[0][keys[0]])
+    except Exception as e:
+        print(f"_get_stored_vector_milvus failed for {frame_name}: {e}")
+    return None
+
+async def get_stored_vector(frame_name: str, collection_name: str = "bge") -> Optional[list]:
+    if VECTOR_DATABASE == "qdrant":
+        return await _get_stored_vector_qdrant(frame_name, collection_name)
+    else:
+        return await _get_stored_vector_milvus(frame_name, collection_name)
+
+# --- Helper: Tìm kiếm lân cận trên Qdrant/Milvus ---
+async def _search_qdrant(
     query_vector: list,
     collection_name: str,
     limit: int = 200,
     candidate_frame_names: Optional[List[str]] = None,
-    video_ids: Optional[List[str]] = None,  # <--- Bổ sung video_ids
+    video_ids: Optional[List[str]] = None,
     vector_name: Optional[str] = None,
 ) -> List[Dict]:
     if not runtime.qdrant_client or q_models is None: return []
@@ -397,6 +427,88 @@ async def search_qdrant(
     except Exception as e:
         print(f"Qdrant search error on collection {collection_name}: {e}")
         return []
+
+async def _search_milvus(
+    query_vector: list,
+    collection_name: str,
+    limit: int = 200,
+    candidate_frame_names: Optional[List[str]] = None,
+    video_ids: Optional[List[str]] = None,
+    vector_name: Optional[str] = None,
+) -> List[Dict]:
+    if not runtime.milvus_client: return []
+    try:
+        allowed_frame_names = list(dict.fromkeys(candidate_frame_names or []))
+        if candidate_frame_names is not None and not allowed_frame_names:
+            return []
+
+        filter_parts = []
+        if allowed_frame_names:
+            names_str = ",".join(f"'{name}'" for name in allowed_frame_names)
+            filter_parts.append(f"other_payload['frame_name'] in [{names_str}]")
+        
+        if video_ids:
+            vids_str = ",".join(f"'{vid}'" for vid in video_ids)
+            filter_parts.append(f"video_id in [{vids_str}]")
+
+        filter_expr = " and ".join(filter_parts) if filter_parts else ""
+        anns_field = f"vector_{vector_name}" if vector_name else "vector"
+
+        search_kwargs = {
+            "collection_name": collection_name,
+            "data": [query_vector],
+            "limit": min(limit, len(allowed_frame_names)) if allowed_frame_names else limit,
+            "output_fields": ["other_payload", "video_id", "frame_id", "shot_id", "file_path"],
+            "anns_field": anns_field,
+            "search_params": {"metric_type": "COSINE"},
+        }
+        if filter_expr:
+            search_kwargs["filter"] = filter_expr
+            
+        def _search():
+            return runtime.milvus_client.search(**search_kwargs)
+
+        response = await asyncio.to_thread(_search)
+        
+        results = []
+        if not response or not response[0]:
+            return results
+            
+        for hit in response[0]:
+            entity = hit.get("entity", {})
+            other = entity.get("other_payload", {})
+            frame_name = other.get("frame_name")
+            if not frame_name:
+                frame_name = os.path.basename(entity.get("file_path", ""))
+            if not frame_name: continue
+            
+            # milvus distance for cosine is distance. Higher is better or lower?
+            # MetricType.COSINE in Milvus: the score is cosine similarity, higher is better (ranges -1 to 1).
+            results.append({
+                "frame_name": frame_name,
+                "score": float(hit.get("distance", 0.0)),
+                "video_id": entity.get("video_id"),
+                "frame_id": entity.get("frame_id"),
+                "shot_id": str(entity.get("shot_id", "1")),
+                "url": f"/keyframes/{frame_name}"
+            })
+        return results
+    except Exception as e:
+        print(f"Milvus search error on collection {collection_name}: {e}")
+        return []
+
+async def search_qdrant(
+    query_vector: list,
+    collection_name: str,
+    limit: int = 200,
+    candidate_frame_names: Optional[List[str]] = None,
+    video_ids: Optional[List[str]] = None,
+    vector_name: Optional[str] = None,
+) -> List[Dict]:
+    if VECTOR_DATABASE == "qdrant":
+        return await _search_qdrant(query_vector, collection_name, limit, candidate_frame_names, video_ids, vector_name)
+    else:
+        return await _search_milvus(query_vector, collection_name, limit, candidate_frame_names, video_ids, vector_name)
 
 
 def weighted_rrf(

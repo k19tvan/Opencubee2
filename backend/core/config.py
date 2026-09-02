@@ -21,6 +21,10 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "opencubee2_qdrant")
 QDRANT_PORT = 6333
 QDRANT_GRPC_PORT = 6334
 
+MILVUS_HOST = os.getenv("MILVUS_HOST", "opencubee_milvus_standalone")
+MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
+VECTOR_DATABASE = os.getenv("VECTOR_DATABASE", "milvus").strip().lower()
+
 MODEL_CONFIGS = {
     "bge": {
         "worker_url": os.getenv("BGE_WORKER_URL", 'http://127.0.0.1:2001/embed'),
