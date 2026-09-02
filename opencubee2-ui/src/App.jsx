@@ -13,6 +13,7 @@ import TrakeFramePreviewSidebar from './components/TrakeFramePreviewSidebar';
 import HelpModal from './components/modals/HelpModal';
 import DresLoginModal from './components/modals/DresLoginModal';
 import DresSubmitModal from './components/modals/DresSubmitModal';
+import SettingsModal from './components/modals/SettingsModal';
 import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, searchSemanticAsr, getWsUrl, DRES_BASE_URL } from './api';
 import { getImageUrl } from './utils/imageUrl';
 import { getDresFrameNumber } from './utils/frameNumber';
@@ -156,6 +157,21 @@ export default function App() {
   const [isClustered, setIsClustered] = useState(false);
   const [isAmbiguous, setIsAmbiguous] = useState(true);
   const [sentenceLevel, setSentenceLevel] = useState(false);
+  const [asrSearchMode, setAsrSearchMode] = useState(() => localStorage.getItem('opencubee_asr_search_mode') || 'hybrid');
+  const [meilisearchWeight, setMeilisearchWeight] = useState(() => {
+    const val = localStorage.getItem('opencubee_meilisearch_weight');
+    return val !== null ? parseFloat(val) : 0.5;
+  });
+  const [milvusWeight, setMilvusWeight] = useState(() => {
+    const val = localStorage.getItem('opencubee_milvus_weight');
+    return val !== null ? parseFloat(val) : 0.5;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('opencubee_asr_search_mode', asrSearchMode);
+    localStorage.setItem('opencubee_meilisearch_weight', meilisearchWeight);
+    localStorage.setItem('opencubee_milvus_weight', milvusWeight);
+  }, [asrSearchMode, meilisearchWeight, milvusWeight]);
 
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1274,7 +1290,9 @@ export default function App() {
         // Pure Semantic ASR search
         const payload = {
           query_text: asrQueryText,
-          search_mode: 'meilisearch',
+          search_mode: sentenceLevel ? 'meilisearch' : asrSearchMode,
+          embedding_weight: sentenceLevel ? 0.0 : milvusWeight,
+          meilisearch_weight: sentenceLevel ? 1.0 : meilisearchWeight,
           sentence_level: sentenceLevel,
           page: pageNumber,
           page_size: pageSize,
@@ -1376,7 +1394,9 @@ export default function App() {
           if (candidateFrames.length > 0) {
             const payload = {
               query_text: asrQueryText,
-              search_mode: 'meilisearch',
+              search_mode: sentenceLevel ? 'meilisearch' : asrSearchMode,
+              embedding_weight: sentenceLevel ? 0.0 : milvusWeight,
+              meilisearch_weight: sentenceLevel ? 1.0 : meilisearchWeight,
               sentence_level: sentenceLevel,
               candidate_frame_names: candidateFrames,
               page: pageNumber,
@@ -1833,6 +1853,19 @@ export default function App() {
           {showUserModal && <UsernameModal onJoin={handleJoinSession} />}
           {activeModal === 'filter' && <ObjectFilterModal onClose={() => setActiveModal(null)} />}
           {activeModal === 'help' && <HelpModal onClose={() => setActiveModal(null)} />}
+          {activeModal === 'settings' && (
+            <SettingsModal
+              isOpen={true}
+              onClose={() => setActiveModal(null)}
+              asrSearchMode={asrSearchMode}
+              setAsrSearchMode={setAsrSearchMode}
+              meilisearchWeight={meilisearchWeight}
+              setMeilisearchWeight={setMeilisearchWeight}
+              milvusWeight={milvusWeight}
+              setMilvusWeight={setMilvusWeight}
+              theme={effectiveTheme}
+            />
+          )}
           {activeModal === 'dresLogin' && (
             <DresLoginModal
               onClose={() => setActiveModal(null)}

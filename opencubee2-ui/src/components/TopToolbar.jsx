@@ -224,7 +224,7 @@ export default function TopToolbar({
         <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
         {/* Shortcuts & Utilities */}
-        <ToolBtn onClick={() => onOpenModal('help')} icon="fas fa-keyboard" label="Shortcuts" theme={theme} />
+        <ToolBtn onClick={() => onOpenModal('settings')} icon="fas fa-sliders" label="Settings" theme={theme} />
         <ToolBtn
           onClick={() => setAutoTranslate(!autoTranslate)}
           icon="fas fa-language"

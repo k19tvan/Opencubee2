@@ -6,11 +6,11 @@ from langgraph.graph.message import add_messages
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-model = ChatOpenAI(
-    model_name="gemini-flash-lite",
+search_model = ChatOpenAI(
+    search_model_name="gemini-flash-lite",
     base_url="http://gemini-web2api:8081/v1",
     temperature=0.0,
-    api_key="enn",
+    api_key="None",
 )
 
 class Option(TypedDict):
@@ -20,7 +20,7 @@ class Option(TypedDict):
 class Options(TypedDict):
     options: list[Option]
 
-model_with_structured = model.with_structured_output(schema=Options)
+search_model_with_structured = search_model.with_structured_output(schema=Options)
 
 class State(TypedDict):
     options : Options
@@ -51,7 +51,7 @@ def research_node(state: State):
         }
     """
 
-    response = model_with_structured.invoke([SystemMessage(content=system_prompt), *state["messages"]])
+    response = search_model_with_structured.invoke([SystemMessage(content=system_prompt), *state["messages"]])
 
     return {
         "options": response["options"],
@@ -59,7 +59,7 @@ def research_node(state: State):
     }
 
 def chatbot_node(state: State):
-    return {"messages": model.invoke(state["messages"])}
+    return {"messages": search_model.invoke(state["messages"])}
 
 def route_decision(state: State) -> Literal["research", "chatbot"]:
     if state["isResearch"]:

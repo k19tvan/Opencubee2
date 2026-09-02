@@ -16,7 +16,8 @@ from backend.core import runtime
 from backend.core.config import GEMINI_API_KEY, GEMINI_BASE_URL, GEMINI_MODEL_NAME
 from backend.services.multiagent_search import (
     MODALITIES,
-    critic_filter,
+    critic_filter_modality,
+    deduplicate_frames,
     normalize_queries,
     parse_json_response,
     retrieve_by_modality,
@@ -31,12 +32,21 @@ model = ChatOpenAI(
     temperature=0.0,
 )
 
-class OptionSchema(BaseModel):
-    option: str = Field(description="Tên đối tượng, sự kiện, người hoặc thực thể được chọn")
-    reason: str = Field(description="Lý do chi tiết đưa ra lựa chọn này")
 
-class OptionsSchema(BaseModel):
-    options: list[OptionSchema]
+def _load_skill(skill_filename: str) -> str:
+    from pathlib import Path
+    skill_path = Path(__file__).resolve().parents[1] / "skills" / skill_filename
+    if skill_path.exists():
+        try:
+            return skill_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    return ""
+
+
+# ==============================================================================
+# 1. HELPER PARSERS
+# ==============================================================================
 
 def parse_options_response(content: Any) -> list[dict[str, Any]]:
     payload = parse_json_response(content)
@@ -52,161 +62,238 @@ def parse_options_response(content: Any) -> list[dict[str, Any]]:
             })
     return options
 
-class ChatState(TypedDict):
+
+# ==============================================================================
+# 2. UNIFIED MULTI-AGENT STATE & GRAPH
+# ==============================================================================
+
+class UnifiedAgentState(TypedDict):
+    mode: Literal["chat", "research", "search"]
     messages: Annotated[list[BaseMessage], add_messages]
-    is_research: bool
-    options: Optional[list[dict[str, Any]]]
-
-async def research_node(state: ChatState) -> dict[str, Any]:
-    system_prompt = (
-        "Bạn là một chuyên gia nghiên cứu và truy vấn video/hình ảnh."
-        "Hãy phân tích nội dung người dùng cung cấp, tìm kiếm thông tin trên mạng và đưa ra 10 lựa chọn (đối tượng, sự kiện, người, thực thể, bối cảnh) "
-        "có khả năng nhất kèm theo lý do cụ thể."
-        "BẮT BUỘC chỉ trả về định dạng JSON thuần (không kèm bất kỳ văn bản giải thích nào ngoài khối JSON), định dạng chuẩn:"
-        '{"options": [{"option": "<tên đối tượng/người/sự kiện>", "reason": "<lý do chi tiết>"}]}'
-        "Mỗi phần tử bắt buộc có 2 trường: 'option' và 'reason'."
-    )
-    user_messages = [m for m in state["messages"] if isinstance(m, (HumanMessage, AIMessage))]
-    
-    response = await model.ainvoke(
-        [SystemMessage(content=system_prompt), *user_messages]
-    )
-    
-    options_data = parse_options_response(response.content)
-
-    return {
-        "options": options_data,
-        "messages": [AIMessage(content="Dưới đây là các phương án nghiên cứu phù hợp nhất:")],
-    }
-
-async def chatbot_node(state: ChatState) -> dict[str, Any]:
-    response = await model.ainvoke(state["messages"])
-    return {
-        "messages": [response],
-        "options": None,
-    }
-
-def route_chat_decision(state: ChatState) -> Literal["research", "chatbot"]:
-    return "research" if state.get("is_research", False) else "chatbot"
-
-chat_graph_builder = StateGraph(ChatState)
-chat_graph_builder.add_node("research", research_node)
-chat_graph_builder.add_node("chatbot", chatbot_node)
-chat_graph_builder.add_conditional_edges(START, route_chat_decision)
-chat_graph_builder.add_edge("research", END)
-chat_graph_builder.add_edge("chatbot", END)
-
-chat_memory = MemorySaver()
-chat_graph = chat_graph_builder.compile(checkpointer=chat_memory)
-
-
-# ==============================================================================
-# 3. MULTI-AGENT SEARCH WORKFLOW GRAPH
-# ==============================================================================
-
-class MultiAgentSearchState(TypedDict):
     original_query: str
+    selected_options: list[str]
+    use_research: bool
+    k_iterations: int
+    current_iteration: int
     frame_limit: int
+    options: Optional[list[dict[str, Any]]]
     queries: dict[str, str]
-    candidates_by_modality: dict[str, list[dict[str, Any]]]
+    feedback_by_modality: dict[str, str]
+    accumulated_frames_by_modality: dict[str, list[dict[str, Any]]]
+    seen_frame_keys: list[str]
     modalities: dict[str, dict[str, Any]]
     warnings: list[str]
-    selected_count: int
-    active_modalities: int
+    is_finished: bool
+
 
 def _multiagent_human_message(content: list[dict[str, Any]]) -> list[HumanMessage]:
     return [HumanMessage(content=content)]
 
-async def decompose_node(state: MultiAgentSearchState) -> dict[str, Any]:
-    """Node 1: Phân tách câu truy vấn người dùng thành các modalities độc lập."""
-    if runtime.llm_multiagent is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Multi-agent model is not initialized. Configure MULTIAGENT_MODEL, MULTIAGENT_MODEL_BASE_URL, and MULTIAGENT_MODEL_API_KEY.",
+
+# --- Node: Chatbot / Conversational ---
+async def chat_node(state: UnifiedAgentState) -> dict[str, Any]:
+    response = await model.ainvoke(state["messages"])
+    return {
+        "messages": [response],
+        "options": None,
+        "is_finished": True,
+    }
+
+
+# --- Node 1: Research & Entity Disambiguation ---
+async def research_node(state: UnifiedAgentState) -> dict[str, Any]:
+    skill_doc = _load_skill("research_skill.md")
+    system_prompt = (
+        skill_doc or (
+            "Bạn là một chuyên gia nghiên cứu và truy vấn video/hình ảnh.\n"
+            "Hãy phân tích nội dung người dùng cung cấp và đưa ra 3-5 lựa chọn (đối tượng, sự kiện, người, thực thể, bối cảnh) "
+            "có khả năng nhất kèm theo lý do cụ thể.\n"
+            "BẮT BUỘC chỉ trả về định dạng JSON thuần:\n"
+            '{"options": [{"option": "<tên đối tượng/người/sự kiện>", "reason": "<lý do chi tiết>"}]}'
         )
-    
+    )
+    user_messages = [m for m in state.get("messages", []) if isinstance(m, (HumanMessage, AIMessage))]
+    if not user_messages:
+        user_messages = [HumanMessage(content=state["original_query"])]
+
+    response = await model.ainvoke(
+        [SystemMessage(content=system_prompt), *user_messages]
+    )
+    options_data = parse_options_response(response.content)
+
+    # If in search mode with auto-research, populate selected_options
+    chosen_opts = list(state.get("selected_options", []))
+    if state["mode"] == "search" and not chosen_opts:
+        chosen_opts = [opt["option"] for opt in options_data[:3] if opt.get("option")]
+
+    return {
+        "options": options_data,
+        "selected_options": chosen_opts,
+        "messages": [AIMessage(content="Dưới đây là các phương án nghiên cứu phù hợp nhất:")],
+        "is_finished": state["mode"] == "research",
+    }
+
+
+# --- Node 2: Query Decomposition & Feedback Refinement ---
+async def decompose_and_plan_node(state: UnifiedAgentState) -> dict[str, Any]:
+    agent_llm = runtime.llm_multiagent or model
+    skill_doc = _load_skill("query_planner_skill.md")
+
+    iteration = state.get("current_iteration", 0) + 1
+    feedback_str = "\n".join(
+        f"- {mod}: {fb}" for mod, fb in state.get("feedback_by_modality", {}).items() if fb
+    ) or "None (First iteration)"
+
+    options_str = ", ".join(state.get("selected_options", [])) if state.get("selected_options") else "None"
+
     prompt = (
-        "You decompose a Vietnamese or English video-retrieval request into independent retrieval queries. "
-        "Return JSON only, exactly shaped as: "
-        "{\"queries\":{\"text\":\"...\",\"ocr\":\"...\",\"asr\":\"...\",\"semantic_asr\":\"...\"}}. "
-        "Use concise English retrieval phrases for text. OCR is only visible written text; ASR is exact spoken words; "
-        "semantic_asr is a short event/topic description. Use an empty string when a modality has no useful query. "
-        "Do not invent facts that are absent from the request.\n"
-        f"User request: {state['original_query']}"
+        f"{skill_doc}\n\n"
+        f"--- CURRENT CONTEXT (Iteration {iteration}/{state.get('k_iterations', 3)}) ---\n"
+        f"Original User Request: {state['original_query']}\n"
+        f"Selected Entities/Context: {options_str}\n"
+        f"Critic Feedback from Previous Loop:\n{feedback_str}\n\n"
+        "Construct optimal queries for each modality ('text', 'ocr', 'semantic_asr'). "
+        "Return JSON only in format: {\"queries\": {\"text\": \"...\", \"ocr\": \"...\", \"semantic_asr\": \"...\"}}"
     )
 
     try:
-        if hasattr(runtime.llm_multiagent, "ainvoke"):
-            response = await runtime.llm_multiagent.ainvoke([HumanMessage(content=prompt)])
+        if hasattr(agent_llm, "ainvoke"):
+            response = await agent_llm.ainvoke([HumanMessage(content=prompt)])
         else:
-            response = await asyncio.to_thread(runtime.llm_multiagent.invoke, [HumanMessage(content=prompt)])
-            
+            response = await asyncio.to_thread(agent_llm.invoke, [HumanMessage(content=prompt)])
         queries = normalize_queries(parse_json_response(response.content))
-        return {"queries": queries}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Query decomposition failed: {exc}") from exc
+    except Exception:
+        queries = {
+            "text": state["original_query"],
+            "ocr": "",
+            "semantic_asr": state["original_query"],
+        }
 
-async def retrieve_node(state: MultiAgentSearchState) -> dict[str, Any]:
-    """Node 2: Truy xuất ứng viên song song trên Qdrant / Meilisearch theo từng modality."""
-    candidates_by_modality = await retrieve_by_modality(state["queries"], state["frame_limit"])
-    return {"candidates_by_modality": candidates_by_modality}
+    return {"queries": queries, "current_iteration": iteration}
 
-async def critic_node(state: MultiAgentSearchState) -> dict[str, Any]:
-    """Node 3: Chạy Visual Critic đánh giá song song trên tất cả các modalities."""
-    queries = state["queries"]
-    candidates_by_modality = state["candidates_by_modality"]
-    
-    async def evaluate_single_modality(modality: str):
+
+# --- Node 3: Independent Modality Retrieval ---
+async def retrieve_node(state: UnifiedAgentState) -> dict[str, Any]:
+    queries = state.get("queries", {})
+    exclude_set = set(state.get("seen_frame_keys", []))
+    candidates = await retrieve_by_modality(queries, state.get("frame_limit", 50), exclude_frames=exclude_set)
+    return {"candidates_by_modality": candidates}
+
+
+# --- Node 4: Two-Pass Visual Critic & Diagnostic Feedback ---
+async def critic_and_feedback_node(state: UnifiedAgentState) -> dict[str, Any]:
+    critic_llm = runtime.llm_multiagent or model
+    queries = state.get("queries", {})
+    candidates_by_modality = state.get("candidates_by_modality", {})
+    accumulated = dict(state.get("accumulated_frames_by_modality", {}))
+    seen_keys = set(state.get("seen_frame_keys", []))
+    new_feedback = {}
+    warnings = list(state.get("warnings", []))
+
+    async def evaluate_modality(modality: str):
         candidates = candidates_by_modality.get(modality, [])
-        selected, critic_warnings = await critic_filter(
-            llm=runtime.llm_multiagent,
+        query_text = queries.get(modality, "")
+        selected, feedback, w = await critic_filter_modality(
+            llm=critic_llm,
             human_message_factory=_multiagent_human_message,
             original_query=state["original_query"],
             modality=modality,
-            modality_query=queries.get(modality, ""),
+            modality_query=query_text,
             candidates=candidates,
         )
-        return modality, selected, critic_warnings, len(candidates)
+        return modality, selected, feedback, w
 
-    # Đánh giá song song tất cả các modalities thay vì duyệt tuần tự
-    evaluation_tasks = [evaluate_single_modality(modality) for modality in MODALITIES]
-    evaluation_results = await asyncio.gather(*evaluation_tasks)
+    results = await asyncio.gather(*(evaluate_modality(m) for m in MODALITIES))
 
-    modalities: dict[str, dict[str, Any]] = {}
-    warnings: list[str] = []
+    modalities_output = {}
+    for modality, selected, feedback, w in results:
+        warnings.extend(w)
+        new_feedback[modality] = feedback
 
-    for modality, selected, critic_warnings, candidate_count in evaluation_results:
-        warnings.extend(critic_warnings)
-        modalities[modality] = {
+        existing = accumulated.get(modality, [])
+        combined = deduplicate_frames(existing + selected)
+        accumulated[modality] = combined
+
+        for f in combined:
+            k = str(f.get("frame_name") or f.get("filepath") or "")
+            if k:
+                seen_keys.add(k)
+
+        modalities_output[modality] = {
             "query": queries.get(modality, ""),
-            "candidate_count": candidate_count,
-            "frames": selected,
+            "feedback": feedback,
+            "candidate_count": len(candidates_by_modality.get(modality, [])),
+            "frames": combined,
         }
 
-    selected_count = sum(len(item["frames"]) for item in modalities.values())
-    active_modalities = sum(1 for item in modalities.values() if item["query"])
+    is_done = state["current_iteration"] >= state["k_iterations"]
 
     return {
-        "modalities": modalities,
+        "feedback_by_modality": new_feedback,
+        "accumulated_frames_by_modality": accumulated,
+        "seen_frame_keys": list(seen_keys),
+        "modalities": modalities_output,
         "warnings": warnings,
-        "selected_count": selected_count,
-        "active_modalities": active_modalities,
+        "is_finished": is_done,
     }
 
-# Xây dựng Search StateGraph
-search_graph_builder = StateGraph(MultiAgentSearchState)
-search_graph_builder.add_node("decompose", decompose_node)
-search_graph_builder.add_node("retrieve", retrieve_node)
-search_graph_builder.add_node("critic", critic_node)
 
-search_graph_builder.add_edge(START, "decompose")
-search_graph_builder.add_edge("decompose", "retrieve")
-search_graph_builder.add_edge("retrieve", "critic")
-search_graph_builder.add_edge("critic", END)
+# --- Routing Conditions ---
+def route_start_decision(state: UnifiedAgentState) -> Literal["chat", "research", "auto_research_or_decompose"]:
+    mode = state.get("mode", "chat")
+    if mode == "chat":
+        return "chat"
+    if mode == "research":
+        return "research"
+    # Search mode: check if research is needed or options are provided
+    if state.get("use_research", True) and not state.get("selected_options"):
+        return "research"
+    return "auto_research_or_decompose"
 
-search_graph = search_graph_builder.compile()
+
+def route_search_or_finish(state: UnifiedAgentState) -> Literal["decompose", "finish"]:
+    if state.get("mode") in ("chat", "research") or state.get("is_finished", False):
+        return "finish"
+    return "decompose"
+
+
+def route_critic_loop(state: UnifiedAgentState) -> Literal["decompose", "finish"]:
+    return "finish" if state.get("is_finished", False) else "decompose"
+
+
+# ==============================================================================
+# 3. BUILD UNIFIED STATEGRAPH
+# ==============================================================================
+
+unified_graph_builder = StateGraph(UnifiedAgentState)
+
+unified_graph_builder.add_node("chat", chat_node)
+unified_graph_builder.add_node("research", research_node)
+unified_graph_builder.add_node("decompose", decompose_and_plan_node)
+unified_graph_builder.add_node("retrieve", retrieve_node)
+unified_graph_builder.add_node("critic", critic_and_feedback_node)
+
+unified_graph_builder.add_conditional_edges(START, route_start_decision, {
+    "chat": "chat",
+    "research": "research",
+    "auto_research_or_decompose": "decompose",
+})
+
+unified_graph_builder.add_edge("chat", END)
+unified_graph_builder.add_conditional_edges("research", route_search_or_finish, {
+    "decompose": "decompose",
+    "finish": END,
+})
+
+unified_graph_builder.add_edge("decompose", "retrieve")
+unified_graph_builder.add_edge("retrieve", "critic")
+unified_graph_builder.add_conditional_edges("critic", route_critic_loop, {
+    "decompose": "decompose",
+    "finish": END,
+})
+
+agent_memory = MemorySaver()
+unified_multiagent_graph = unified_graph_builder.compile(checkpointer=agent_memory)
 
 
 # ==============================================================================
@@ -218,15 +305,21 @@ class ChatRequest(BaseModel):
     is_research: bool = True
     session_id: str = "default_chat"
 
+
 class ChatResponse(BaseModel):
     role: str = "assistant"
     content: str
     options: Optional[List[dict]] = None
     is_research: bool = True
 
+
 class MultiAgentSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
-    frame_limit: Literal[20, 50, 100, 200] = 50
+    selected_options: List[str] = Field(default_factory=list)
+    use_research: bool = True
+    k_iterations: int = Field(default=3, ge=1, le=10)
+    frame_limit: int = Field(default=50, ge=10, le=200)
+
 
 @router.post("/message", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
@@ -236,14 +329,26 @@ async def chat_endpoint(req: ChatRequest):
     
     config = {"configurable": {"thread_id": req.session_id}}
     initial_state = {
+        "mode": "research" if req.is_research else "chat",
         "messages": [HumanMessage(content=query)],
-        "is_research": req.is_research,
+        "original_query": query,
+        "selected_options": [],
+        "use_research": req.is_research,
+        "k_iterations": 1,
+        "current_iteration": 0,
+        "frame_limit": 50,
         "options": None,
+        "queries": {},
+        "feedback_by_modality": {},
+        "accumulated_frames_by_modality": {m: [] for m in MODALITIES},
+        "seen_frame_keys": [],
+        "modalities": {},
+        "warnings": [],
+        "is_finished": False,
     }
 
     try:
-        result = await chat_graph.ainvoke(initial_state, config)
-        
+        result = await unified_multiagent_graph.ainvoke(initial_state, config)
         last_msg = result["messages"][-1].content if result.get("messages") else ""
         options_data = result.get("options") if req.is_research else None
 
@@ -251,38 +356,57 @@ async def chat_endpoint(req: ChatRequest):
             role="assistant",
             content=last_msg,
             options=options_data,
-            is_research=req.is_research
+            is_research=req.is_research,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot failed: {str(e)}")
 
+
 @router.post("/search")
 async def multiagent_search_endpoint(req: MultiAgentSearchRequest):
-    """Kích hoạt Multi-Agent Search Graph: Decompose -> Retrieve -> Critic -> Filter."""
+    """
+    Unified Multi-Agent Search:
+    Routes through UnifiedGraph: (Research) -> (Decompose -> Retrieve -> Critic) * K -> Final Result
+    """
     query = req.query.strip()
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     initial_state = {
+        "mode": "search",
+        "messages": [HumanMessage(content=query)],
         "original_query": query,
+        "selected_options": req.selected_options,
+        "use_research": req.use_research,
+        "k_iterations": req.k_iterations,
+        "current_iteration": 0,
         "frame_limit": req.frame_limit,
+        "options": None,
         "queries": {},
-        "candidates_by_modality": {},
+        "feedback_by_modality": {},
+        "accumulated_frames_by_modality": {m: [] for m in MODALITIES},
+        "seen_frame_keys": [],
         "modalities": {},
         "warnings": [],
-        "selected_count": 0,
-        "active_modalities": 0,
+        "is_finished": False,
     }
 
     try:
-        result = await search_graph.ainvoke(initial_state)
+        result = await unified_multiagent_graph.ainvoke(initial_state)
+        modalities = result.get("modalities", {})
+        total_selected = sum(len(item.get("frames", [])) for item in modalities.values())
+        active_count = sum(1 for item in modalities.values() if item.get("query"))
+
         return {
             "query": result["original_query"],
-            "frame_limit": result["frame_limit"],
-            "modalities": result["modalities"],
-            "selected_count": result["selected_count"],
-            "active_modalities": result["active_modalities"],
-            "warnings": result["warnings"],
+            "selected_options": result.get("selected_options", []),
+            "k_iterations": result.get("k_iterations", req.k_iterations),
+            "completed_iterations": result.get("current_iteration", 0),
+            "frame_limit": result.get("frame_limit", req.frame_limit),
+            "modalities": modalities,
+            "selected_count": total_selected,
+            "active_modalities": active_count,
+            "warnings": result.get("warnings", []),
         }
     except HTTPException:
         raise

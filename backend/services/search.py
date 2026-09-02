@@ -1228,6 +1228,110 @@ async def search_semantic_asr_on_meilisearch(
     )
 
 
+
+async def search_semantic_asr_milvus(
+    query_vector: list,
+    limit: int = 50,
+    offset: int = 0,
+    video_ids: Optional[List[str]] = None,
+    candidate_frame_names: Optional[List[str]] = None,
+    sentence_level: bool = False,
+) -> tuple[List[Dict[str, Any]], int]:
+    """Retrieve semantic ASR scenes from Milvus and map their keyframes."""
+    if not runtime.milvus_client:
+        return [], 0
+    try:
+        scene_mapping = (
+            runtime.scene_frame_mapping_sentence_level
+            if sentence_level
+            else runtime.scene_frame_mapping
+        )
+        frame_scene_ids_map = (
+            runtime.frame_scene_ids_map_sentence_level
+            if sentence_level
+            else runtime.frame_scene_ids_map
+        )
+        if not scene_mapping:
+            print("Semantic ASR scene mapping is not loaded")
+            return [], 0
+
+        filter_parts = []
+        if video_ids:
+            vids_str = ",".join(f"'{vid}'" for vid in video_ids)
+            filter_parts.append(f"video_id in [{vids_str}]")
+
+        if candidate_frame_names is not None:
+            scene_ids = sorted({
+                scene_id
+                for frame_name in candidate_frame_names
+                for scene_id in frame_scene_ids_map.get(frame_name, [])
+            })
+            if not scene_ids:
+                return [], 0
+            scene_ids_str = ",".join(f"'{sid}'" for sid in scene_ids)
+            filter_parts.append(f"other_payload['scene_id'] in [{scene_ids_str}]")
+
+        filter_expr = " and ".join(filter_parts) if filter_parts else ""
+        collection_name = MODEL_CONFIGS["qwen"]["collection"]
+
+        search_kwargs = {
+            "collection_name": collection_name,
+            "data": [query_vector],
+            "limit": limit + offset,
+            "output_fields": ["other_payload", "video_id", "frame_id", "shot_id", "file_path"],
+            "search_params": {"metric_type": "COSINE"},
+        }
+        if filter_expr:
+            search_kwargs["filter"] = filter_expr
+
+        def _do_search():
+            return runtime.milvus_client.search(**search_kwargs)
+
+        response = await asyncio.to_thread(_do_search)
+        if not response or not response[0]:
+            return [], 0
+
+        hits = response[0]
+        results = []
+        for hit in hits:
+            entity = hit.get("entity", {})
+            other = entity.get("other_payload", {})
+            scene_id = other.get("scene_id")
+            if not scene_id:
+                continue
+            scene = scene_mapping.get(scene_id)
+            if not isinstance(scene, dict):
+                continue
+            video_id = scene.get("video_id") or entity.get("video_id")
+            if not isinstance(video_id, str):
+                continue
+            shots = keyframes_from_scene(
+                video_id,
+                scene.get("frame_inside", []),
+                candidate_frame_names=candidate_frame_names,
+            )
+            if candidate_frame_names and not shots:
+                continue
+
+            results.append({
+                "chunk_id": scene_id,
+                "scene_id": scene_id,
+                "score": float(hit.get("distance", 0.0)),
+                "video_id": video_id,
+                "start_id": scene.get("start_id", 0),
+                "end_id": scene.get("end_id", 0),
+                "summary": scene.get("summary", ""),
+                "frame_inside": [shot["frame_name"] for shot in shots],
+                "shots": shots,
+            })
+
+        paginated = results[offset:offset + limit] if offset > 0 else results[:limit]
+        return paginated, len(results)
+    except Exception as exc:
+        print(f"Error searching semantic ASR in Milvus: {exc}")
+        return [], 0
+
+
 async def search_semantic_asr_qdrant(
     query_vector: list,
     limit: int = 50,
@@ -1335,79 +1439,81 @@ async def search_semantic_asr(
     query_text: str,
     query_vector: Optional[list],
     search_mode: str = "meilisearch",
-    embedding_weight: float = 0.7,
-    meilisearch_weight: float = 0.3,
+    embedding_weight: float = 0.5,
+    meilisearch_weight: float = 0.5,
     limit: int = 50,
     offset: int = 0,
     video_ids: Optional[List[str]] = None,
     candidate_frame_names: Optional[List[str]] = None,
     sentence_level: bool = False,
+    rrf_k: int = 60,
 ) -> tuple[List[Dict[str, Any]], int]:
-    """Search semantic ASR scenes with Meilisearch, Qdrant, or both."""
+    """Search semantic ASR scenes with Meilisearch, Vector Database (Milvus/Qdrant), or Weighted RRF Fusion."""
+    async def _search_vector(vec, lim, off):
+        if VECTOR_DATABASE == "milvus":
+            return await search_semantic_asr_milvus(vec, lim, off, video_ids, candidate_frame_names, sentence_level)
+        return await search_semantic_asr_qdrant(vec, lim, off, video_ids, candidate_frame_names, sentence_level)
+
     if search_mode == "embedding":
         if not query_vector:
             return [], 0
-        return await search_semantic_asr_qdrant(
-            query_vector, limit, offset, video_ids, candidate_frame_names, sentence_level
-        )
+        return await _search_vector(query_vector, limit, offset)
 
     if search_mode == "meilisearch":
         return await search_semantic_asr_on_meilisearch(
             query_text, limit, offset, video_ids, candidate_frame_names, sentence_level
         )
 
+    # Hybrid Search using Reciprocal Rank Fusion (RRF)
     if not query_vector:
-        return [], 0
+        return await search_semantic_asr_on_meilisearch(
+            query_text, limit, offset, video_ids, candidate_frame_names, sentence_level
+        )
+
     candidate_limit = max(200, (offset + limit) * 5)
     (meili_results, _), (vector_results, _) = await asyncio.gather(
         search_semantic_asr_on_meilisearch(
             query_text, candidate_limit, 0, video_ids, candidate_frame_names, sentence_level
         ),
-        search_semantic_asr_qdrant(
-            query_vector, candidate_limit, 0, video_ids, candidate_frame_names, sentence_level
-        ),
+        _search_vector(query_vector, candidate_limit, 0),
     )
+
     weight_total = embedding_weight + meilisearch_weight
     if weight_total <= 0:
-        raise ValueError("At least one semantic ASR search weight must be greater than zero.")
-    embedding_weight /= weight_total
-    meilisearch_weight /= weight_total
+        embedding_weight, meilisearch_weight = 0.5, 0.5
+    else:
+        embedding_weight /= weight_total
+        meilisearch_weight /= weight_total
 
-    max_meili_score = max((float(item["score"]) for item in meili_results), default=1.0) or 1.0
-    by_scene: Dict[str, Dict[str, Any]] = {}
-    meili_by_scene: Dict[str, Dict[str, Any]] = {}
-    for item in meili_results:
-        scene_id = item.get("scene_id")
-        if isinstance(scene_id, str):
-            meili_by_scene[scene_id] = item
-    for item in vector_results + meili_results:
-        scene_id = item.get("scene_id")
-        if isinstance(scene_id, str):
-            by_scene.setdefault(scene_id, item)
-    vector_scores = {
-        item["scene_id"]: max(0.0, min(1.0, float(item["score"])))
-        for item in vector_results
-        if isinstance(item.get("scene_id"), str)
-    }
-    meili_scores = {
-        item["scene_id"]: float(item["score"]) / max_meili_score
-        for item in meili_results
-        if isinstance(item.get("scene_id"), str)
-    }
+    # RRF Computation on scene_id
+    rrf_scores: Dict[str, float] = defaultdict(float)
+    scenes_map: Dict[str, Dict[str, Any]] = {}
+    meili_scene_map: Dict[str, Dict[str, Any]] = {}
 
-    ranked = []
-    for scene_id, result in by_scene.items():
-        embedding_score = vector_scores.get(scene_id, 0.0)
-        meili_score = meili_scores.get(scene_id, 0.0)
-        result = result.copy()
-        result["score"] = embedding_weight * embedding_score + meilisearch_weight * meili_score
-        result["source_scores"] = {
-            "embedding": embedding_score,
-            "meilisearch": meili_score,
+    for rank, item in enumerate(meili_results, start=1):
+        sid = item.get("scene_id") or item.get("id")
+        if sid:
+            rrf_scores[sid] += meilisearch_weight / (rrf_k + rank)
+            scenes_map[sid] = item
+            meili_scene_map[sid] = item
+
+    for rank, item in enumerate(vector_results, start=1):
+        sid = item.get("scene_id") or item.get("id")
+        if sid:
+            rrf_scores[sid] += embedding_weight / (rrf_k + rank)
+            if sid not in scenes_map:
+                scenes_map[sid] = item
+
+    ranked_results = []
+    for sid, combined_score in sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True):
+        item = scenes_map[sid].copy()
+        item["score"] = combined_score
+        item["source_scores"] = {
+            "rrf_score": combined_score,
+            "meili_item": sid in meili_scene_map,
         }
-        formatted_summary = meili_by_scene.get(scene_id, {}).get("formatted_summary")
-        if isinstance(formatted_summary, str):
-            result["formatted_summary"] = formatted_summary
-        ranked.append(result)
-    ranked.sort(key=lambda result: result["score"], reverse=True)
-    return ranked[offset:offset + limit], len(ranked)
+        if sid in meili_scene_map and "formatted_summary" in meili_scene_map[sid]:
+            item["formatted_summary"] = meili_scene_map[sid]["formatted_summary"]
+        ranked_results.append(item)
+
+    return ranked_results[offset:offset + limit], len(ranked_results)
