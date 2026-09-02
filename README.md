@@ -39,7 +39,6 @@ flowchart LR
 | BGE worker | BGE-VL text/image embeddings | `2001` |
 | BEiT-3 worker | BEiT-3 text/image embeddings | `2002` |
 | MetaCLIP worker | MetaCLIP embeddings | `2003` |
-| Jina worker | Jina multimodal embeddings | `2004` |
 | FG-CLIP 2 worker | FG-CLIP 2 text/image embeddings | `2005` |
 | Qwen worker | ASR/text embeddings | `2006` |
 | Qdrant | Vector search | `6333` |
@@ -105,7 +104,6 @@ Review these configuration groups in `.env`:
 | Group | Important variables |
 | --- | --- |
 | Search databases | `QDRANT_HOST`, `MEILISEARCH_HOST`, `OCR_ASR_INDEX_NAME` |
-| Embedding workers | `BGE_WORKER_URL`, `BEIT3_WORKER_URL`, `METACLIP2_WORKER_URL`, `JINA_V5_OMNI_WORKER_URL`, `FGCLIP2_WORKER_URL` |
 | LLM services | `GROQ_API_KEY`, `TAVILY_API_KEY` |
 | Translation | `TRANSLATE_PROVIDER` and text-processing limits |
 
@@ -155,7 +153,6 @@ Only workers enabled by your deployment need to run:
 # Main environment
 conda run --no-capture-output -n env python -m src.host_model.host_bge
 conda run --no-capture-output -n env python -m src.host_model.host_metaclip2
-conda run --no-capture-output -n env python -m src.host_model.host_jina
 conda run --no-capture-output -n env python -m src.host_model.host_qwen
 
 # BEiT-3 environment

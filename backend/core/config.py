@@ -9,12 +9,7 @@ try:
 except ImportError:
     pass
 
-NAS_UPLOAD_DIR = Path("/GuestShare_NAS/WorkingSpace/Personal/nguyenmv/HCMAIC2026/AICHALLENGE_OPENCUBEE_2/database/temp_uploads")
-if NAS_UPLOAD_DIR.parent.exists():
-    TEMP_UPLOAD_DIR = NAS_UPLOAD_DIR
-else:
-    print("Warning: NAS mount path not accessible. Falling back to local './temp_uploads'")
-    TEMP_UPLOAD_DIR = Path("./temp_uploads")
+TEMP_UPLOAD_DIR = Path("./temp_uploads")
 TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "opencubee2_qdrant")
@@ -42,10 +37,6 @@ MODEL_CONFIGS = {
     "fgclip2": {
         "worker_url": os.getenv("FGCLIP2_WORKER_URL", "http://127.0.0.1:2005/embed"),
         "collection": "fgclip2",
-    },
-    "jina_v5_omni": {
-        "worker_url": os.getenv("JINA_V5_OMNI_WORKER_URL", 'http://127.0.0.1:2004/embed'),
-        "collection": "jina_v5_omni",
     },
     "qwen": {
         "worker_url": os.getenv("QWEN_WORKER_URL", 'http://127.0.0.1:2006/embed'),
@@ -82,5 +73,5 @@ try:
 except ValueError:
     MAX_FRAME_LIMIT = 200
 
-VIDEO_DIR = Path(os.getenv("VIDEO_DIR", "/mlcv1/Datasets/HCMAI25/full/")).resolve()
+VIDEO_DIR = Path(os.getenv("VIDEO_DIR", "/mlcv1/Datasets/HCMAI25/full/"))
 VIDEO_EXTENSIONS = (".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v")

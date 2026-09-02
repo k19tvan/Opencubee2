@@ -1576,6 +1576,7 @@ export default function App() {
     submittedSearchModelRef.current = currentSearchModel;
     submittedSimilarityScopeRef.current = null;
     setSimilarityScope(null);
+    setLockedVideos([]);
     setStages(nextStages);
     setSearchResults([]);
     setLastFinalQueries([]);
