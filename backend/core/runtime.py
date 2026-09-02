@@ -17,6 +17,9 @@ from backend.core.config import (
     QDRANT_GRPC_PORT,
     QDRANT_HOST,
     QDRANT_PORT,
+    MILVUS_HOST,
+    MILVUS_PORT,
+    VECTOR_DATABASE,
     TRANSLATE_MODEL,
     TRANSLATE_MODEL_API_KEY,
     TRANSLATE_MODEL_BASE_URL,
@@ -107,6 +110,7 @@ except Exception as exc:
     print(f"Warning: Failed to initialize ChatOpenAI runtimes: {exc}")
 
 qdrant_client = None
+milvus_client = None
 meili_client = None
 http_client: Optional[httpx.AsyncClient] = None
 manager = ConnectionManager()
@@ -219,7 +223,7 @@ def load_scene_frame_mapping_json():
     scene_frame_mapping_sentence_level, frame_scene_ids_map_sentence_level = _load_scene_mapping_file("scene_frame_mapping_sentence_level.json")
             
 def startup_runtime():
-    global qdrant_client, meili_client, http_client
+    global qdrant_client, milvus_client, meili_client, http_client
 
     http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(30.0, connect=5.0),
@@ -236,21 +240,53 @@ def startup_runtime():
     # exact keyframes, so load it synchronously and avoid a startup race.
     load_scene_frame_mapping_json()
 
+    if VECTOR_DATABASE == "qdrant":
+        try:
+            from qdrant_client import QdrantClient
 
-    try:
-        from qdrant_client import QdrantClient
-
-        print(f"--- Connecting to Qdrant at {QDRANT_HOST} (gRPC: {QDRANT_GRPC_PORT})... ---")
-        qdrant_client = QdrantClient(
-            host=QDRANT_HOST,
-            port=QDRANT_PORT,
-            grpc_port=QDRANT_GRPC_PORT,
-            prefer_grpc=True,
-            timeout=120.0,
-        )
-        print("--- Qdrant connection successful. ---")
-    except Exception as e:
-        print(f"FATAL: Qdrant connection failed: {e}")
+            print(f"--- Connecting to Qdrant at {QDRANT_HOST} (gRPC: {QDRANT_GRPC_PORT})... ---")
+            qdrant_client = QdrantClient(
+                host=QDRANT_HOST,
+                port=QDRANT_PORT,
+                grpc_port=QDRANT_GRPC_PORT,
+                prefer_grpc=True,
+                timeout=120.0,
+            )
+            print("--- Qdrant connection successful. ---")
+        except Exception as e:
+            print(f"FATAL: Qdrant connection failed: {e}")
+    else:
+        try:
+            from pymilvus import MilvusClient
+            print(f"--- Connecting to Milvus at {MILVUS_HOST}:{MILVUS_PORT}... ---")
+            milvus_client = MilvusClient(uri=f"http://{MILVUS_HOST}:{MILVUS_PORT}")
+            print("--- Milvus connection successful. ---")
+            
+            # Load collections into RAM in background
+            from backend.core.config import MODEL_CONFIGS
+            def pre_load_milvus_collections():
+                import time
+                collections_to_load = set()
+                for conf in MODEL_CONFIGS.values():
+                    if "collection" in conf:
+                        collections_to_load.add(conf["collection"])
+                    if "spatial_collection" in conf:
+                        collections_to_load.add(conf["spatial_collection"])
+                
+                print(f"--- Pre-loading Milvus collections into RAM: {list(collections_to_load)} ---")
+                for col_name in collections_to_load:
+                    try:
+                        start_t = time.time()
+                        milvus_client.load_collection(col_name)
+                        print(f"    + Loaded {col_name} into RAM (took {time.time() - start_t:.2f}s).")
+                    except Exception as e:
+                        print(f"    ! Error loading {col_name}: {e}")
+                print("--- Finished pre-loading all Milvus collections. ---")
+            
+            threading.Thread(target=pre_load_milvus_collections, daemon=True).start()
+            
+        except Exception as e:
+            print(f"FATAL: Milvus connection failed: {e}")
 
     try:
         import meilisearch
@@ -268,7 +304,10 @@ def startup_runtime():
 
 
 async def shutdown_runtime():
-    global http_client
+    global http_client, milvus_client
     if http_client is not None:
         await http_client.aclose()
         http_client = None
+    if milvus_client is not None:
+        milvus_client.close()
+        milvus_client = None
