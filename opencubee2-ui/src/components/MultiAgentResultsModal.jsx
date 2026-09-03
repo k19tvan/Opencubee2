@@ -111,9 +111,22 @@ export default function MultiAgentResultsModal({
             <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]"><i className="fas fa-images" /></span>
             Multi-modal critic results
             <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-slate-300">
+              {result.selected_count || frames.length} frames
+            </span>
           </div>
           <p className="mt-1 truncate text-[11px] text-slate-400">
             {result.query} · Loop {result.completed_iterations || 0}/{result.k_iterations || 3} · top {result.frame_limit || '?'} candidates/modality · 20 frames/canvas
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900/80 text-slate-400 hover:border-slate-500 hover:bg-slate-800 hover:text-white"
+          title="Close (Esc)"
+          aria-label="Close"
+        >
+          <i className="fas fa-times text-sm" />
+        </button>
       </header>
 
       <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-700 bg-[#0b1020] px-4 py-2 sm:px-6">
