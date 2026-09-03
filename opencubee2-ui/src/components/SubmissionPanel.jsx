@@ -16,6 +16,7 @@ const getAbsoluteThumbnailUrl = (videoId, frameId) => {
 
 // Cache metadata globally so it persists across query switching (unmounts)
 const globalMetaMap = new Map();
+const MULTI_VIDEO_TRAKE_ROW_PREFIX = '__opencubee_trake_v2__';
 
 const parseCsvContent = (csvString, mode, currentData = []) => {
   if (!csvString) return [];
@@ -61,6 +62,18 @@ const parseCsvContent = (csvString, mode, currentData = []) => {
     });
   } else if (mode === 'trake') {
     return lines.map(line => {
+      if (line.startsWith(`${MULTI_VIDEO_TRAKE_ROW_PREFIX},`)) {
+        try {
+          const encodedFrames = line.slice(MULTI_VIDEO_TRAKE_ROW_PREFIX.length + 1);
+          const frames = JSON.parse(decodeURIComponent(encodedFrames));
+          if (!Array.isArray(frames)) return [];
+          return frames.map(({ video_id, frame_id }) => ({
+            shot: getPreservedShot(video_id, String(frame_id).trim()),
+          }));
+        } catch {
+          return [];
+        }
+      }
       const p = line.split(',');
       const video_id = Object.is(p[0], undefined) ? '' : p[0];
       const frameIds = p.slice(1);
@@ -79,15 +92,43 @@ const serializeCsvContent = (localData, mode) => {
   } else if (mode === 'qa') {
     return localData.map(item => `${item.shot.video_id},${item.shot.frame_id},"${item.answer || ''}"`).join('\n');
   } else if (mode === 'trake') {
-    return localData.map(row => {
-      if (row.length === 0) return '';
-      const vid = row[0].shot.video_id;
-      const fids = row.map(item => item.shot.frame_id).join(',');
-      return `${vid},${fids}`;
-    }).filter(l => l).join('\n');
+    return localData.map((row) => {
+      const frames = row
+        .map(({ shot }) => ({ video_id: shot?.video_id, frame_id: shot?.frame_id }))
+        .filter(({ video_id, frame_id }) => video_id && frame_id !== undefined && frame_id !== null);
+      if (frames.length === 0) return '';
+
+      const videoIds = new Set(frames.map(({ video_id }) => video_id));
+      if (videoIds.size === 1) {
+        return `${frames[0].video_id},${frames.map(({ frame_id }) => frame_id).join(',')}`;
+      }
+
+      // Versioned, URI-encoded JSON preserves one logical row and its order
+      // when that row contains frames from several videos.
+      return `${MULTI_VIDEO_TRAKE_ROW_PREFIX},${encodeURIComponent(JSON.stringify(frames))}`;
+    }).filter(Boolean).join('\n');
   }
   return '';
 };
+
+const normalizeDraftContent = (filename, draftContent) => {
+  if (!filename?.includes('-trake')) return Array.isArray(draftContent) ? draftContent : [];
+  if (!Array.isArray(draftContent)) return [];
+
+  // Trake is a list of rows. Accept a legacy flat list as one row so every
+  // frame remains visible instead of rendering only an incomplete payload.
+  if (draftContent.every((item) => item?.shot)) return [draftContent];
+  return draftContent.map((row) => {
+    if (Array.isArray(row)) return row.filter((item) => item?.shot);
+    return row?.shot ? [row] : [];
+  });
+};
+
+const cloneDraftContent = (draftContent, mode) => (
+  mode === 'trake'
+    ? draftContent.map((row) => [...row])
+    : [...draftContent]
+);
 
 const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onPreviewTrakeFrame, onZoom, onContext, onQuickSearch, onToggleLock, onPreview, draggable, onDragStart, onDragOver, onDrop }) => {
   const [answer, setAnswer] = useState(item.answer || '');
@@ -234,6 +275,14 @@ export default function SubmissionPanel({
   onSyncDraft
 }) {
   const [draftsByFile, setDraftsByFile] = useState({});
+  const draftsByFileRef = React.useRef({});
+  const draftRevisionsRef = React.useRef(new Map());
+  const setDraftForFile = useCallback((filename, draftContent) => {
+    const normalizedDraft = normalizeDraftContent(filename, draftContent);
+    const nextDrafts = { ...draftsByFileRef.current, [filename]: normalizedDraft };
+    draftsByFileRef.current = nextDrafts;
+    setDraftsByFile(nextDrafts);
+  }, []);
   const localData = (activeQueryFilename && draftsByFile[activeQueryFilename]) || [];
   
   const [viewMode, setViewMode] = useState('draft');
@@ -252,17 +301,23 @@ export default function SubmissionPanel({
 
   useEffect(() => {
     const handleDraftUpdated = (e) => {
-      const { filename, draftContent } = e.detail;
-      if (filename === activeQueryFilename) {
-        setDraftsByFile(prev => ({
-          ...prev,
-          [filename]: draftContent
-        }));
+      const { filename, draftContent, revision } = e.detail;
+      if (!filename) return;
+
+      const incomingRevision = Number(revision);
+      const knownRevision = draftRevisionsRef.current.get(filename) || 0;
+      if (Number.isFinite(incomingRevision) && incomingRevision < knownRevision) return;
+      if (Number.isFinite(incomingRevision)) {
+        draftRevisionsRef.current.set(filename, incomingRevision);
       }
+
+      // Cache every query's draft, even while the user is viewing another one.
+      // This prevents the old CSV response from winning when they switch back.
+      setDraftForFile(filename, draftContent);
     };
     window.addEventListener('draft_updated', handleDraftUpdated);
     return () => window.removeEventListener('draft_updated', handleDraftUpdated);
-  }, [activeQueryFilename]);
+  }, [setDraftForFile]);
 
   useEffect(() => {
     if (!activeQueryFilename) return;
@@ -275,39 +330,24 @@ export default function SubmissionPanel({
     if (activeCsvContent === null && activeDraftContent === null) return;
     
     // Initialize draft per file only if it doesn't exist
-    setDraftsByFile(prev => {
-      if (!prev[activeQueryFilename]) {
-        return {
-          ...prev,
-          [activeQueryFilename]: activeDraftContent || parseCsvContent(activeCsvContent, computedMode, [])
-        };
-      }
-      return prev;
-    });
-  }, [activeQueryFilename, activeCsvContent, activeDraftContent]);
+    if (!draftsByFileRef.current[activeQueryFilename]) {
+      setDraftForFile(
+        activeQueryFilename,
+        activeDraftContent || parseCsvContent(activeCsvContent, computedMode, []),
+      );
+    }
+  }, [activeQueryFilename, activeCsvContent, activeDraftContent, setDraftForFile]);
 
   const updateData = useCallback((updater) => {
     if (!activeQueryFilename) return;
     
-    setDraftsByFile(prev => {
-      const currentDraft = prev[activeQueryFilename] || [];
-      const next = typeof updater === 'function' ? updater(currentDraft) : updater;
-      
-      if (mode === 'trake') {
-        const hasMixed = next.some(row => {
-          if (row.length === 0) return false;
-          const firstVid = row[0].shot.video_id;
-          return row.some(item => item.shot.video_id !== firstVid);
-        });
-        if (hasMixed) return prev;
-      }
-      
-      if (onSyncDraft) {
-        onSyncDraft(activeQueryFilename, next);
-      }
-      return { ...prev, [activeQueryFilename]: next };
-    });
-  }, [mode, activeQueryFilename, onSyncDraft]);
+    const currentDraft = draftsByFileRef.current[activeQueryFilename] || [];
+    const baseDraft = cloneDraftContent(currentDraft, mode);
+    const next = typeof updater === 'function' ? updater(baseDraft) : updater;
+
+    setDraftForFile(activeQueryFilename, next);
+    if (onSyncDraft) onSyncDraft(activeQueryFilename, next);
+  }, [mode, activeQueryFilename, onSyncDraft, setDraftForFile]);
 
   const addFrame = useCallback((shot, answer = '') => {
     if (!shot) return;
@@ -323,6 +363,8 @@ export default function SubmissionPanel({
       } else if (mode === 'trake') {
         const next = [...prev];
         if (next.length === 0) next.push([]);
+        // A Trake row is an ordered sequence. video_id is carried by each
+        // frame, so mixing videos must not create a row implicitly.
         next[next.length - 1].push({ shot: normalizedShot });
         return next;
       }
@@ -426,18 +468,6 @@ export default function SubmissionPanel({
       if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
         e.preventDefault();
         
-        if (mode === 'trake') {
-          const hasMixed = localData.some(row => {
-            if (row.length === 0) return false;
-            const firstVid = row[0].shot.video_id;
-            return row.some(item => item.shot.video_id !== firstVid);
-          });
-          if (hasMixed) {
-            toast.error("Không thể lưu: Có dòng phụ (Trake) chứa nhiều video_id khác nhau!");
-            return;
-          }
-        }
-
         const newCsv = serializeCsvContent(localData, mode);
         onSaveSubmission(newCsv);
         return;
@@ -557,17 +587,6 @@ export default function SubmissionPanel({
           {viewMode === 'draft' && (
             <button 
               onClick={() => {
-                if (mode === 'trake') {
-                  const hasMixed = localData.some(row => {
-                    if (row.length === 0) return false;
-                    const firstVid = row[0].shot.video_id;
-                    return row.some(item => item.shot.video_id !== firstVid);
-                  });
-                  if (hasMixed) {
-                    toast.error("Không thể lưu: Có dòng phụ (Trake) chứa nhiều video_id khác nhau!");
-                    return;
-                  }
-                }
                 onSaveSubmission(serializeCsvContent(localData, mode))
               }}
               className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded text-xs hover:bg-emerald-500/20 font-bold"

@@ -117,6 +117,8 @@ manager = ConnectionManager()
 # WebSocket handlers run concurrently. Keep shared-panel mutations and their
 # broadcasts in one order so every connected client observes the same state.
 submission_panel_state: dict[str, Any] = {}
+# Monotonic per-query versions let clients discard a delayed draft snapshot.
+submission_panel_revisions: dict[str, int] = {}
 realtime_state_lock = asyncio.Lock()
 teamwork_panel_state = []
 trake_panel_state = []

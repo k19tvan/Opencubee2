@@ -222,6 +222,9 @@ export default function App() {
   const [submissionQueries, setSubmissionQueries] = useState([]);
   const [activeQueryFilename, setActiveQueryFilename] = useState('');
   const activeQueryFilenameRef = useRef("");
+  const queryLoadSequenceRef = useRef(0);
+  const draftRequestSequenceRef = useRef(0);
+  const latestDraftRequestRef = useRef({ filename: '', requestId: 0 });
   const [activeQueryText, setActiveQueryText] = useState('');
   const [activeCsvContent, setActiveCsvContent] = useState(null);
   const [activeDraftContent, setActiveDraftContent] = useState(null);
@@ -284,13 +287,21 @@ export default function App() {
   };
 
   const handleSelectQuery = async (filename) => {
+    const loadSequence = ++queryLoadSequenceRef.current;
+    // React state/ref effects run after this handler. Update the ref now so a
+    // fast WebSocket snapshot is not mistakenly treated as the previous query.
+    activeQueryFilenameRef.current = filename;
     setActiveQueryFilename(filename);
     setActiveCsvContent(null);
     setActiveDraftContent(null);
     if (!filename) return;
     try {
-      sendRealtimeMessage({ type: 'request_draft_sync', data: { filename } });
+      const requestId = ++draftRequestSequenceRef.current;
+      latestDraftRequestRef.current = { filename, requestId };
+      sendRealtimeMessage({ type: 'request_draft_sync', data: { filename, requestId } });
       const data = await fetchSubmissionQuery(filename);
+      // Ignore an HTTP response belonging to a query the user has already left.
+      if (loadSequence !== queryLoadSequenceRef.current || activeQueryFilenameRef.current !== filename) return;
       setActiveQueryText(data.query_text || "");
       setActiveCsvContent(data.csv_content || "");
     } catch (e) {
@@ -902,13 +913,21 @@ export default function App() {
       }
 
       if (type === 'draft_sync') {
-        const { filename, draftContent } = data;
-        if (filename === activeQueryFilenameRef.current) {
+        const { filename, draftContent, requestId } = data;
+        const isCurrentSnapshot = requestId === undefined || (
+          filename === latestDraftRequestRef.current.filename
+          && requestId === latestDraftRequestRef.current.requestId
+        );
+        if (isCurrentSnapshot && filename === activeQueryFilenameRef.current) {
           setActiveDraftContent(draftContent);
         }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('draft_updated', {
-            detail: { filename: data.filename, draftContent: data.draftContent }
+            detail: {
+              filename: data.filename,
+              draftContent: data.draftContent,
+              revision: data.revision,
+            }
           }));
         }
       }

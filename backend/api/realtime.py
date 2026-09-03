@@ -217,16 +217,26 @@ async def websocket_endpoint(websocket: WebSocket):
                 if filename and draft_content is not None:
                     async with runtime.realtime_state_lock:
                         runtime.submission_panel_state[filename] = draft_content
-                # Broadcast the local personal draft state to all other clients for collaboration
-                await broadcast_event("draft_sync", data)
+                        revision = runtime.submission_panel_revisions.get(filename, 0) + 1
+                        runtime.submission_panel_revisions[filename] = revision
+                    # The server assigns the version, rather than trusting a client value.
+                    await broadcast_event("draft_sync", {**data, "revision": revision})
 
             elif msg_type == "request_draft_sync":
                 filename = data.get("filename")
                 if filename:
                     async with runtime.realtime_state_lock:
                         draft_content = runtime.submission_panel_state.get(filename)
+                        revision = runtime.submission_panel_revisions.get(filename, 0)
                     if draft_content is not None:
-                        await send_event(websocket, "draft_sync", {"filename": filename, "draftContent": draft_content})
+                        # Echo requestId so a client which switches queries quickly can
+                        # identify a delayed snapshot from an older selection.
+                        await send_event(websocket, "draft_sync", {
+                            "filename": filename,
+                            "draftContent": draft_content,
+                            "revision": revision,
+                            "requestId": data.get("requestId"),
+                        })
 
             else:
                 await send_error(websocket, f"Unsupported message type: {msg_type!r}.")
