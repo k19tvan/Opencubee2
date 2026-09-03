@@ -5,7 +5,14 @@ import { getDresFrameNumber } from '../utils/frameNumber';
 const CONTEXT_STEPS = 15;
 const STEP_SECONDS = 0.2;
 
-export default function TrakeFramePreviewSidebar({ shot, onClose, onReplace }) {
+export default function TrakeFramePreviewSidebar({
+  shot,
+  onClose,
+  onZoom,
+  onContext,
+  onQuickSearch,
+  onPreview,
+}) {
   const [videoInfo, setVideoInfo] = useState(null);
   const [error, setError] = useState('');
 
@@ -82,20 +89,52 @@ export default function TrakeFramePreviewSidebar({ shot, onClose, onReplace }) {
         {error && <p className="py-16 text-center text-xs text-red-400">{error}</p>}
         {frames.length > 0 && (
           <div className="grid grid-cols-1 gap-3">
-            {frames.map((frame) => (
-              <button
-                type="button"
+            {frames.map((frame) => {
+              const frameShot = {
+                ...shot,
+                frame_id: frame.frame,
+                frame_name: `${shot.video_id}_${String(frame.frame).padStart(6, '0')}.webp`,
+                filepath: `dynamic-frame-${shot.video_id}-${frame.frame}`,
+                url: frame.fullUrl,
+              };
+
+              return (
+              <div
+                role="button"
+                tabIndex={0}
                 key={frame.offset}
-                onClick={() => {
-                  if (onReplace) {
-                    onReplace({
-                      ...shot,
-                      frame_id: frame.frame,
-                      frame_name: `${shot.video_id}_${String(frame.frame).padStart(6, '0')}.webp`,
-                      filepath: `dynamic-frame-${shot.video_id}-${frame.frame}`,
-                      url: frame.fullUrl,
-                    });
+                draggable
+                onDragStart={(event) => {
+                  const dragId = `trake-preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                  event.dataTransfer.effectAllowed = 'copy';
+                  event.dataTransfer.setData('application/json', JSON.stringify({
+                    type: 'submission-frame',
+                    dragId,
+                    shot: frameShot,
+                  }));
+                  event.dataTransfer.setData('text/uri-list', frame.fullUrl);
+                  event.dataTransfer.setData('text/plain', frameShot.frame_name);
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+                  if (isCtrlOrCmd && event.altKey) {
+                    onContext?.({ ...frameShot, contextView: 'video-timeline' });
+                  } else if (isCtrlOrCmd && event.shiftKey) {
+                    onQuickSearch?.(frameShot);
+                  } else if (isCtrlOrCmd) {
+                    onContext?.({ ...frameShot, contextView: 'neighbors' });
+                  } else {
+                    // A plain click only enlarges the image; it does not replace
+                    // the selected Trake frame or modify the submission draft.
+                    onZoom?.(frame.fullUrl);
                   }
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onPreview?.(frameShot.video_id, frameShot.frame_id);
                 }}
                 className={`group relative aspect-video overflow-hidden rounded-lg border bg-[var(--card-bg)] text-left transition-all hover:scale-[1.02] ${
                   frame.isOriginal
@@ -114,8 +153,9 @@ export default function TrakeFramePreviewSidebar({ shot, onClose, onReplace }) {
                 }`}>
                   {frame.label}
                 </span>
-              </button>
-            ))}
+              </div>
+              );
+            })}
           </div>
         )}
       </div>

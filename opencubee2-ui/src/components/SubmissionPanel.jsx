@@ -130,7 +130,7 @@ const cloneDraftContent = (draftContent, mode) => (
     : [...draftContent]
 );
 
-const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onPreviewTrakeFrame, onZoom, onContext, onQuickSearch, onToggleLock, onPreview, draggable, onDragStart, onDragOver, onDrop }) => {
+const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onMouseLeave, onPreviewTrakeFrame, onZoom, onContext, onQuickSearch, onToggleLock, onPreview, draggable, onDragStart, onDragOver, onDrop }) => {
   const [answer, setAnswer] = useState(item.answer || '');
 
   useEffect(() => {
@@ -179,6 +179,7 @@ const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onPreviewTrakeFra
     <div 
       className="relative flex-shrink-0 w-[180px] rounded-lg overflow-hidden border border-[var(--border-color)] hover:border-[var(--accent-primary)] group cursor-pointer"
       onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       onClick={handleInteraction}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -186,9 +187,19 @@ const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onPreviewTrakeFra
         if (onPreview) onPreview(item.shot?.video_id, item.shot?.frame_id);
       }}
       draggable={draggable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
+      onDragStart={(e) => {
+        e.stopPropagation();
+        onDragStart?.(e);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDragOver?.(e);
+      }}
+      onDrop={(e) => {
+        e.stopPropagation();
+        onDrop?.(e);
+      }}
     >
       <div className="aspect-video">
         <img
@@ -272,11 +283,12 @@ export default function SubmissionPanel({
   onToggleLock,
   onPreview,
   username,
-  onSyncDraft
+  onSyncDraft,
 }) {
   const [draftsByFile, setDraftsByFile] = useState({});
   const draftsByFileRef = React.useRef({});
   const draftRevisionsRef = React.useRef(new Map());
+  const processedExternalDropIdsRef = React.useRef(new Set());
   const setDraftForFile = useCallback((filename, draftContent) => {
     const normalizedDraft = normalizeDraftContent(filename, draftContent);
     const nextDrafts = { ...draftsByFileRef.current, [filename]: normalizedDraft };
@@ -376,17 +388,14 @@ export default function SubmissionPanel({
     if (!targetInfo) return;
     updateData(prev => {
       if (mode === 'kis' || mode === 'qa') {
-        if (targetInfo.type === 'kis') {
-          return prev.filter((_, i) => i !== targetInfo.index);
+        return prev.filter((_, index) => index !== targetInfo.index);
+      }
+      if (mode === 'trake' && targetInfo.type === 'trake') {
+        const next = [...prev];
+        if (next[targetInfo.rIdx]) {
+          next[targetInfo.rIdx] = next[targetInfo.rIdx].filter((_, index) => index !== targetInfo.cIdx);
         }
-      } else if (mode === 'trake') {
-        if (targetInfo.type === 'trake') {
-          const next = [...prev];
-          if (next[targetInfo.rIdx]) {
-            next[targetInfo.rIdx] = next[targetInfo.rIdx].filter((_, i) => i !== targetInfo.cIdx);
-          }
-          return next;
-        }
+        return next;
       }
       return prev;
     });
@@ -410,8 +419,22 @@ export default function SubmissionPanel({
 
   const handleDrop = (e, targetPayload) => {
     e.preventDefault();
+    // A Trake row sits inside the panel drop zone. Handle a payload at its
+    // innermost target only; otherwise the same native drop bubbles and adds
+    // the frame again at each ancestor.
+    e.stopPropagation();
     try {
       const source = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (source.type === 'submission-frame' && source.shot) {
+        if (source.dragId && processedExternalDropIdsRef.current.has(source.dragId)) return;
+        if (source.dragId) {
+          processedExternalDropIdsRef.current.add(source.dragId);
+          window.setTimeout(() => processedExternalDropIdsRef.current.delete(source.dragId), 1000);
+        }
+        addFrame(source.shot);
+        if (viewMode === 'csv') setViewMode('draft');
+        return;
+      }
       if (!source.type || source.type !== targetPayload.type) return;
 
       if (source.type === 'kis') {
@@ -442,11 +465,9 @@ export default function SubmissionPanel({
           if (!next[fromRIdx] || !next[toRIdx] || !next[fromRIdx][fromCIdx]) return prev;
           
           const [moved] = next[fromRIdx].splice(fromCIdx, 1);
-          if (toCIdx !== undefined) {
-             next[toRIdx].splice(toCIdx, 0, moved);
-          } else {
-             next[toRIdx].push(moved);
-          }
+          let insertIndex = toCIdx === undefined ? next[toRIdx].length : toCIdx;
+          if (fromRIdx === toRIdx && fromCIdx < insertIndex) insertIndex -= 1;
+          next[toRIdx].splice(insertIndex, 0, moved);
           return next;
         });
       }
@@ -473,18 +494,22 @@ export default function SubmissionPanel({
         return;
       }
 
-      // Ctrl + Space -> Add / Remove hovered frame
+      // Ctrl + Space restores the original panel behavior: remove the frame
+      // currently hovered in this submission panel. Preview-sidebar frames are
+      // handled independently by TrakeFramePreviewSidebar.
       if (e.ctrlKey && !e.shiftKey && e.code === 'Space') {
         e.preventDefault();
-        
         const isCsvMode = typeof viewMode !== 'undefined' && viewMode === 'csv';
         if (hoveredPanelItem) {
           if (isCsvMode) {
-             toast.error("Can't remove frames from CSV view. Switch to Draft first.");
-             return;
+            toast.error("Can't remove frames from CSV view. Switch to Draft first.");
+            return;
           }
           removeFrame(hoveredPanelItem);
-        } else if (hoveredFrame) {
+          return;
+        }
+
+        if (hoveredFrame) {
           if (mode === 'qa') {
             setQaModalShot(hoveredFrame);
             setQaModalTrigger(t => t + 1);
@@ -531,6 +556,8 @@ export default function SubmissionPanel({
     <div 
       className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] shadow-sm z-[49] relative" 
       onMouseLeave={() => setHoveredPanelItem(null)}
+      onDragOver={handleDragOver}
+      onDrop={(event) => handleDrop(event, { type: 'submission-panel' })}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-gradient-to-r from-[var(--bg-secondary)] to-[var(--bg-primary)] shadow-inner gap-4">
         <div className="flex-1 min-w-0 pr-4">
@@ -623,7 +650,12 @@ export default function SubmissionPanel({
                         return newLocal;
                       });
                     }}
-                    onMouseEnter={() => setHoveredPanelItem(viewMode === 'draft' ? { type: 'kis', index: idx } : null)}
+                    onMouseEnter={() => {
+                      setHoveredPanelItem(viewMode === 'draft' ? { type: 'kis', index: idx } : null);
+                    }}
+                    onMouseLeave={() => {
+                      setHoveredPanelItem(null);
+                    }}
                     draggable={viewMode === 'draft'}
                     onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'kis', index: idx }, item)}
                     onDragOver={handleDragOver}
@@ -649,10 +681,8 @@ export default function SubmissionPanel({
                     <div 
                       key={rowIdx} 
                       className="flex gap-4 items-center bg-[var(--glass-bg)] p-2 rounded-lg border border-[var(--border-color)]"
-                      draggable={viewMode === 'draft'}
-                      onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'trake-row', index: rowIdx })}
                       onDragOver={handleDragOver}
-                      onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake-row', index: rowIdx })}
+                      onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx })}
                     >
                       <div className="text-[10px] text-[var(--text-secondary)] font-mono w-4">R{rowIdx+1}</div>
                       <div className="flex flex-nowrap gap-2 overflow-x-auto flex-1">
@@ -667,7 +697,12 @@ export default function SubmissionPanel({
                               key={`${rowIdx}-${idx}`} 
                               item={item} 
                               mode={mode} 
-                              onMouseEnter={() => setHoveredPanelItem(viewMode === 'draft' ? { type: 'trake', rIdx: rowIdx, cIdx: idx } : null)}
+                              onMouseEnter={() => {
+                                setHoveredPanelItem(viewMode === 'draft' ? { type: 'trake', rIdx: rowIdx, cIdx: idx } : null);
+                              }}
+                              onMouseLeave={() => {
+                                setHoveredPanelItem(null);
+                              }}
                               draggable={viewMode === 'draft'}
                               onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'trake', rIdx: rowIdx, cIdx: idx }, item)}
                               onDragOver={handleDragOver}
