@@ -326,6 +326,7 @@ export default function RightResultsPanel({
   activeQueryFilename,
   activeQueryText,
   activeCsvContent,
+  activeDraftContent,
   onSaveSubmission,
   onSyncState,
   setHoveredFrame,
@@ -470,6 +471,7 @@ export default function RightResultsPanel({
         activeQueryFilename={activeQueryFilename}
         activeQueryText={activeQueryText}
         activeCsvContent={activeCsvContent}
+        activeDraftContent={activeDraftContent}
         onSaveSubmission={onSaveSubmission}
         onSyncState={onSyncState}
         hoveredFrame={hoveredShotRef.current}

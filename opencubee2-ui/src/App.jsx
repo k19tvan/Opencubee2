@@ -1015,32 +1015,6 @@ export default function App() {
     });
   }, [username, userColor, sendRealtimeMessage]);
 
-  const handleReplaceTrakeFrame = useCallback(async (newShot) => {
-    if (!trakePreviewShot || !activeQueryFilename) return;
-
-    // Parse current activeCsvContent, find the frame, replace it
-    const csvContent = activeCsvContent;
-    const oldFid = trakePreviewShot.frame_id || (trakePreviewShot.frame_name ? trakePreviewShot.frame_name.split('_').pop().split('.')[0] : '');
-    const newFid = newShot.frame_id || (newShot.frame_name ? newShot.frame_name.split('_').pop().split('.')[0] : '');
-
-    if (oldFid && newFid) {
-      // Very naive text replace, assumes frame_id is unique enough in the row (e.g. ,0982,)
-      // We should probably just do a string replace of the frame ID.
-      // But since CSV is like L10_V001,1200,1850... replace using accurate boundary regex.
-      const regex = new RegExp(`(?<=,)${oldFid}(?=(,|$|\\n))`, 'g');
-      const newCsv = csvContent.replace(regex, newFid);
-
-      setActiveCsvContent(newCsv);
-      // Auto-save the replacement to server
-      try {
-        await saveSubmissionQuery(activeQueryFilename, newCsv);
-        sendRealtimeMessage({ type: 'submission_sync', data: { filename: activeQueryFilename, csvContent: newCsv } });
-      } catch (e) { }
-    }
-
-    setTrakePreviewShot(newShot);
-  }, [trakePreviewShot, activeCsvContent, activeQueryFilename, sendRealtimeMessage]);
-
   const handleReorderTrake = useCallback((orderedFrames) => {
     setTrakeFrames(orderedFrames);
     sendRealtimeMessage({
@@ -1684,7 +1658,10 @@ export default function App() {
                 <TrakeFramePreviewSidebar
                   shot={trakePreviewShot}
                   onClose={() => setTrakePreviewShot(null)}
-                  onReplace={handleReplaceTrakeFrame}
+                  onZoom={setZoomedImage}
+                  onContext={setContextShot}
+                  onQuickSearch={handleQuickImageSearch}
+                  onPreview={handleOpenVideoPreview}
                 />
               )}
             </div>
