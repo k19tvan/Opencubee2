@@ -120,6 +120,16 @@ const buildSearchModelPayload = (values) => {
   };
 };
 
+const parseTimeRanges = (value) => {
+  const ranges = [], invalid = [];
+  String(value || '').split(/[;,\n]+/).map((part) => part.trim()).filter(Boolean).forEach((part) => {
+    const match = part.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
+    if (!match || Number(match[2]) < Number(match[1])) invalid.push(part);
+    else ranges.push({ start: Number(match[1]), end: Number(match[2]) });
+  });
+  return { ranges, invalid };
+};
+
 const readWorkspaceHistory = () => {
   try {
     const raw = sessionStorage.getItem(WORKSPACE_HISTORY_STORAGE_KEY);
@@ -153,6 +163,8 @@ export default function App() {
   const [isClustered, setIsClustered] = useState(false);
   const [isAmbiguous, setIsAmbiguous] = useState(true);
   const [sentenceLevel, setSentenceLevel] = useState(false);
+  const [timeFilterEnabled, setTimeFilterEnabled] = useState(false);
+  const [timeRangeInput, setTimeRangeInput] = useState('');
 
   // Mobile responsive menu toggle
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -208,10 +220,11 @@ export default function App() {
 
   // Submission System State
   const [submissionQueries, setSubmissionQueries] = useState([]);
-  const [activeQueryFilename, setActiveQueryFilename] = useState("");
+  const [activeQueryFilename, setActiveQueryFilename] = useState('');
   const activeQueryFilenameRef = useRef("");
-  const [activeQueryText, setActiveQueryText] = useState("");
-  const [activeCsvContent, setActiveCsvContent] = useState("");
+  const [activeQueryText, setActiveQueryText] = useState('');
+  const [activeCsvContent, setActiveCsvContent] = useState(null);
+  const [activeDraftContent, setActiveDraftContent] = useState(null);
   const [isHoveringTrakePanel, setIsHoveringTrakePanel] = useState(false);
   const [hoveredFrame, setHoveredFrame] = useState(null);
   const [trakePreviewShot, setTrakePreviewShot] = useState(null);
@@ -224,7 +237,7 @@ export default function App() {
     try {
       const qs = await fetchSubmissionQueries();
       setSubmissionQueries(qs);
-      
+
       if (forceSelectFilename) {
         handleSelectQuery(forceSelectFilename);
       } else if (!activeQueryFilenameRef.current && qs.length > 0) {
@@ -273,8 +286,10 @@ export default function App() {
   const handleSelectQuery = async (filename) => {
     setActiveQueryFilename(filename);
     setActiveCsvContent(null);
+    setActiveDraftContent(null);
     if (!filename) return;
     try {
+      sendRealtimeMessage({ type: 'request_draft_sync', data: { filename } });
       const data = await fetchSubmissionQuery(filename);
       setActiveQueryText(data.query_text || "");
       setActiveCsvContent(data.csv_content || "");
@@ -304,7 +319,7 @@ export default function App() {
       setActiveCsvContent(csvContent);
       sendRealtimeMessage({ type: 'submission_sync', data: { filename: activeQueryFilename, csvContent } });
       await saveSubmissionQuery(activeQueryFilename, csvContent);
-    } catch(e) {
+    } catch (e) {
       console.error('Failed to auto-save submission', e);
     }
   };
@@ -696,6 +711,12 @@ export default function App() {
 
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
+      if (event.code === 'Digit6' || event.code === 'Numpad6') {
+        event.preventDefault();
+        setTimeFilterEnabled((previous) => !previous);
+        return;
+      }
+
       const spatialShortcut = SPATIAL_SHORTCUTS[event.code];
       if (spatialShortcut) {
         event.preventDefault();
@@ -881,12 +902,15 @@ export default function App() {
       }
 
       if (type === 'draft_sync') {
-        if (data?.filename) {
-          window.dispatchEvent(new CustomEvent('draft_updated', { 
-            detail: { filename: data.filename, draftContent: data.draftContent } 
+        const { filename, draftContent } = data;
+        if (filename === activeQueryFilenameRef.current) {
+          setActiveDraftContent(draftContent);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('draft_updated', {
+            detail: { filename: data.filename, draftContent: data.draftContent }
           }));
         }
-        return;
       }
     };
 
@@ -1070,6 +1094,10 @@ export default function App() {
     }
 
     try {
+      const parsedTimeRanges = parseTimeRanges(timeRangeInput);
+      if (timeFilterEnabled && parsedTimeRanges.invalid.length) throw new Error(`Invalid time range: ${parsedTimeRanges.invalid.join(', ')}. Use e.g. 0-16, 32-64.`);
+      if (timeFilterEnabled && !parsedTimeRanges.ranges.length) throw new Error('Enter at least one time range, e.g. 0-16.');
+      const timeRangePayload = timeFilterEnabled ? { time_ranges: parsedTimeRanges.ranges } : {};
       const pageSize = 100;
       let response;
       const sourceStages = overrideStages || stages;
@@ -1117,6 +1145,7 @@ export default function App() {
           page_size: pageSize,
           ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
           ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
+          ...timeRangePayload,
         };
         const asrResponse = await searchSemanticAsr(payload);
         localResults = (asrResponse.results || []).map(chunk => ({
@@ -1152,6 +1181,7 @@ export default function App() {
             page_size: pageSize,
             ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
             ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
+            ...timeRangePayload,
           };
 
           response = await searchSingle(searchData);
@@ -1176,6 +1206,7 @@ export default function App() {
               specified_videos: lockedVideos.map(v => v.videoId)
             } : {}),
             ...(candidateFrameNames ? { candidate_frame_names: candidateFrameNames } : {}),
+            ...timeRangePayload,
           };
 
           response = await searchTemporal(payload);
@@ -1219,6 +1250,7 @@ export default function App() {
               page: pageNumber,
               page_size: pageSize,
               ...(lockedVideos.length > 0 ? { video_ids: lockedVideos.map(v => v.videoId) } : {}),
+              ...timeRangePayload,
             };
             const asrResponse = await searchSemanticAsr(payload);
             if (asrResponse.results && asrResponse.results.length > 0) {
@@ -1535,6 +1567,10 @@ export default function App() {
             similarityScopeEnabled={similarityScopeEnabled}
             hasSimilarityScope={Boolean(similarityScope?.frameNames?.length)}
             onToggleSimilarityScope={handleToggleSimilarityScope}
+            timeFilterEnabled={timeFilterEnabled}
+            setTimeFilterEnabled={setTimeFilterEnabled}
+            timeRangeInput={timeRangeInput}
+            setTimeRangeInput={setTimeRangeInput}
             isClustered={isClustered}
             setIsClustered={setIsClusteredWithHistory}
             isAmbiguous={isAmbiguous}
@@ -1617,6 +1653,7 @@ export default function App() {
                 activeQueryFilename={activeQueryFilename}
                 activeQueryText={activeQueryText}
                 activeCsvContent={activeCsvContent}
+                activeDraftContent={activeDraftContent}
                 onSaveSubmission={handleSaveSubmission}
                 onSyncState={handleSilentSaveSubmission}
                 setHoveredFrame={setHoveredFrame}

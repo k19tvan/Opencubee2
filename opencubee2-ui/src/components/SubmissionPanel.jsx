@@ -220,6 +220,7 @@ export default function SubmissionPanel({
   activeQueryFilename, 
   activeQueryText,
   activeCsvContent, 
+  activeDraftContent,
   onSaveSubmission, 
   onSyncState,
   hoveredFrame, // this comes from layout when hovering over gallery
@@ -271,19 +272,19 @@ export default function SubmissionPanel({
     setMode(computedMode);
     
     // Do not initialize draft if we are still legally waiting for the new CSV content
-    if (activeCsvContent === null) return;
+    if (activeCsvContent === null && activeDraftContent === null) return;
     
     // Initialize draft per file only if it doesn't exist
     setDraftsByFile(prev => {
       if (!prev[activeQueryFilename]) {
         return {
           ...prev,
-          [activeQueryFilename]: parseCsvContent(activeCsvContent, computedMode, [])
+          [activeQueryFilename]: activeDraftContent || parseCsvContent(activeCsvContent, computedMode, [])
         };
       }
       return prev;
     });
-  }, [activeQueryFilename, activeCsvContent]);
+  }, [activeQueryFilename, activeCsvContent, activeDraftContent]);
 
   const updateData = useCallback((updater) => {
     if (!activeQueryFilename) return;
@@ -389,6 +390,21 @@ export default function SubmissionPanel({
           const next = [...prev];
           const [moved] = next.splice(fromIdx, 1);
           next.splice(toIdx, 0, moved);
+          return next;
+        });
+      } else if (source.type === 'trake') {
+        const { rIdx: fromRIdx, cIdx: fromCIdx } = source;
+        const { rIdx: toRIdx, cIdx: toCIdx } = targetPayload;
+        updateData(prev => {
+          const next = prev.map(row => [...row]); // deep copy first level
+          if (!next[fromRIdx] || !next[toRIdx] || !next[fromRIdx][fromCIdx]) return prev;
+          
+          const [moved] = next[fromRIdx].splice(fromCIdx, 1);
+          if (toCIdx !== undefined) {
+             next[toRIdx].splice(toCIdx, 0, moved);
+          } else {
+             next[toRIdx].push(moved);
+          }
           return next;
         });
       }
@@ -622,14 +638,21 @@ export default function SubmissionPanel({
                       <div className="text-[10px] text-[var(--text-secondary)] font-mono w-4">R{rowIdx+1}</div>
                       <div className="flex flex-nowrap gap-2 overflow-x-auto flex-1">
                         {row.length === 0 ? (
-                          <span className="text-[10px] text-[var(--text-secondary)] italic">Empty row...</span>
+                          <span className="text-[10px] text-[var(--text-secondary)] italic p-2 block w-full h-full"
+                             onDragOver={handleDragOver}
+                             onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx, cIdx: 0 })}
+                          >Empty row... Drag frame here</span>
                         ) : (
                           row.map((item, idx) => (
                             <ShotImage 
-                              key={idx} 
+                              key={`${rowIdx}-${idx}`} 
                               item={item} 
                               mode={mode} 
                               onMouseEnter={() => setHoveredPanelItem(viewMode === 'draft' ? { type: 'trake', rIdx: rowIdx, cIdx: idx } : null)}
+                              draggable={viewMode === 'draft'}
+                              onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'trake', rIdx: rowIdx, cIdx: idx }, item)}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx, cIdx: idx })}
                               onPreviewTrakeFrame={onPreviewTrakeFrame}
                               onZoom={onZoom}
                               onContext={onContext}
@@ -641,19 +664,51 @@ export default function SubmissionPanel({
                         )}
                       </div>
                       {viewMode === 'draft' && (
-                        <button 
-                          className="text-red-400 hover:text-red-300 px-2"
-                          title="Remove row"
-                          onClick={() => {
-                            updateData(prevLocal => {
-                              const newLocal = [...prevLocal];
-                              newLocal.splice(rowIdx, 1);
-                              return newLocal;
-                            });
-                          }}
-                        >
-                          <i className="fas fa-trash"></i>
-                        </button>
+                        <div className="flex flex-col gap-1 px-2 border-l border-[var(--border-color)]">
+                          <button 
+                            className="text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move Row Up"
+                            disabled={rowIdx === 0}
+                            onClick={() => {
+                              updateData(prevLocal => {
+                                const newLocal = [...prevLocal];
+                                const [moved] = newLocal.splice(rowIdx, 1);
+                                newLocal.splice(rowIdx - 1, 0, moved);
+                                return newLocal;
+                              });
+                            }}
+                          >
+                            <i className="fas fa-chevron-up"></i>
+                          </button>
+                          <button 
+                            className="text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move Row Down"
+                            disabled={rowIdx === displayData.length - 1}
+                            onClick={() => {
+                              updateData(prevLocal => {
+                                const newLocal = [...prevLocal];
+                                const [moved] = newLocal.splice(rowIdx, 1);
+                                newLocal.splice(rowIdx + 1, 0, moved);
+                                return newLocal;
+                              });
+                            }}
+                          >
+                            <i className="fas fa-chevron-down"></i>
+                          </button>
+                          <button 
+                            className="text-red-400 hover:text-red-300 mt-2"
+                            title="Remove row"
+                            onClick={() => {
+                              updateData(prevLocal => {
+                                const newLocal = [...prevLocal];
+                                newLocal.splice(rowIdx, 1);
+                                return newLocal;
+                              });
+                            }}
+                          >
+                            <i className="fas fa-trash"></i>
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))

@@ -24,6 +24,7 @@ from backend.services.search import (
     infer_spatial_query,
     search_ocr_asr_on_meilisearch_async,
     attach_similarity_labels,
+    combine_candidate_frame_names,
     find_similar_frames,
     search_semantic_asr
 )
@@ -119,6 +120,7 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
         
     weights = ({IMAGE_SEARCH_MODEL: 1.0} if models_to_use == [IMAGE_SEARCH_MODEL]
                else search_model.model_weights or {"beit3": 1.0})
+    candidate_frame_names = combine_candidate_frame_names(search_model.candidate_frame_names, search_model.time_ranges, search_model.video_ids)
 
     has_vector_query = bool(search_model.query_text or image_name or search_model.image_search_text)
     has_filter_query = bool(search_model.ocr_query or search_model.asr_query) 
@@ -144,7 +146,7 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
             image_name=image_name,
             image_text=search_model.image_search_text,
             limit=MAX_FRAME_LIMIT,
-            candidate_frame_names=search_model.candidate_frame_names,
+            candidate_frame_names=candidate_frame_names,
             video_ids=search_model.video_ids,  
             spatial_region=spatial["spatial_region"],
             spatial_only=spatial_only,
@@ -161,7 +163,7 @@ async def search_unified(search_data: str = Form(...), query_image: Optional[Upl
             ocr_keyword=search_model.ocr_query,
             asr_keyword=search_model.asr_query,
             limit=5000,
-            candidate_frame_names=search_model.candidate_frame_names,
+            candidate_frame_names=candidate_frame_names,
             video_ids=search_model.video_ids, 
         )
         print(f"  ⏱ [Stage: OCR/ASR Meilisearch] Finished in {time.time() - t_filter_start:.3f}s -> {len(res)} items")
@@ -449,6 +451,7 @@ async def temporal_search_previous_behavior(request_data: TemporalSearchRequest)
     ambiguous = request_data.ambiguous
     specified_videos = set(request_data.specified_videos or request_data.video_ids or [])
     candidate_frame_names = request_data.candidate_frame_names
+    candidate_frame_names = combine_candidate_frame_names(candidate_frame_names, request_data.time_ranges, list(specified_videos) or None)
 
     if not stages:
         raise HTTPException(status_code=400, detail="Stages are required.")
@@ -787,7 +790,7 @@ async def search_semantic_asr_endpoint(request_data: SemanticAsrSearchRequest):
         limit=request_data.page_size,
         offset=offset,
         video_ids=request_data.video_ids,
-        candidate_frame_names=request_data.candidate_frame_names,
+        candidate_frame_names=combine_candidate_frame_names(request_data.candidate_frame_names, request_data.time_ranges, request_data.video_ids),
         sentence_level=request_data.sentence_level,
     )
 

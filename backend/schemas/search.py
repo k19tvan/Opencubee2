@@ -11,6 +11,10 @@ SpatialRegion = Literal[
     "top_left", "top_right", "bottom_left", "bottom_right",
 ]
 
+class TimeRange(BaseModel):
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+
 
 class UnifiedSearchRequest(BaseModel):
     query_text: Optional[str] = None
@@ -24,6 +28,7 @@ class UnifiedSearchRequest(BaseModel):
     model_weights: Optional[Dict[str, float]] = {"beit3": 1.0}
     # When set, every retrieval mode is restricted to these keyframes.
     candidate_frame_names: Optional[List[str]] = None
+    time_ranges: Optional[List[TimeRange]] = None
     video_ids: Optional[List[str]] = None
     spatial_region: SpatialRegion = "auto"
     spatial_only: bool = False
@@ -50,6 +55,7 @@ class TemporalSearchRequest(BaseModel):
     # Persistent similarity-search scope supplied by the UI.
     video_ids: Optional[List[str]] = None
     candidate_frame_names: Optional[List[str]] = None
+    time_ranges: Optional[List[TimeRange]] = None
 
 
 class EnhanceQueryRequest(BaseModel):
@@ -63,6 +69,7 @@ class SemanticAsrSearchRequest(BaseModel):
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=50, ge=1, le=200)
     candidate_frame_names: Optional[List[str]] = None
+    time_ranges: Optional[List[TimeRange]] = None
     video_ids: Optional[List[str]] = None
     search_mode: Literal["embedding", "meilisearch", "hybrid"] = "meilisearch"
     embedding_weight: float = Field(default=0.7, ge=0)

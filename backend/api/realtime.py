@@ -7,6 +7,8 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.core import runtime
+import os
+import asyncio
 
 router = APIRouter()
 LOGGER = logging.getLogger(__name__)
@@ -210,8 +212,21 @@ async def websocket_endpoint(websocket: WebSocket):
                 await broadcast_event("submission_sync", data)
 
             elif msg_type == "draft_sync":
+                filename = data.get("filename")
+                draft_content = data.get("draftContent")
+                if filename and draft_content is not None:
+                    async with runtime.realtime_state_lock:
+                        runtime.submission_panel_state[filename] = draft_content
                 # Broadcast the local personal draft state to all other clients for collaboration
                 await broadcast_event("draft_sync", data)
+
+            elif msg_type == "request_draft_sync":
+                filename = data.get("filename")
+                if filename:
+                    async with runtime.realtime_state_lock:
+                        draft_content = runtime.submission_panel_state.get(filename)
+                    if draft_content is not None:
+                        await send_event(websocket, "draft_sync", {"filename": filename, "draftContent": draft_content})
 
             else:
                 await send_error(websocket, f"Unsupported message type: {msg_type!r}.")

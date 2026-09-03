@@ -55,6 +55,10 @@ export default function TopToolbar({
   similarityScopeEnabled,
   hasSimilarityScope,
   onToggleSimilarityScope,
+  timeFilterEnabled = false,
+  setTimeFilterEnabled = () => {},
+  timeRangeInput = '',
+  setTimeRangeInput = () => {},
   isClustered,
   setIsClustered,
   isAmbiguous,
@@ -227,6 +231,10 @@ export default function TopToolbar({
           title={autoTranslate ? "Auto Translate: ON (Alt + A)" : "Auto Translate: OFF (Alt + A)"}
           theme={theme}
         />
+        <div className="flex items-center gap-1 shrink-0">
+          <ToolBtn onClick={() => setTimeFilterEnabled(!timeFilterEnabled)} icon="fas fa-clock" label="Time" active={timeFilterEnabled} title="Time range filter (Alt + 6)" theme={theme} />
+          {timeFilterEnabled && <input value={timeRangeInput} onChange={(event) => setTimeRangeInput(event.target.value)} placeholder="0-16, 32-64" aria-label="Time ranges in seconds" className="w-28 sm:w-40 rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-secondary)]" />}
+        </div>
 
         <div className="w-[1px] h-4 bg-[var(--border-color)] opacity-40 shrink-0 -mx-0.5 hidden sm:block" />
 
