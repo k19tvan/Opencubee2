@@ -220,11 +220,18 @@ async def enhance_query(request_data: EnhanceQueryRequest):
         context_parts.append(f"ASR filter: {request_data.asr_query.strip()}")
     context_text = "\n".join(context_parts) if context_parts else "No OCR/ASR filters."
 
-    system_prompt = """
-        Rewrite the user's video/image retrieval query into a concise, vivid visual search query.
+    from backend.services.translation import _load_translation_skill
+    glossary_content = _load_translation_skill()
+    system_prompt = f"""
+        Rewrite the user's video/image retrieval query into a concise, vivid visual search query for FG-CLIP2 / BEiT3.
         Preserve all concrete entities, actions, colors, locations, text, and temporal intent.
         Do not add facts that are not implied. Return only the improved query, no quotes or explanation.
-        If the user's query is in vietnamese, change it to english. If the user's query is in english, keep it in english.
+        If the user's query is in Vietnamese, translate and enhance it into English following the visual vocabulary glossary below. If the query is in English, keep it in English.
+
+        ==================================================
+        VISUAL TRANSLATION & VOCABULARY GLOSSARY
+        ==================================================
+        {glossary_content}
     """
     human_prompt = f"Query:\n{query}\n\nContext:\n{context_text}"
 

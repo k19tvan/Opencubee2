@@ -14,6 +14,7 @@ from typing_extensions import TypedDict
 
 from backend.core import runtime
 from backend.core.config import GEMINI_API_KEY, GEMINI_BASE_URL, GEMINI_MODEL_NAME
+from backend.api.realtime import broadcast_event
 from backend.services.multiagent_search import (
     MODALITIES,
     critic_filter_modality,
@@ -78,12 +79,14 @@ class UnifiedAgentState(TypedDict):
     frame_limit: int
     options: Optional[list[dict[str, Any]]]
     queries: dict[str, str]
+    candidates_by_modality: dict[str, list[dict[str, Any]]]
     feedback_by_modality: dict[str, str]
     accumulated_frames_by_modality: dict[str, list[dict[str, Any]]]
     seen_frame_keys: list[str]
     modalities: dict[str, dict[str, Any]]
     warnings: list[str]
     is_finished: bool
+    debug: bool
 
 
 def _multiagent_human_message(content: list[dict[str, Any]]) -> list[HumanMessage]:
@@ -130,7 +133,7 @@ async def research_node(state: UnifiedAgentState) -> dict[str, Any]:
         "options": options_data,
         "selected_options": chosen_opts,
         "messages": [AIMessage(content="Dưới đây là các phương án nghiên cứu phù hợp nhất:")],
-        "is_finished": state["mode"] == "research",
+        "is_finished": False if state["mode"] == "search" else True,
     }
 
 
@@ -138,6 +141,14 @@ async def research_node(state: UnifiedAgentState) -> dict[str, Any]:
 async def decompose_and_plan_node(state: UnifiedAgentState) -> dict[str, Any]:
     agent_llm = runtime.llm_multiagent or model
     skill_doc = _load_skill("query_planner_skill.md")
+    glossary_skill = _load_skill("translation_glossary_skill.md")
+    full_skill_prompt = (
+        f"{skill_doc}\n\n"
+        "==================================================\n"
+        "VIETNAMESE-ENGLISH TRANSLATION & VISUAL VOCABULARY GLOSSARY\n"
+        "==================================================\n"
+        f"{glossary_skill}"
+    )
 
     iteration = state.get("current_iteration", 0) + 1
     feedback_str = "\n".join(
@@ -147,22 +158,31 @@ async def decompose_and_plan_node(state: UnifiedAgentState) -> dict[str, Any]:
     options_str = ", ".join(state.get("selected_options", [])) if state.get("selected_options") else "None"
 
     prompt = (
-        f"{skill_doc}\n\n"
+        f"{full_skill_prompt}\n\n"
         f"--- CURRENT CONTEXT (Iteration {iteration}/{state.get('k_iterations', 3)}) ---\n"
         f"Original User Request: {state['original_query']}\n"
         f"Selected Entities/Context: {options_str}\n"
         f"Critic Feedback from Previous Loop:\n{feedback_str}\n\n"
         "Construct optimal queries for each modality ('text', 'ocr', 'semantic_asr'). "
-        "Return JSON only in format: {\"queries\": {\"text\": \"...\", \"ocr\": \"...\", \"semantic_asr\": \"...\"}}"
+        'Return JSON only in format: {"queries": {"text": "...", "ocr": "...", "semantic_asr": "..."}}'
     )
+
+    print(f"\n[Multi-Agent Loop {iteration}/{state.get('k_iterations', 3)}] === DECOMPOSE & PLAN ===")
+    print(f"[Multi-Agent] Original Query: {state['original_query']}")
+    print(f"[Multi-Agent] Selected Options: {options_str}")
+    if feedback_str != 'None (First iteration)':
+        print(f"[Multi-Agent] Critic Feedback Received:\n{feedback_str}")
 
     try:
         if hasattr(agent_llm, "ainvoke"):
             response = await agent_llm.ainvoke([HumanMessage(content=prompt)])
         else:
             response = await asyncio.to_thread(agent_llm.invoke, [HumanMessage(content=prompt)])
-        queries = normalize_queries(parse_json_response(response.content))
-    except Exception:
+        raw_json = parse_json_response(response.content)
+        queries = normalize_queries(raw_json)
+        print(f"[Multi-Agent] Generated Queries -> text: '{queries.get('text')}', ocr: '{queries.get('ocr')}', semantic_asr: '{queries.get('semantic_asr')}'")
+    except Exception as exc:
+        print(f"[Multi-Agent] Decompose Error ({exc}), falling back to original query.")
         queries = {
             "text": state["original_query"],
             "ocr": "",
@@ -176,7 +196,10 @@ async def decompose_and_plan_node(state: UnifiedAgentState) -> dict[str, Any]:
 async def retrieve_node(state: UnifiedAgentState) -> dict[str, Any]:
     queries = state.get("queries", {})
     exclude_set = set(state.get("seen_frame_keys", []))
+    print(f"[Multi-Agent] === RETRIEVAL START (Excluding {len(exclude_set)} previously seen frames) ===")
     candidates = await retrieve_by_modality(queries, state.get("frame_limit", 50), exclude_frames=exclude_set)
+    for m in MODALITIES:
+        print(f"[Multi-Agent] Modality '{m}' fetched {len(candidates.get(m, []))} candidates")
     return {"candidates_by_modality": candidates}
 
 
@@ -200,9 +223,12 @@ async def critic_and_feedback_node(state: UnifiedAgentState) -> dict[str, Any]:
             modality=modality,
             modality_query=query_text,
             candidates=candidates,
+            debug=state.get("debug", True),
+            iteration=state.get("current_iteration", 1),
         )
         return modality, selected, feedback, w
 
+    print(f"[Multi-Agent] === CRITIC INSPECTION (Canvas 20-Images/Batch) ===")
     results = await asyncio.gather(*(evaluate_modality(m) for m in MODALITIES))
 
     modalities_output = {}
@@ -213,6 +239,10 @@ async def critic_and_feedback_node(state: UnifiedAgentState) -> dict[str, Any]:
         existing = accumulated.get(modality, [])
         combined = deduplicate_frames(existing + selected)
         accumulated[modality] = combined
+
+        print(f"[Multi-Agent Critic] '{modality}' selected {len(selected)} new frames (Total accumulated: {len(combined)} frames)")
+        if feedback:
+            print(f"[Multi-Agent Critic] '{modality}' Feedback: {feedback}")
 
         for f in combined:
             k = str(f.get("frame_name") or f.get("filepath") or "")
@@ -227,6 +257,22 @@ async def critic_and_feedback_node(state: UnifiedAgentState) -> dict[str, Any]:
         }
 
     is_done = state["current_iteration"] >= state["k_iterations"]
+    print(f"[Multi-Agent] Loop {state['current_iteration']}/{state['k_iterations']} complete. Finished: {is_done}")
+
+    # Broadcast loop progress in real-time to all connected frontend clients
+    try:
+        total_frames = sum(len(item.get("frames", [])) for item in modalities_output.values())
+        progress_payload = {
+            "query": state["original_query"],
+            "current_iteration": state["current_iteration"],
+            "k_iterations": state["k_iterations"],
+            "modalities": modalities_output,
+            "selected_count": total_frames,
+            "is_done": is_done,
+        }
+        asyncio.create_task(broadcast_event("multiagent_loop_progress", progress_payload))
+    except Exception as exc:
+        print(f"[Multi-Agent] Failed to broadcast loop progress: {exc}")
 
     return {
         "feedback_by_modality": new_feedback,
@@ -252,7 +298,9 @@ def route_start_decision(state: UnifiedAgentState) -> Literal["chat", "research"
 
 
 def route_search_or_finish(state: UnifiedAgentState) -> Literal["decompose", "finish"]:
-    if state.get("mode") in ("chat", "research") or state.get("is_finished", False):
+    if state.get("mode") == "research":
+        return "finish"
+    if state.get("is_finished", False):
         return "finish"
     return "decompose"
 
@@ -319,6 +367,7 @@ class MultiAgentSearchRequest(BaseModel):
     use_research: bool = True
     k_iterations: int = Field(default=3, ge=1, le=10)
     frame_limit: int = Field(default=50, ge=10, le=200)
+    debug: bool = True
 
 
 @router.post("/message", response_model=ChatResponse)
@@ -339,12 +388,14 @@ async def chat_endpoint(req: ChatRequest):
         "frame_limit": 50,
         "options": None,
         "queries": {},
+        "candidates_by_modality": {},
         "feedback_by_modality": {},
         "accumulated_frames_by_modality": {m: [] for m in MODALITIES},
         "seen_frame_keys": [],
         "modalities": {},
         "warnings": [],
         "is_finished": False,
+        "debug": getattr(req, "debug", True),
     }
 
     try:
@@ -389,10 +440,15 @@ async def multiagent_search_endpoint(req: MultiAgentSearchRequest):
         "modalities": {},
         "warnings": [],
         "is_finished": False,
+        "debug": getattr(req, "debug", True),
     }
 
+    import uuid
+    thread_id = str(uuid.uuid4())
+    config = {"configurable": {"thread_id": f"search_{thread_id}"}}
+
     try:
-        result = await unified_multiagent_graph.ainvoke(initial_state)
+        result = await unified_multiagent_graph.ainvoke(initial_state, config)
         modalities = result.get("modalities", {})
         total_selected = sum(len(item.get("frames", [])) for item in modalities.values())
         active_count = sum(1 for item in modalities.values() if item.get("query"))

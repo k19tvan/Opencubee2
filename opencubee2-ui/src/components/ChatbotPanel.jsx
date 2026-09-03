@@ -22,7 +22,7 @@ export default function ChatbotPanel({
     {
       id: 'welcome',
       role: 'assistant',
-      content: 'Xin chào! Tôi có thể giúp bạn nghiên cứu từ khóa, tra cứu đối tượng hoặc thực hiện tìm kiếm đa tác nhân lặp (Multi-Agent K-Loops).',
+      content: 'Xin chào! Nhập yêu cầu tìm kiếm và nhấn Enter để tự động tìm kiếm video với Multi-Agent (K-Loops). Nếu muốn phân tích đối tượng/ngữ cảnh trước, hãy nhấn nút "Research".',
       options: null,
     },
   ]);
@@ -67,7 +67,46 @@ export default function ChatbotPanel({
     });
   };
 
-  const handleSend = async (mode = 'research', customQuery = null, customOptions = null) => {
+  // Listen for real-time loop progress from WebSocket
+  useEffect(() => {
+    const handleLoopProgress = (event) => {
+      const data = event.detail;
+      if (!data) return;
+      setActiveSearchResult((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          completed_iterations: data.current_iteration,
+          modalities: data.modalities || prev.modalities,
+          selected_count: data.selected_count ?? prev.selected_count,
+        };
+      });
+
+      // Also update in messages history
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.searchResult && m.searchResult.query === data.query) {
+            return {
+              ...m,
+              content: `Multi-Agent: Hoàn tất vòng ${data.current_iteration}/${data.k_iterations}. Đã chọn ${data.selected_count || 0} frame.`,
+              searchResult: {
+                ...m.searchResult,
+                completed_iterations: data.current_iteration,
+                modalities: data.modalities || m.searchResult.modalities,
+                selected_count: data.selected_count ?? m.searchResult.selected_count,
+              },
+            };
+          }
+          return m;
+        })
+      );
+    };
+
+    window.addEventListener('multiagent_loop_progress', handleLoopProgress);
+    return () => window.removeEventListener('multiagent_loop_progress', handleLoopProgress);
+  }, []);
+
+  const handleSend = async (mode = 'search', customQuery = null, customOptions = null) => {
     const text = (customQuery !== null ? customQuery : input).trim();
     if (!text || loading) return;
 
@@ -86,12 +125,44 @@ export default function ChatbotPanel({
     setLoading(true);
     setLoadingMode(mode);
 
+    // When in search mode: IMMEDIATELY open album modal so user sees frames appearing in real-time!
+    let activeAiMsgId = null;
+    if (mode === 'search') {
+      const initialSearchResult = {
+        query: text,
+        selected_options: chosenOpts,
+        k_iterations: kIterations,
+        completed_iterations: 0,
+        frame_limit: frameLimit,
+        modalities: {
+          text: { query: '', candidate_count: 0, frames: [] },
+          ocr: { query: '', candidate_count: 0, frames: [] },
+          semantic_asr: { query: '', candidate_count: 0, frames: [] },
+        },
+        selected_count: 0,
+        warnings: [],
+      };
+      setActiveSearchResult(initialSearchResult);
+
+      activeAiMsgId = `ai_${Date.now()}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: activeAiMsgId,
+          role: 'assistant',
+          content: `Đang chạy Multi-Agent (0/${kIterations} loops)... Album đang mở và sẽ hiển thị ảnh theo thời gian thực mỗi vòng.`,
+          options: null,
+          searchResult: initialSearchResult,
+        },
+      ]);
+    }
+
     try {
       const res = mode === 'search'
         ? await runMultiAgentSearch({
             query: text,
             selected_options: chosenOpts,
-            use_research: true,
+            use_research: chosenOpts.length > 0,
             k_iterations: kIterations,
             frame_limit: frameLimit,
           })
@@ -101,16 +172,29 @@ export default function ChatbotPanel({
             session_id: sessionId,
           });
 
-      const assistantMsg = {
-        id: `ai_${Date.now()}`,
-        role: 'assistant',
-        content: mode === 'search'
-          ? `Hoàn tất ${res.completed_iterations || kIterations} vòng lặp Multi-Agent. VLM critic đã chọn tổng cộng ${res.selected_count || 0} frame.`
-          : (res.content || 'Đã có kết quả nghiên cứu:'),
-        options: mode === 'research' ? (res.options || null) : null,
-        searchResult: mode === 'search' ? res : null,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
+      if (mode === 'search') {
+        setActiveSearchResult(res);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === activeAiMsgId
+              ? {
+                  ...m,
+                  content: `Hoàn tất ${res.completed_iterations || kIterations} vòng lặp Multi-Agent. VLM critic đã chọn tổng cộng ${res.selected_count || 0} frame.`,
+                  searchResult: res,
+                }
+              : m
+          )
+        );
+      } else {
+        const assistantMsg = {
+          id: `ai_${Date.now()}`,
+          role: 'assistant',
+          content: res.content || 'Đã có kết quả nghiên cứu:',
+          options: res.options || null,
+          searchResult: null,
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+      }
     } catch (err) {
       toast.error(`Chat error: ${err.message}`);
       setMessages((prev) => [
@@ -130,7 +214,8 @@ export default function ChatbotPanel({
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend(e.ctrlKey || e.metaKey ? 'search' : 'research');
+      // Enter or Ctrl+Enter defaults to Search
+      handleSend('search');
     }
   };
 
@@ -142,7 +227,7 @@ export default function ChatbotPanel({
       {
         id: 'welcome',
         role: 'assistant',
-        content: 'Đã xóa hội thoại. Bạn có thể bắt đầu nghiên cứu mới!',
+        content: 'Đã xóa hội thoại. Bạn có thể bắt đầu tìm kiếm hoặc nghiên cứu mới!',
         options: null,
       },
     ]);
@@ -364,88 +449,82 @@ export default function ChatbotPanel({
 
       {/* Input Box Footer */}
       <div className="shrink-0 border-t border-slate-700 bg-[#080f1e] p-3 shadow-[0_-10px_24px_rgba(0,0,0,0.2)]">
-        <div className="mb-2 grid grid-cols-[1fr_1fr_auto_auto] gap-1.5">
-          <button
-            type="button"
-            onClick={() => handleSend('search')}
-            disabled={loading || !input.trim()}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-violet-400/50 bg-violet-500/20 px-2 text-[10px] font-bold uppercase tracking-wider text-violet-100 transition-colors hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-40"
-            title="Ctrl+Enter: Chạy Multi-Agent lặp K vòng"
-          >
-            <i className="fas fa-magnifying-glass" /> Search
-          </button>
+        <div className="mb-2 flex items-center justify-between gap-1.5">
+          {/* Research Button */}
           <button
             type="button"
             onClick={() => handleSend('research')}
             disabled={loading || !input.trim()}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-blue-400/50 bg-blue-500/15 px-2 text-[10px] font-bold uppercase tracking-wider text-blue-100 transition-colors hover:bg-blue-500/25 disabled:cursor-not-allowed disabled:opacity-40"
-            title="Enter: Nghiên cứu đối tượng / bối cảnh"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-blue-400/50 bg-blue-500/15 px-3 text-[11px] font-bold tracking-wider text-blue-100 transition-colors hover:bg-blue-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Nghiên cứu đối tượng & liệt kê các lựa chọn"
           >
             <i className="fas fa-globe" /> Research
           </button>
 
-          {/* K iterations dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsKOpen((v) => !v)}
-              className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-violet-400/40 bg-violet-500/15 px-2 text-[10px] font-bold text-violet-200 transition-colors hover:bg-violet-500/25"
-              title="Số vòng lặp Multi-Agent (K)"
-            >
-              <span>K={kIterations}</span>
-              <i className={`fas fa-chevron-down text-[8px] transition-transform ${isKOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isKOpen && (
-              <div className="absolute bottom-[calc(100%+6px)] right-0 z-20 min-w-[90px] overflow-hidden rounded-lg border border-slate-600 bg-[#0b1020] py-1 shadow-xl">
-                {[1, 2, 3, 4, 5].map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => {
-                      setKIterations(k);
-                      setIsKOpen(false);
-                    }}
-                    className={`block w-full px-3 py-1.5 text-left text-[10px] font-semibold ${
-                      k === kIterations ? 'bg-violet-500/20 text-violet-200' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                    }`}
-                  >
-                    K = {k} {k === 3 ? '(Default)' : ''}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <div className="flex items-center gap-1.5">
+            {/* K iterations dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsKOpen((v) => !v)}
+                className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-violet-400/40 bg-violet-500/15 px-2 text-[10px] font-bold text-violet-200 transition-colors hover:bg-violet-500/25"
+                title="Số vòng lặp Multi-Agent (K)"
+              >
+                <span>K={kIterations}</span>
+                <i className={`fas fa-chevron-down text-[8px] transition-transform ${isKOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isKOpen && (
+                <div className="absolute bottom-[calc(100%+6px)] right-0 z-20 min-w-[90px] overflow-hidden rounded-lg border border-slate-600 bg-[#0b1020] py-1 shadow-xl">
+                  {[1, 2, 3, 4, 5].map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => {
+                        setKIterations(k);
+                        setIsKOpen(false);
+                      }}
+                      className={`block w-full px-3 py-1.5 text-left text-[10px] font-semibold ${
+                        k === kIterations ? 'bg-violet-500/20 text-violet-200' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      K = {k} {k === 3 ? '(Default)' : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* Frame limit dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsLimitOpen((v) => !v)}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] px-2 text-[10px] font-semibold text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-              title="Số lượng frame lấy mỗi modality"
-            >
-              <i className="fas fa-images" /> {frameLimit}
-              <i className={`fas fa-chevron-down text-[8px] transition-transform ${isLimitOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isLimitOpen && (
-              <div className="absolute bottom-[calc(100%+6px)] right-0 z-20 min-w-[100px] overflow-hidden rounded-lg border border-slate-600 bg-[#0b1020] py-1 shadow-xl">
-                {[20, 50, 100, 200].map((limit) => (
-                  <button
-                    key={limit}
-                    type="button"
-                    onClick={() => {
-                      setFrameLimit(limit);
-                      setIsLimitOpen(false);
-                    }}
-                    className={`block w-full px-3 py-1.5 text-left text-[10px] font-semibold ${
-                      limit === frameLimit ? 'bg-violet-500/20 text-violet-200' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                    }`}
-                  >
-                    {limit} frames
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Frame limit dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsLimitOpen((v) => !v)}
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] px-2 text-[10px] font-semibold text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                title="Số lượng frame lấy mỗi modality"
+              >
+                <i className="fas fa-images" /> {frameLimit}
+                <i className={`fas fa-chevron-down text-[8px] transition-transform ${isLimitOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isLimitOpen && (
+                <div className="absolute bottom-[calc(100%+6px)] right-0 z-20 min-w-[100px] overflow-hidden rounded-lg border border-slate-600 bg-[#0b1020] py-1 shadow-xl">
+                  {[20, 50, 100, 200].map((limit) => (
+                    <button
+                      key={limit}
+                      type="button"
+                      onClick={() => {
+                        setFrameLimit(limit);
+                        setIsLimitOpen(false);
+                      }}
+                      className={`block w-full px-3 py-1.5 text-left text-[10px] font-semibold ${
+                        limit === frameLimit ? 'bg-violet-500/20 text-violet-200' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      {limit} frames
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -455,13 +534,23 @@ export default function ChatbotPanel({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Nhập mô tả cảnh cần tìm hoặc nội dung cần research…"
+            placeholder="Nhập mô tả cảnh cần tìm (Nhấn Enter để Search)..."
             rows="2"
             className="w-full bg-transparent px-3 py-2 text-xs text-[var(--text-primary)] outline-none resize-none placeholder:text-[var(--text-secondary)]"
           />
+          <button
+            type="button"
+            onClick={() => handleSend('search')}
+            disabled={loading || !input.trim()}
+            className="mr-2 h-7 w-7 rounded-lg bg-[var(--accent-primary)] text-[var(--bg-primary)] flex items-center justify-center font-bold hover:opacity-90 disabled:opacity-40 transition-all shrink-0"
+            title="Search ngay"
+          >
+            <i className="fas fa-arrow-up text-xs" />
+          </button>
         </div>
-        <div className="mt-1.5 text-right text-[9px] text-[var(--text-secondary)]">
-          Enter: Research · Ctrl+Enter: Search · Shift+Enter: xuống dòng
+        <div className="mt-1.5 flex items-center justify-between text-[9px] text-[var(--text-secondary)]">
+          <span>Nhấn <strong>Research</strong> nếu cần làm rõ đối tượng/thực thể</span>
+          <span>Enter: <strong>Search</strong> · Shift+Enter: xuống dòng</span>
         </div>
       </div>
     </div>

@@ -844,6 +844,8 @@ export default function App() {
           },
         })).filter((frame) => frame.shot && getShotKey(frame.shot));
         setTeamworkFrames(mappedData);
+      } else if (type === 'multiagent_loop_progress') {
+        window.dispatchEvent(new CustomEvent('multiagent_loop_progress', { detail: data }));
       } else if (type === 'global_wrong_submission') {
         if (!data?.shot) return;
         setWrongFrames((prev) => {

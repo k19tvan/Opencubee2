@@ -5,6 +5,7 @@ import base64
 import json
 import re
 from io import BytesIO
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from PIL import Image, ImageDraw, ImageOps
@@ -19,7 +20,8 @@ from backend.services.search import (
 )
 
 MODALITIES = ("text", "ocr", "semantic_asr")
-CANVAS_FRAME_COUNT = 3  # Maximum 3 images per candidate canvas as specified
+CANVAS_FRAME_COUNT = 20  # Max 20 frames per grid canvas (5 cols x 4 rows)
+MAX_SELECTED_PER_CANVAS = 3  # Strictly select maximum 3 candidates per canvas
 
 
 def parse_json_response(content: Any) -> dict[str, Any]:
@@ -58,14 +60,12 @@ def normalize_queries(payload: dict[str, Any]) -> dict[str, str]:
 def deduplicate_frames(frames: list[dict[str, Any]], limit: Optional[int] = None) -> list[dict[str, Any]]:
     deduplicated: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for frame in frames:
-        key = str(frame.get("frame_name") or frame.get("filepath") or "")
+    for item in frames:
+        key = str(item.get("frame_name") or item.get("filepath") or "")
         if not key or key in seen:
             continue
         seen.add(key)
-        normalized = dict(frame)
-        normalized.setdefault("url", f"/keyframes/{key}")
-        deduplicated.append(normalized)
+        deduplicated.append(item)
         if limit is not None and len(deduplicated) >= limit:
             break
     return deduplicated
@@ -83,7 +83,7 @@ async def retrieve_by_modality(
         query = queries.get("text", "")
         if not query:
             return []
-        # Uses fgclip2 for database retrieval as requested
+        # Uses fgclip2 for database retrieval
         results_by_model = await search_all_models(["fgclip2"], text=query, limit=frame_limit)
         results = results_by_model.get("fgclip2", [])
         filtered = [f for f in results if str(f.get("frame_name") or f.get("filepath")) not in exclude]
@@ -123,17 +123,23 @@ async def retrieve_by_modality(
     return {"text": text, "ocr": ocr, "semantic_asr": semantic_asr}
 
 
-async def make_canvas(frames: list[dict[str, Any]], max_per_row: int = 3) -> tuple[str | None, list[dict[str, Any]]]:
-    """Create an in-memory, numbered horizontal canvas (up to 3 images per row) and retain only inspectable images."""
+async def make_canvas(
+    frames: list[dict[str, Any]], 
+    cols: int = 5,
+    thumb_size: tuple[int, int] = (320, 180),
+    save_path: Optional[Path | str] = None,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """
+    Create an in-memory grid canvas of up to 20 images (default 5 columns x 4 rows).
+    Preserves aspect ratio with letterboxing/padding so no visuals are cropped.
+    """
     if not frames:
         return None, []
 
-    cell_width, image_height, label_height = 320, 180, 32
-    columns = min(len(frames), max_per_row)
-    rows = max(1, (len(frames) + columns - 1) // columns)
-    canvas = Image.new("RGB", (columns * cell_width, rows * (image_height + label_height)), "#0f172a")
-    draw = ImageDraw.Draw(canvas)
-    inspectable: list[dict[str, Any]] = []
+    cell_width, cell_height = thumb_size
+    label_height = 28
+    
+    inspectable: list[tuple[Image.Image, dict[str, Any]]] = []
 
     for frame in frames:
         path = await resolve_keyframe_path(frame)
@@ -141,24 +147,61 @@ async def make_canvas(frames: list[dict[str, Any]], max_per_row: int = 3) -> tup
             continue
         try:
             with Image.open(path) as source:
-                image = ImageOps.fit(source.convert("RGB"), (cell_width, image_height), Image.Resampling.LANCZOS)
+                src_rgb = source.convert("RGB")
+                # Pad to fit thumbnail box without cropping away keyframe details
+                fitted = ImageOps.pad(src_rgb, (cell_width, cell_height), color=(15, 23, 42), centering=(0.5, 0.5))
+                inspectable.append((fitted, frame))
         except Exception:
             continue
-        number = len(inspectable) + 1
-        x = ((number - 1) % columns) * cell_width
-        y = ((number - 1) // columns) * (image_height + label_height)
-        canvas.paste(image, (x, y))
-        draw.rectangle((x, y, x + 36, y + 26), fill="#eab308")
-        draw.text((x + 10, y + 6), str(number), fill="#0f172a")
-        label = f"{frame.get('video_id', '?')} | {frame.get('frame_id', '?')}"
-        draw.text((x + 8, y + image_height + 8), label[:40], fill="#f8fafc")
-        inspectable.append(frame)
 
     if not inspectable:
         return None, []
+
+    total_count = len(inspectable)
+    columns = min(total_count, cols)
+    rows = max(1, (total_count + columns - 1) // columns)
+    
+    canvas_w = columns * cell_width
+    canvas_h = rows * (cell_height + label_height)
+    canvas = Image.new("RGB", (canvas_w, canvas_h), "#0f172a")
+    draw = ImageDraw.Draw(canvas)
+
+    valid_frames: list[dict[str, Any]] = []
+
+    for idx, (img, frame) in enumerate(inspectable):
+        col_idx = idx % columns
+        row_idx = idx // columns
+        
+        x = col_idx * cell_width
+        y = row_idx * (cell_height + label_height)
+        
+        # Paste thumbnail
+        canvas.paste(img, (x, y))
+        
+        # Draw prominent frame number badge
+        number = idx + 1
+        draw.rectangle((x, y, x + 40, y + 26), fill="#eab308")
+        draw.text((x + 8, y + 5), str(number), fill="#0f172a")
+        
+        # Draw label bar underneath
+        label = f"#{number} | {frame.get('video_id', '?')} | {frame.get('frame_id', '?')}"
+        draw.rectangle((x, y + cell_height, x + cell_width, y + cell_height + label_height), fill="#1e293b")
+        draw.text((x + 8, y + cell_height + 6), label[:35], fill="#f8fafc")
+        
+        valid_frames.append(frame)
+
+    if save_path:
+        try:
+            sp = Path(save_path)
+            sp.parent.mkdir(parents=True, exist_ok=True)
+            canvas.save(sp, format="JPEG", quality=85)
+            print(f"  [DEBUG] Saved canvas ({total_count} frames, {columns}x{rows}) to: {sp}")
+        except Exception as e:
+            print(f"  [DEBUG] Failed to save canvas to {save_path}: {e}")
+
     output = BytesIO()
     canvas.save(output, format="JPEG", quality=85)
-    return base64.b64encode(output.getvalue()).decode("ascii"), inspectable
+    return base64.b64encode(output.getvalue()).decode("ascii"), valid_frames
 
 
 async def critic_filter_modality(
@@ -169,33 +212,44 @@ async def critic_filter_modality(
     modality: str,
     modality_query: str,
     candidates: list[dict[str, Any]],
+    debug: bool = True,
+    iteration: int = 1,
 ) -> tuple[list[dict[str, Any]], str, list[str]]:
     """
     Stage 4 Critic:
-    1. Splits candidate frames into small canvases of max 3 images.
-    2. Runs visual inspection to select suitable frames independently per canvas.
-    3. Merges all selected frames into a new summary canvas to generate actionable modality feedback.
+    1. Splits candidate frames into grid canvases of up to 20 images each (e.g. 50 frames -> 20 + 20 + 10).
+    2. Runs visual inspection on ALL canvases IN PARALLEL (asyncio.gather).
+    3. Strictly selects a MAXIMUM OF 3 CANDIDATES per canvas.
+    4. Creates a new summary canvas containing all selected candidates of this module.
+    5. Evaluates the summary canvas to generate actionable diagnostic feedback for this module.
     """
     if not candidates:
         return [], "", []
     if llm is None:
         return candidates, "LLM not configured for visual criticism.", []
 
-    stage1_selected: list[tuple[float, dict[str, Any]]] = []
     warnings: list[str] = []
 
-    # Step 4a: Process batches of maximum 3 frames per canvas
-    for start in range(0, len(candidates), CANVAS_FRAME_COUNT):
-        batch = candidates[start:start + CANVAS_FRAME_COUNT]
-        encoded_canvas, inspectable = await make_canvas(batch, max_per_row=3)
+    # Step 1: Divide candidates into batches of 20 and build all canvases
+    batches = [candidates[i:i + CANVAS_FRAME_COUNT] for i in range(0, len(candidates), CANVAS_FRAME_COUNT)]
+    
+    async def prepare_and_inspect_canvas(batch_idx: int, batch_frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        canvas_save_path = None
+        if debug:
+            from backend.core.config import TEMP_UPLOAD_DIR
+            canvas_save_path = TEMP_UPLOAD_DIR / f"critic_canvas_iter{iteration}_{modality}_batch{batch_idx}.jpg"
+
+        encoded_canvas, inspectable = await make_canvas(batch_frames, cols=5, save_path=canvas_save_path)
         if not inspectable or encoded_canvas is None:
-            continue
+            return []
 
         prompt_select = (
-            f"You are a strict Visual Critic inspecting a {len(inspectable)}-frame canvas for the modality '{modality}'.\n"
+            f"You are a strict Multi-Modal Visual Critic inspecting a {len(inspectable)}-frame grid canvas for modality '{modality}'.\n"
             f"Original user request: {original_query}\n"
             f"Current modality search query: {modality_query}\n"
-            "Inspect the numbered frames. Select ONLY frames that visually match or directly support the request.\n"
+            f"Inspect all {len(inspectable)} numbered frames (numbers 1 to {len(inspectable)}).\n"
+            f"Select AT MOST {MAX_SELECTED_PER_CANVAS} best frames that visually match or directly relate to the request.\n"
+            "If none match, return an empty array.\n"
             "Return JSON only:\n"
             '{"selected_frames": [{"number": 1, "relevance": 90, "reason": "visible match reason"}]}'
         )
@@ -210,6 +264,9 @@ async def critic_filter_modality(
             )
             payload = parse_json_response(response.content)
             selected_items = payload.get("selected_frames", [])
+            
+            # Keep top candidates per canvas, max 3
+            valid_canvas_selected: list[tuple[float, dict[str, Any]]] = []
             for item in selected_items:
                 if isinstance(item, dict):
                     num = int(item.get("number", 0))
@@ -217,26 +274,50 @@ async def critic_filter_modality(
                     reason = str(item.get("reason", ""))
                     if 1 <= num <= len(inspectable):
                         frame_data = {**inspectable[num - 1], "critic_score": round(rel, 1), "critic_reason": reason}
-                        stage1_selected.append((rel, frame_data))
+                        valid_canvas_selected.append((rel, frame_data))
+            
+            # Sort by relevance and take at most MAX_SELECTED_PER_CANVAS (3)
+            valid_canvas_selected.sort(key=lambda x: -x[0])
+            top_3 = [f for _, f in valid_canvas_selected[:MAX_SELECTED_PER_CANVAS]]
+
+            if top_3:
+                print(f"  [Critic Parallel Canvas {batch_idx}] Selected {len(top_3)} frames (max {MAX_SELECTED_PER_CANVAS}) from {len(inspectable)} images: {[f.get('frame_name') for f in top_3]}")
+            return top_3
         except Exception as exc:
-            warnings.append(f"Canvas selection failed for {modality} batch [{start}:{start+3}]: {exc}")
+            warnings.append(f"Canvas inspection failed for {modality} batch {batch_idx}: {exc}")
+            return []
 
-    # Deduplicate selected frames
-    stage1_selected.sort(key=lambda x: -x[0])
-    selected_frames = deduplicate_frames([f for _, f in stage1_selected])
+    # Step 2: Read ALL canvases in parallel
+    print(f"[Multi-Agent Critic] Inspecting {len(batches)} canvases in parallel for modality '{modality}'...")
+    parallel_results = await asyncio.gather(
+        *(prepare_and_inspect_canvas(idx + 1, batch) for idx, batch in enumerate(batches))
+    )
 
-    # Step 4b: Build feedback from selected frames or overall candidates
+    # Step 3: Merge all selected candidates across all canvases for this module
+    merged_selected: list[dict[str, Any]] = []
+    for canvas_frames in parallel_results:
+        merged_selected.extend(canvas_frames)
+
+    selected_frames = deduplicate_frames(merged_selected)
+    print(f"[Multi-Agent Critic] '{modality}' gathered {len(selected_frames)} total candidates from {len(batches)} canvases")
+
+    # Step 4: Create new summary canvas including all candidates of this module & generate feedback
     feedback_text = ""
-    frames_for_feedback = selected_frames[:6] if selected_frames else candidates[:3]
-    encoded_feedback_canvas, inspectable_fb = await make_canvas(frames_for_feedback, max_per_row=3)
+    frames_for_feedback = selected_frames if selected_frames else candidates[:10]
+    fb_save_path = None
+    if debug:
+        from backend.core.config import TEMP_UPLOAD_DIR
+        fb_save_path = TEMP_UPLOAD_DIR / f"critic_summary_canvas_iter{iteration}_{modality}.jpg"
+
+    encoded_feedback_canvas, inspectable_fb = await make_canvas(frames_for_feedback, cols=5, save_path=fb_save_path)
 
     feedback_prompt = (
         f"You are evaluating the visual retrieval performance for modality '{modality}'.\n"
         f"Target User Request: {original_query}\n"
         f"Modality Search Query: {modality_query}\n"
         f"Total selected relevant frames found: {len(selected_frames)} out of {len(candidates)} candidates.\n"
-        "Analyze why the current query succeeded or failed to find exact matches. Provide concise, diagnostic feedback "
-        "and concrete recommendations on how the query planner should refine the query for this modality in the next loop.\n"
+        "Analyze the candidate frames in the canvas. Explain why the current query succeeded or failed to find exact matches. "
+        "Provide concise, diagnostic feedback and concrete recommendations on how the query planner should refine the query for this modality in the next loop.\n"
         "Return JSON only:\n"
         '{"feedback": "<diagnostic feedback and refinement advice>"}'
     )

@@ -110,12 +110,10 @@ export default function MultiAgentResultsModal({
           <div className="flex items-center gap-2 text-sm font-bold">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]"><i className="fas fa-images" /></span>
             Multi-modal critic results
-            <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-slate-300">{result.selected_count || 0} selected</span>
-            {result.warnings?.length > 0 && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300" title={result.warnings.join('\n')}><i className="fas fa-triangle-exclamation mr-1" />{result.warnings.length} critic warning</span>}
+            <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-slate-300">
           </div>
-          <p className="mt-1 truncate text-[11px] text-slate-400">{result.query} · top {result.frame_limit || '?'} candidates/modality · 20 frames/canvas</p>
-        </div>
-        <button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] transition-colors hover:border-red-400 hover:bg-red-500/10 hover:text-red-400" title="Close (Esc)"><i className="fas fa-times" /></button>
+          <p className="mt-1 truncate text-[11px] text-slate-400">
+            {result.query} · Loop {result.completed_iterations || 0}/{result.k_iterations || 3} · top {result.frame_limit || '?'} candidates/modality · 20 frames/canvas
       </header>
 
       <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-700 bg-[#0b1020] px-4 py-2 sm:px-6">

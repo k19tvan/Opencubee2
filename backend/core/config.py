@@ -9,7 +9,8 @@ try:
 except ImportError:
     pass
 
-TEMP_UPLOAD_DIR = Path("./temp_uploads")
+BASE_DIR = Path(__file__).resolve().parents[2]
+TEMP_UPLOAD_DIR = BASE_DIR / "temp_uploads"
 TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "opencubee2_qdrant")
