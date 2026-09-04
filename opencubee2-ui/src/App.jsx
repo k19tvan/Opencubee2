@@ -217,6 +217,7 @@ export default function App() {
   const [goForwardDepth, setGoForwardDepth] = useState(0);
 
   const [lockedVideos, setLockedVideos] = useState([]);
+  const [deletedVideos, setDeletedVideos] = useState([]);
 
   // Submission System State
   const [submissionQueries, setSubmissionQueries] = useState([]);
@@ -229,7 +230,12 @@ export default function App() {
   const [activeCsvContent, setActiveCsvContent] = useState(null);
   const [activeDraftContent, setActiveDraftContent] = useState(null);
   const [isHoveringTrakePanel, setIsHoveringTrakePanel] = useState(false);
-  const [hoveredFrame, setHoveredFrame] = useState(null);
+  const [hoveredFrame, setHoveredFrameState] = useState(null);
+  const hoveredFrameRef = useRef(null);
+  const setHoveredFrame = useCallback((frame) => {
+    hoveredFrameRef.current = frame;
+    setHoveredFrameState(frame);
+  }, []);
   const [trakePreviewShot, setTrakePreviewShot] = useState(null);
 
   useEffect(() => {
@@ -539,7 +545,11 @@ export default function App() {
     if (!videoId) return;
     setLockedVideos(prev => {
       const exists = prev.some(v => v.videoId === videoId);
-      if (exists) return prev.filter(v => v.videoId !== videoId);
+      if (exists) {
+        toast.success(`Unlocked search video ${videoId}`);
+        return prev.filter(v => v.videoId !== videoId);
+      }
+      toast.success(`Locked video search: ${videoId}`);
       return [...prev, {
         videoId,
         frameName: shot.frame_name,
@@ -548,16 +558,70 @@ export default function App() {
     });
   }, []);
 
-  const filterByLockedVideos = useCallback((results) => {
-    if (lockedVideos.length === 0) return results;
-    const allowed = new Set(lockedVideos.map(v => v.videoId));
-    return results.filter(result => {
-      if (result.video_id && allowed.has(result.video_id)) return true;
-      if (result.shots) return result.shots.some(s => allowed.has(s.video_id));
-      if (result.clusters) return result.clusters.some(c => c.shots?.some(s => allowed.has(s.video_id)));
-      return false;
+  const toggleVideoDeleteLock = useCallback((shot) => {
+    const videoId = shot?.video_id || extractVideoId(shot?.frame_name);
+    if (!videoId) return;
+    setDeletedVideos(prev => {
+      const exists = prev.some(v => v.videoId === videoId);
+      if (exists) {
+        toast.success(`Bỏ chọn video ${videoId} (xuất hiện search lại bình thường)`);
+        return prev.filter(v => v.videoId !== videoId);
+      }
+      toast.success(`Khóa video delete: ${videoId}`);
+      return [...prev, {
+        videoId,
+        frameName: shot?.frame_name || '',
+        thumbnailUrl: shot?.url || (shot?.frame_name ? getImageUrl(shot.frame_name) : ''),
+      }];
     });
-  }, [lockedVideos]);
+  }, []);
+
+  const filterByLockedVideos = useCallback((results) => {
+    if (!results || results.length === 0) return results;
+    let filtered = results;
+
+    // 1. Whitelist filtering: Lock Video Search (only allow these videos)
+    if (lockedVideos.length > 0) {
+      const allowed = new Set(lockedVideos.map(v => v.videoId));
+      filtered = filtered.filter(result => {
+        if (result.video_id && allowed.has(result.video_id)) return true;
+        if (result.shots) return result.shots.some(s => allowed.has(s.video_id));
+        if (result.clusters) return result.clusters.some(c => c.shots?.some(s => allowed.has(s.video_id)));
+        return false;
+      });
+    }
+
+    // 2. Blacklist filtering: Lock Video Delete (exclude these videos)
+    if (deletedVideos.length > 0) {
+      const excluded = new Set(deletedVideos.map(v => v.videoId));
+      filtered = filtered.filter(result => {
+        if (result.video_id && excluded.has(result.video_id)) return false;
+
+        if (result.shots) {
+          const validShots = result.shots.filter(s => !excluded.has(s.video_id));
+          if (validShots.length === 0) return false;
+          result = { ...result, shots: validShots };
+        }
+
+        if (result.clusters) {
+          const validClusters = result.clusters.map(c => {
+            if (c.shots) {
+              const validShots = c.shots.filter(s => !excluded.has(s.video_id));
+              return { ...c, shots: validShots };
+            }
+            return c;
+          }).filter(c => c.shots && c.shots.length > 0);
+
+          if (validClusters.length === 0) return false;
+          result = { ...result, clusters: validClusters };
+        }
+
+        return true;
+      });
+    }
+
+    return filtered;
+  }, [lockedVideos, deletedVideos]);
 
   const enhanceStagesForSearch = async (inputStages, currentSearchModel = []) => {
     const isOnlyMetaClip = currentSearchModel.length === 1 && currentSearchModel[0] === 'metaclip2';
@@ -722,9 +786,20 @@ export default function App() {
 
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
-      if (event.code === 'Digit6' || event.code === 'Numpad6') {
+      if (event.code === 'Digit5' || event.code === 'Numpad5') {
         event.preventDefault();
         setTimeFilterEnabled((previous) => !previous);
+        return;
+      }
+
+      if (event.code === 'Digit6' || event.code === 'Numpad6') {
+        event.preventDefault();
+        const currentHovered = hoveredFrameRef.current;
+        if (currentHovered) {
+          toggleVideoDeleteLock(currentHovered);
+        } else {
+          toast('Hover over a video frame and press Alt + 6 to lock video delete', { id: 'alt6-hint' });
+        }
         return;
       }
 
@@ -1643,6 +1718,7 @@ export default function App() {
                 onQuickSearch={handleQuickImageSearch}
                 onToggleLock={toggleVideoLock}
                 lockedVideoIds={lockedVideos.map(v => v.videoId)}
+                deletedVideoIds={deletedVideos.map(v => v.videoId)}
                 activeQueryFilename={activeQueryFilename}
                 activeQueryText={activeQueryText}
                 activeCsvContent={activeCsvContent}
@@ -1757,24 +1833,70 @@ export default function App() {
             </div>
           )}
 
-          {lockedVideos.length > 0 && (
-            <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[var(--card-bg)] border-t border-[var(--border-color)] backdrop-blur-md">
-              <div className="flex items-center gap-3 px-4 py-2 overflow-x-auto">
-                <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider flex-shrink-0">
-                  <i className="fas fa-lock text-[var(--accent-primary)] mr-1"></i>Locked ({lockedVideos.length})
-                </span>
-                {lockedVideos.map(v => (
-                  <div
-                    key={v.videoId}
-                    className="flex-shrink-0 flex items-center gap-2 bg-[var(--glass-bg)] border border-[var(--border-color)] rounded-lg px-2 py-1 cursor-pointer hover:border-red-400 group transition-all"
-                    onClick={() => toggleVideoLock({ video_id: v.videoId, frame_name: v.frameName, url: v.thumbnailUrl })}
-                    title={`Click to unlock ${v.videoId}`}
-                  >
-                    <img src={v.thumbnailUrl} alt={v.videoId} className="w-8 h-8 rounded object-cover" />
-                    <span className="text-[11px] font-mono text-[var(--text-primary)]">{v.videoId}</span>
-                    <i className="fas fa-times text-[8px] text-[var(--text-secondary)] group-hover:text-red-500 ml-1"></i>
-                  </div>
-                ))}
+          {(lockedVideos.length > 0 || deletedVideos.length > 0) && (
+            <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[#0b1020]/95 border-t border-[var(--border-color)] backdrop-blur-md shadow-2xl animate-slideUp">
+              <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[var(--border-color)]">
+                
+                {/* Left side: Lock Video Delete */}
+                <div className="flex items-center gap-3 px-4 py-2 overflow-x-auto custom-scrollbar min-h-[46px] bg-red-950/20">
+                  <span className="text-[10px] font-black text-rose-400 uppercase tracking-wider flex-shrink-0 flex items-center gap-1.5 px-1">
+                    <i className="fas fa-trash-alt text-rose-400"></i>
+                    <span>DELETE ({deletedVideos.length})</span>
+                  </span>
+                  {deletedVideos.length === 0 ? (
+                    <span className="text-[11px] text-[var(--text-secondary)] italic opacity-60">
+                      No deleted videos (Hover frame + Alt+6)
+                    </span>
+                  ) : (
+                    deletedVideos.map(v => (
+                      <div
+                        key={`del-${v.videoId}`}
+                        className="flex-shrink-0 flex items-center gap-2 bg-rose-950/50 border border-rose-500/40 hover:border-rose-400 rounded-lg px-2 py-1 cursor-pointer group transition-all shadow-sm"
+                        onClick={() => toggleVideoDeleteLock({ video_id: v.videoId, frame_name: v.frameName, url: v.thumbnailUrl })}
+                        title={`Click to unselect ${v.videoId} and search normally again`}
+                      >
+                        {v.thumbnailUrl ? (
+                          <img src={v.thumbnailUrl} alt={v.videoId} className="w-7 h-7 rounded object-cover border border-rose-500/30" />
+                        ) : (
+                          <i className="fas fa-video-slash text-xs text-rose-400"></i>
+                        )}
+                        <span className="text-[11px] font-mono font-bold text-rose-200">{v.videoId}</span>
+                        <i className="fas fa-times text-[9px] text-rose-300 group-hover:text-red-400 group-hover:scale-125 ml-1 transition-transform"></i>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Right side: Lock Video Search */}
+                <div className="flex items-center gap-3 px-4 py-2 overflow-x-auto custom-scrollbar min-h-[46px] bg-emerald-950/20">
+                  <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider flex-shrink-0 flex items-center gap-1.5 px-1">
+                    <i className="fas fa-lock text-emerald-400"></i>
+                    <span>SEARCH ({lockedVideos.length})</span>
+                  </span>
+                  {lockedVideos.length === 0 ? (
+                    <span className="text-[11px] text-[var(--text-secondary)] italic opacity-60">
+                      No search locked videos (Alt+Click)
+                    </span>
+                  ) : (
+                    lockedVideos.map(v => (
+                      <div
+                        key={`lock-${v.videoId}`}
+                        className="flex-shrink-0 flex items-center gap-2 bg-emerald-950/50 border border-emerald-500/40 hover:border-emerald-400 rounded-lg px-2 py-1 cursor-pointer group transition-all shadow-sm"
+                        onClick={() => toggleVideoLock({ video_id: v.videoId, frame_name: v.frameName, url: v.thumbnailUrl })}
+                        title={`Click to unlock search for ${v.videoId}`}
+                      >
+                        {v.thumbnailUrl ? (
+                          <img src={v.thumbnailUrl} alt={v.videoId} className="w-7 h-7 rounded object-cover border border-emerald-500/30" />
+                        ) : (
+                          <i className="fas fa-lock text-xs text-emerald-400"></i>
+                        )}
+                        <span className="text-[11px] font-mono font-bold text-emerald-200">{v.videoId}</span>
+                        <i className="fas fa-times text-[9px] text-emerald-300 group-hover:text-red-400 group-hover:scale-125 ml-1 transition-transform"></i>
+                      </div>
+                    ))
+                  )}
+                </div>
+
               </div>
             </div>
           )}

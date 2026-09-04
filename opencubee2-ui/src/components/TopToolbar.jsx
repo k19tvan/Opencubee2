@@ -232,7 +232,7 @@ export default function TopToolbar({
           theme={theme}
         />
         <div className="flex items-center gap-1 shrink-0">
-          <ToolBtn onClick={() => setTimeFilterEnabled(!timeFilterEnabled)} icon="fas fa-clock" label="Time" active={timeFilterEnabled} title="Time range filter (Alt + 6)" theme={theme} />
+          <ToolBtn onClick={() => setTimeFilterEnabled(!timeFilterEnabled)} icon="fas fa-clock" label="Time" active={timeFilterEnabled} title="Time range filter (Alt + 5)" theme={theme} />
           {timeFilterEnabled && <input value={timeRangeInput} onChange={(event) => setTimeRangeInput(event.target.value)} placeholder="0-16, 32-64" aria-label="Time ranges in seconds" className="w-28 sm:w-40 rounded-lg border border-[var(--border-color)] bg-[var(--glass-bg)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-secondary)]" />}
         </div>
 
