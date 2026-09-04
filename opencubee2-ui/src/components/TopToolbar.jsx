@@ -1,7 +1,7 @@
 // src/components/TopToolbar.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { SEARCH_MODEL_OPTIONS, DEFAULT_SEARCH_MODEL } from '../App';
+import { SEARCH_MODEL_OPTIONS, DEFAULT_SEARCH_MODEL } from '../utils/searchModels';
 
 const THEME_ORDER = ['normal', 'dark', 'light', 'blue', 'neon', 'random', 'jujutsu'];
 const THEME_META = {

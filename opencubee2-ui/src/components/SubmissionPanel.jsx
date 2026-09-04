@@ -23,7 +23,8 @@ const parseCsvContent = (csvString, mode, currentData = []) => {
   
   // Build a lookup map from currentData to preserve metadata like similarity_labels
   const metaMap = new Map();
-  const flatData = mode === 'trake' ? currentData.flat() : currentData;
+  const safeCurrentData = Array.isArray(currentData) ? currentData : [];
+  const flatData = mode === 'trake' ? safeCurrentData.flat() : safeCurrentData;
   for (const item of flatData) {
     if (item?.shot) {
       metaMap.set(`${item.shot.video_id}_${item.shot.frame_id}`, item.shot);
@@ -87,12 +88,14 @@ const parseCsvContent = (csvString, mode, currentData = []) => {
 };
 
 const serializeCsvContent = (localData, mode) => {
+  if (!Array.isArray(localData)) return '';
   if (mode === 'kis') {
     return localData.map(item => `${item.shot.video_id},${item.shot.frame_id}`).join('\n');
   } else if (mode === 'qa') {
     return localData.map(item => `${item.shot.video_id},${item.shot.frame_id},"${item.answer || ''}"`).join('\n');
   } else if (mode === 'trake') {
     return localData.map((row) => {
+      if (!Array.isArray(row)) return '';
       const frames = row
         .map(({ shot }) => ({ video_id: shot?.video_id, frame_id: shot?.frame_id }))
         .filter(({ video_id, frame_id }) => video_id && frame_id !== undefined && frame_id !== null);
@@ -124,13 +127,14 @@ const normalizeDraftContent = (filename, draftContent) => {
   });
 };
 
-const cloneDraftContent = (draftContent, mode) => (
-  mode === 'trake'
-    ? draftContent.map((row) => [...row])
-    : [...draftContent]
-);
+const cloneDraftContent = (draftContent, mode) => {
+  if (!Array.isArray(draftContent)) return [];
+  return mode === 'trake'
+    ? draftContent.map((row) => (Array.isArray(row) ? [...row] : []))
+    : [...draftContent];
+};
 
-const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onMouseLeave, onPreviewTrakeFrame, onZoom, onContext, onQuickSearch, onToggleLock, onPreview, draggable, onDragStart, onDragOver, onDrop }) => {
+const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onMouseLeave, onPreviewTrakeFrame, onZoom, onContext, onQuickSearch, onToggleLock, onPreview, onEditAnswer, draggable, onDragStart, onDragOver, onDrop }) => {
   const [answer, setAnswer] = useState(item.answer || '');
 
   useEffect(() => {
@@ -243,7 +247,16 @@ const ShotImage = ({ item, mode, onAnswerChange, onMouseEnter, onMouseLeave, onP
       )}
 
       {mode === 'qa' && item.answer && (
-        <div className="absolute bottom-1.5 left-1.5 bg-emerald-500/90 backdrop-blur-md px-2 py-0.5 rounded shadow-lg text-[10.5px] font-extrabold text-white max-w-[120px] truncate border border-emerald-400/50 z-20" title={item.answer}>
+        <div 
+          className="absolute bottom-1.5 left-1.5 bg-emerald-500/90 hover:bg-emerald-600 backdrop-blur-md px-2 py-0.5 rounded shadow-lg text-[10.5px] font-extrabold text-white max-w-[120px] truncate border border-emerald-400/50 z-20 cursor-pointer transition-all hover:scale-105" 
+          title="Click to edit answer in QA Modal"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (onEditAnswer) onEditAnswer(item);
+          }}
+        >
+          <i className="fas fa-pen text-[8px] mr-1 opacity-80"></i>
           {item.answer}
         </div>
       )}
@@ -282,6 +295,7 @@ export default function SubmissionPanel({
   onQuickSearch,
   onToggleLock,
   onPreview,
+  setHoveredFrame,
   username,
   onSyncDraft,
 }) {
@@ -302,6 +316,8 @@ export default function SubmissionPanel({
   const [hoveredPanelItem, setHoveredPanelItem] = useState(null);
   const [qaModalShot, setQaModalShot] = useState(null);
   const [qaModalTrigger, setQaModalTrigger] = useState(0);
+  const [qaModalInitialAnswer, setQaModalInitialAnswer] = useState('');
+  const [qaModalTargetIndex, setQaModalTargetIndex] = useState(-1);
 
   const parsedCsvData = useMemo(() => {
     return activeQueryFilename && activeCsvContent !== null ? parseCsvContent(activeCsvContent, mode, []) : [];
@@ -400,6 +416,17 @@ export default function SubmissionPanel({
       return prev;
     });
   }, [mode, updateData]);
+
+  const updateAnswer = useCallback((targetIndex, newAnswer) => {
+    updateData(prev => {
+      if (!Array.isArray(prev) || targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const next = [...prev];
+      if (next[targetIndex]) {
+        next[targetIndex] = { ...next[targetIndex], answer: newAnswer };
+      }
+      return next;
+    });
+  }, [updateData]);
 
   const handleDragStart = (e, payload, item) => {
     e.dataTransfer.setData('application/json', JSON.stringify({
@@ -652,9 +679,11 @@ export default function SubmissionPanel({
                     }}
                     onMouseEnter={() => {
                       setHoveredPanelItem(viewMode === 'draft' ? { type: 'kis', index: idx } : null);
+                      if (setHoveredFrame && item?.shot) setHoveredFrame(item.shot);
                     }}
                     onMouseLeave={() => {
                       setHoveredPanelItem(null);
+                      if (setHoveredFrame) setHoveredFrame(null);
                     }}
                     draggable={viewMode === 'draft'}
                     onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'kis', index: idx }, item)}
@@ -665,6 +694,16 @@ export default function SubmissionPanel({
                     onQuickSearch={onQuickSearch}
                     onToggleLock={viewMode === 'draft' ? onToggleLock : undefined}
                     onPreview={onPreview}
+                    onEditAnswer={() => {
+                      if (viewMode === 'csv') {
+                        toast.error("Can't edit answers in CSV mode. Switch to Draft first.");
+                        return;
+                      }
+                      setQaModalShot(item.shot);
+                      setQaModalInitialAnswer(item.answer || '');
+                      setQaModalTargetIndex(idx);
+                      setQaModalTrigger(t => t + 1);
+                    }}
                   />
                 ))}
               </div>
@@ -677,95 +716,100 @@ export default function SubmissionPanel({
                     {viewMode === 'draft' ? "Hover an image and press Ctrl+Space to add to Trake row." : "Server CSV is empty."}
                   </p>
                 ) : (
-                  displayData.map((row, rowIdx) => (
-                    <div 
-                      key={rowIdx} 
-                      className="flex gap-4 items-center bg-[var(--glass-bg)] p-2 rounded-lg border border-[var(--border-color)]"
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx })}
-                    >
-                      <div className="text-[10px] text-[var(--text-secondary)] font-mono w-4">R{rowIdx+1}</div>
-                      <div className="flex flex-nowrap gap-2 overflow-x-auto flex-1">
-                        {row.length === 0 ? (
-                          <span className="text-[10px] text-[var(--text-secondary)] italic p-2 block w-full h-full"
-                             onDragOver={handleDragOver}
-                             onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx, cIdx: 0 })}
-                          >Empty row... Drag frame here</span>
-                        ) : (
-                          row.map((item, idx) => (
-                            <ShotImage 
-                              key={`${rowIdx}-${idx}`} 
-                              item={item} 
-                              mode={mode} 
-                              onMouseEnter={() => {
-                                setHoveredPanelItem(viewMode === 'draft' ? { type: 'trake', rIdx: rowIdx, cIdx: idx } : null);
+                  displayData.map((row, rowIdx) => {
+                    const rowItems = Array.isArray(row) ? row : (row?.shot ? [row] : []);
+                    return (
+                      <div 
+                        key={rowIdx} 
+                        className="flex gap-4 items-center bg-[var(--glass-bg)] p-2 rounded-lg border border-[var(--border-color)]"
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx })}
+                      >
+                        <div className="text-[10px] text-[var(--text-secondary)] font-mono w-4">R{rowIdx+1}</div>
+                        <div className="flex flex-nowrap gap-2 overflow-x-auto flex-1">
+                          {rowItems.length === 0 ? (
+                            <span className="text-[10px] text-[var(--text-secondary)] italic p-2 block w-full h-full"
+                               onDragOver={handleDragOver}
+                               onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx, cIdx: 0 })}
+                            >Empty row... Drag frame here</span>
+                          ) : (
+                            rowItems.map((item, idx) => (
+                              <ShotImage 
+                                key={`${rowIdx}-${idx}`} 
+                                item={item} 
+                                mode={mode} 
+                                onMouseEnter={() => {
+                                  setHoveredPanelItem(viewMode === 'draft' ? { type: 'trake', rIdx: rowIdx, cIdx: idx } : null);
+                                  if (setHoveredFrame && item?.shot) setHoveredFrame(item.shot);
+                                }}
+                                onMouseLeave={() => {
+                                  setHoveredPanelItem(null);
+                                  if (setHoveredFrame) setHoveredFrame(null);
+                                }}
+                                draggable={viewMode === 'draft'}
+                                onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'trake', rIdx: rowIdx, cIdx: idx }, item)}
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx, cIdx: idx })}
+                                onPreviewTrakeFrame={onPreviewTrakeFrame}
+                                onZoom={onZoom}
+                                onContext={onContext}
+                                onQuickSearch={onQuickSearch}
+                                onToggleLock={viewMode === 'draft' ? onToggleLock : undefined}
+                                onPreview={onPreview}
+                              />
+                            ))
+                          )}
+                        </div>
+                        {viewMode === 'draft' && (
+                          <div className="flex flex-col gap-1 px-2 border-l border-[var(--border-color)]">
+                            <button 
+                              className="text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Move Row Up"
+                              disabled={rowIdx === 0}
+                              onClick={() => {
+                                updateData(prevLocal => {
+                                  const newLocal = [...prevLocal];
+                                  const [moved] = newLocal.splice(rowIdx, 1);
+                                  newLocal.splice(rowIdx - 1, 0, moved);
+                                  return newLocal;
+                                });
                               }}
-                              onMouseLeave={() => {
-                                setHoveredPanelItem(null);
+                            >
+                              <i className="fas fa-chevron-up"></i>
+                            </button>
+                            <button 
+                              className="text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Move Row Down"
+                              disabled={rowIdx === displayData.length - 1}
+                              onClick={() => {
+                                updateData(prevLocal => {
+                                  const newLocal = [...prevLocal];
+                                  const [moved] = newLocal.splice(rowIdx, 1);
+                                  newLocal.splice(rowIdx + 1, 0, moved);
+                                  return newLocal;
+                                });
                               }}
-                              draggable={viewMode === 'draft'}
-                              onDragStart={(e) => viewMode === 'draft' && handleDragStart(e, { type: 'trake', rIdx: rowIdx, cIdx: idx }, item)}
-                              onDragOver={handleDragOver}
-                              onDrop={(e) => viewMode === 'draft' && handleDrop(e, { type: 'trake', rIdx: rowIdx, cIdx: idx })}
-                              onPreviewTrakeFrame={onPreviewTrakeFrame}
-                              onZoom={onZoom}
-                              onContext={onContext}
-                              onQuickSearch={onQuickSearch}
-                              onToggleLock={viewMode === 'draft' ? onToggleLock : undefined}
-                              onPreview={onPreview}
-                            />
-                          ))
+                            >
+                              <i className="fas fa-chevron-down"></i>
+                            </button>
+                            <button 
+                              className="text-red-400 hover:text-red-300 mt-2"
+                              title="Remove row"
+                              onClick={() => {
+                                updateData(prevLocal => {
+                                  const newLocal = [...prevLocal];
+                                  newLocal.splice(rowIdx, 1);
+                                  return newLocal;
+                                });
+                              }}
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </div>
                         )}
                       </div>
-                      {viewMode === 'draft' && (
-                        <div className="flex flex-col gap-1 px-2 border-l border-[var(--border-color)]">
-                          <button 
-                            className="text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Move Row Up"
-                            disabled={rowIdx === 0}
-                            onClick={() => {
-                              updateData(prevLocal => {
-                                const newLocal = [...prevLocal];
-                                const [moved] = newLocal.splice(rowIdx, 1);
-                                newLocal.splice(rowIdx - 1, 0, moved);
-                                return newLocal;
-                              });
-                            }}
-                          >
-                            <i className="fas fa-chevron-up"></i>
-                          </button>
-                          <button 
-                            className="text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Move Row Down"
-                            disabled={rowIdx === displayData.length - 1}
-                            onClick={() => {
-                              updateData(prevLocal => {
-                                const newLocal = [...prevLocal];
-                                const [moved] = newLocal.splice(rowIdx, 1);
-                                newLocal.splice(rowIdx + 1, 0, moved);
-                                return newLocal;
-                              });
-                            }}
-                          >
-                            <i className="fas fa-chevron-down"></i>
-                          </button>
-                          <button 
-                            className="text-red-400 hover:text-red-300 mt-2"
-                            title="Remove row"
-                            onClick={() => {
-                              updateData(prevLocal => {
-                                const newLocal = [...prevLocal];
-                                newLocal.splice(rowIdx, 1);
-                                return newLocal;
-                              });
-                            }}
-                          >
-                            <i className="fas fa-trash"></i>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             );
@@ -777,10 +821,22 @@ export default function SubmissionPanel({
       <QAModal
         shot={qaModalShot}
         trigger={qaModalTrigger}
-        onClose={() => setQaModalShot(null)}
-        onSubmit={(answer) => {
-          addFrame(qaModalShot, answer);
+        initialAnswer={qaModalInitialAnswer}
+        onClose={() => {
           setQaModalShot(null);
+          setQaModalTargetIndex(-1);
+          setQaModalInitialAnswer('');
+        }}
+        onSubmit={(answer) => {
+          if (qaModalTargetIndex >= 0) {
+            updateAnswer(qaModalTargetIndex, answer);
+            toast.success("Updated QA answer");
+          } else {
+            addFrame(qaModalShot, answer);
+          }
+          setQaModalShot(null);
+          setQaModalTargetIndex(-1);
+          setQaModalInitialAnswer('');
         }}
       />,
       document.getElementById('app-theme-root') || document.body

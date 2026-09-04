@@ -490,6 +490,7 @@ export default function RightResultsPanel({
         onQuickSearch={onQuickSearch}
         onPreview={onPreview}
         onToggleLock={onToggleLock}
+        setHoveredFrame={setHoveredFrame}
         username={username}
         onSyncDraft={onSyncDraft}
       />

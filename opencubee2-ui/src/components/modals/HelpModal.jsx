@@ -22,7 +22,7 @@ const SHORTCUTS = [
   { label: 'Remove Latest Temporal Cell', keys: 'Alt + -' },
   { label: 'Go Back One Search Step', keys: 'Ctrl + Left' },
   { label: 'Go Forward One Search Step', keys: 'Ctrl + Right' },
-  { label: 'Reset Search Panel', keys: 'Alt + R' },
+  { label: 'Reset Search Panel & Clear Video Locks', keys: 'Alt + R' },
   { label: 'Execute Search Panel', keys: 'Enter' },
 ];
 

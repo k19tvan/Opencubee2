@@ -14,6 +14,8 @@ import HelpModal from './components/modals/HelpModal';
 import { BASE_URL, enhanceQuery, searchSingle, searchTemporal, searchSemanticAsr, getWsUrl, uploadSubmissionZip, fetchSubmissionQueries, fetchSubmissionQuery, saveSubmissionQuery } from './api';
 import { getImageUrl } from './utils/imageUrl';
 import { getDresFrameNumber } from './utils/frameNumber';
+import { SEARCH_MODEL_OPTIONS, DEFAULT_SEARCH_MODEL } from './utils/searchModels';
+export { SEARCH_MODEL_OPTIONS, DEFAULT_SEARCH_MODEL };
 
 const createEmptyStage = () => ({
   id: Date.now(),
@@ -89,14 +91,6 @@ const cloneState = (value) => {
 const createHistoryId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const THEME_OPTIONS = ['normal', 'dark', 'light', 'blue', 'neon', 'jujutsu', 'random'];
 const RANDOM_THEME_OPTIONS = ['normal', 'dark', 'light', 'blue', 'neon', 'jujutsu'];
-export const SEARCH_MODEL_OPTIONS = [
-  { value: 'beit3', label: 'BEiT-3', icon: 'fas fa-cubes' },
-  { value: 'bge', label: 'BGE-VL', icon: 'fas fa-language' },
-  { value: 'jina_v5_omni', label: 'Jina v5', icon: 'fas fa-globe' },
-  { value: 'metaclip2', label: 'MetaCLIP 2', icon: 'fas fa-bolt' },
-  { value: 'fgclip2', label: 'FG-CLIP 2', icon: 'fas fa-image' },
-];
-export const DEFAULT_SEARCH_MODEL = ['beit3'];
 
 const normalizeSearchModel = (values, fallback = []) => {
   if (!Array.isArray(values)) {
@@ -366,7 +360,7 @@ export default function App() {
     contextShot,
   };
 
-  const sendRealtimeMessage = useCallback((message, { notify = true } = {}) => {
+  const sendRealtimeMessage = useCallback((message, { notify = false } = {}) => {
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) {
       try {
@@ -541,7 +535,7 @@ export default function App() {
   };
 
   const toggleVideoLock = useCallback((shot) => {
-    const videoId = shot.video_id || extractVideoId(shot.frame_name);
+    const videoId = shot?.video_id || shot?.videoId || extractVideoId(shot?.frame_name);
     if (!videoId) return;
     setLockedVideos(prev => {
       const exists = prev.some(v => v.videoId === videoId);
@@ -552,8 +546,8 @@ export default function App() {
       toast.success(`Locked video search: ${videoId}`);
       return [...prev, {
         videoId,
-        frameName: shot.frame_name,
-        thumbnailUrl: shot.url || getImageUrl(shot.frame_name),
+        frameName: shot?.frame_name || '',
+        thumbnailUrl: shot?.url || (shot?.frame_name ? getImageUrl(shot.frame_name) : ''),
       }];
     });
   }, []);
@@ -915,9 +909,9 @@ export default function App() {
           next.splice(idx, 1);
           return next;
         });
-      } else if (key === 'r') {
+      } else if (key === 'r' || event.code === 'KeyR') {
         event.preventDefault();
-        executeResetRef.current();
+        executeResetRef.current?.();
       } else if (key === 'a') {
         event.preventDefault();
         setAutoTranslate((prev) => !prev);
@@ -1523,6 +1517,9 @@ export default function App() {
     setHasMore(false);
     setLoadingMore(false);
     setContextShot(null);
+    setLockedVideos([]);
+    setDeletedVideos([]);
+    toast.success('Reset search panel & cleared video locks', { id: 'reset-panel-toast' });
   }, [searchModel, metaClipOnly]);
 
   useEffect(() => {
