@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getImageUrl } from '../../utils/imageUrl';
 
-export default function QAModal({ shot, trigger, onClose, onSubmit }) {
-  const [qaAnswer, setQaAnswer] = useState('');
+export default function QAModal({ shot, trigger, onClose, onSubmit, initialAnswer = '' }) {
+  const [qaAnswer, setQaAnswer] = useState(initialAnswer || '');
   const [isOpen, setIsOpen] = useState(true);
   const inputRef = useRef(null);
 
@@ -18,8 +18,9 @@ export default function QAModal({ shot, trigger, onClose, onSubmit }) {
   }, [isOpen]);
 
   useEffect(() => {
+    setQaAnswer(initialAnswer || '');
     setIsOpen(true);
-  }, [shot, trigger]);
+  }, [shot, trigger, initialAnswer]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
