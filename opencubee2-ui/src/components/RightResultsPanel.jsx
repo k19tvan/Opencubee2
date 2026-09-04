@@ -156,6 +156,7 @@ const ResultItem = React.memo(({
   onPreview,
   onContext,
   isLocked = false,
+  isDeletedLocked = false,
   dresMode,
   setHoveredFrame,
   onDresSubmit,
@@ -243,8 +244,13 @@ const ResultItem = React.memo(({
         </button>
       </div>
       {isLocked && (
-        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded bg-emerald-500/90 flex items-center justify-center z-10" title="Video locked">
+        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded bg-emerald-500/90 flex items-center justify-center z-10" title="Video search locked">
           <i className="fas fa-lock text-[8px] text-white"></i>
+        </div>
+      )}
+      {isDeletedLocked && (
+        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded bg-rose-600/90 flex items-center justify-center z-10" title="Video delete locked (Excluded from search)">
+          <i className="fas fa-trash-alt text-[8px] text-white"></i>
         </div>
       )}
       <div className="absolute top-1.5 left-1.5 flex flex-col gap-1 z-30 pointer-events-none">
@@ -323,6 +329,7 @@ export default function RightResultsPanel({
   onQuickSearch = () => { },
   onToggleLock = () => { },
   lockedVideoIds = [],
+  deletedVideoIds = [],
   activeQueryFilename,
   activeQueryText,
   activeCsvContent,
@@ -423,12 +430,14 @@ export default function RightResultsPanel({
         onMouseEnter={handleResultMouseEnter}
         onMouseLeave={handleResultMouseLeave}
         isLocked={lockedVideoIds.includes(shot.video_id)}
+        isDeletedLocked={deletedVideoIds.includes(shot.video_id)}
+        setHoveredFrame={setHoveredFrame}
         onZoom={onZoom}
         onContext={onContext}
         onQuickSearch={onQuickSearch}
       />
     );
-  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, lockedVideoIds, setHoveredFrame, onZoom, onContext, onQuickSearch]);
+  }, [handleDragStart, handleItemClick, handleOpenPreview, handleResultMouseEnter, handleResultMouseLeave, lockedVideoIds, deletedVideoIds, setHoveredFrame, onZoom, onContext, onQuickSearch]);
 
   useEffect(() => {
     const firstResult = searchResults.length > 0 ? searchResults[0] : null;
